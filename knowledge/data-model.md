@@ -76,6 +76,15 @@ DefendedArea:
   radius_km:            float
   priority:             enum          # critical | high | medium
   value:                float         # strategic value score
+  replaceability:       enum          # irreplaceable | hard | medium | easy | expendable
+  replacement_cost:     float         # abstract cost to rebuild
+  replacement_time_s:   int           # seconds to restore capability (0 = can't)
+  can_evacuate:         bool          # can personnel/critical items be moved?
+  evacuation_time_s:    int           # seconds to evacuate if applicable
+  hardened:             bool          # underground / blast-resistant?
+  has_redundancy:       bool          # backup node exists elsewhere?
+  defense_cost_limit:   float         # max abstract cost worth spending to defend
+  current_defense_posture: enum       # full | reduced | evacuating | conceded
 ```
 
 ## SimulationState
