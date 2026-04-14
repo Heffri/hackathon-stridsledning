@@ -7,7 +7,7 @@
 ```
 Asset:
   id:                   string        # unique identifier
-  type:                 enum          # fighter | sam_long | sam_mid | sam_short | shorad_missile | spaag | aew | uav_loyal
+  type:                 enum          # fighter | sam_long | sam_mid | sam_short | shorad_missile | spaag | aew | uav_loyal | ew_ground | ew_airborne
   display_name:         string        # real-world name for demo (e.g., "Gripen E")
   position:             {lat, lng}    # current position
   base_position:        {lat, lng}    # home base / deployment site
@@ -41,6 +41,7 @@ Threat:
   threat_level:         enum          # critical | high | medium | low
   time_to_impact_s:     float         # estimated time to reach defended area
   target_id:            string?       # what it's heading toward (if known)
+  guidance_type:        enum          # gps | gps_ins | ins | active_radar | ir | beam_riding | fiber | unguided
   ecm:                  enum          # none | basic | advanced
   maneuvering:          bool          # is it performing evasive maneuvers
   quantity:             int           # for swarms: number of individual units
@@ -103,3 +104,5 @@ SimulationState:
 | spaag | Lvkv 90 | Swedish, 40mm Bofors |
 | aew | GlobalEye (S 106) | Saab product, our "host platform" |
 | uav_loyal | F-series Wingman | Saab future concept |
+| ew_ground | Ground EW Station | Abstract / generic |
+| ew_airborne | Gripen E Arexis EW | Saab product (built-in) |

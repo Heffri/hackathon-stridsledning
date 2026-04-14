@@ -26,8 +26,9 @@ Domain knowledge lives in `knowledge/`:
 - `ground-defense.md` — Patriot PAC-3, IRIS-T SLM/SLS, RBS 70 NG, Lvkv 90
 - `threats.md` — 10 threat types, RCS table, cost-exchange ratios
 - `sensors-c2.md` — Radar specs, data links, Silent Attack, TDFE sensor fusion
-- `doctrine.md` — Layered defense, engagement priority, SEAD evasion, forward planning
+- `doctrine.md` — Layered defense, 3-layer response (soft kill/evade/hard kill), SEAD evasion
 - `data-model.md` — Abstract parameterized data model (Asset/Threat/Assignment)
+- `scenario.md` — Multi-wave mixed threat demo scenario with optimal responses
 
 All specs cite official manufacturer sources where available. See `knowledge/SOURCES.md` for full citation list.
 

@@ -14,8 +14,9 @@ The `knowledge/` directory contains structured domain reference data for buildin
 | [ground-defense.md](knowledge/ground-defense.md) | Patriot PAC-3, IRIS-T SLM/SLS, RBS 70 NG, Lvkv 90 |
 | [threats.md](knowledge/threats.md) | 10 threat types, RCS table, cost-exchange ratios |
 | [sensors-c2.md](knowledge/sensors-c2.md) | Radar specs, data links, Silent Attack, sensor fusion |
-| [doctrine.md](knowledge/doctrine.md) | Layered defense, engagement rules, SEAD evasion |
+| [doctrine.md](knowledge/doctrine.md) | 3-layer response (soft kill/evade/hard kill), SEAD evasion |
 | [data-model.md](knowledge/data-model.md) | Abstract parameterized data model for simulation |
+| [scenario.md](knowledge/scenario.md) | Multi-wave mixed threat demo scenario |
 | [SOURCES.md](knowledge/SOURCES.md) | Full citation list with source credibility tiers |
 
 Each file includes **simulation parameter blocks** (YAML-style) ready to be used in code.
