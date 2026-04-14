@@ -380,7 +380,7 @@ Known long-range air-to-air threats:
 |--------|----------------|---------------------------|-------------------|
 | R-37M | 300+ km (marketing) | ~200 km (Ukraine combat evidence, against large RCS) | **250+ km** |
 | R-77-1 | 110 km | ~80-100 km effective | 150 km |
-| PL-15 (reference) | 145 km (exhibition data) | Unknown — India-Pakistan incident suggests longer | N/A (not in theater) |
+| PL-15E (reference) | 145 km (export spec) | ~200 km (2025 India-Pakistan combat, confirmed kill) | N/A (not in theater, but lesson applies) |
 
 **Standoff calculation:**
 ```
@@ -396,11 +396,14 @@ For R-37M: 200 * 1.15 + 30 = 260 km minimum standoff
 # - NEVER trust published max range — it's marketing, not combat data
 ```
 
-**Lessons from India-Pakistan (2025 India–Pakistan conflict):**
-- Indian pilots trusted PL-15E exhibition data (145 km) as hard limit
-- Pakistani J10C (with Pl15E) engaged at distances Indians believed safe
-- RWR/MAWS warnings is on but Indian pilot thought it was out of range so nothing would happen.
-- **Takeaway**: Always assume enemy range is 15-20% beyond what you think it is
+**Lessons from India-Pakistan (2025 Operation Sindoor):**
+- Pakistani J-10CE fired PL-15E at Indian Rafale ("Godzilla 4") from ~200 km
+- Indian intel assessed PL-15E max range at ~150 km (based on published export specs of 145 km)
+- Rafale crew believed they were outside engagement envelope — they were not
+- PL-15E's AESA seeker is LPI (Low Probability of Intercept) — Rafale's SPECTRA EW suite failed to provide adequate warning
+- PL-15 lofts to high altitude, then dives at supersonic speed from above — worst angle for target's RWR
+- Result: first-ever combat loss of a Rafale, first combat use of PL-15
+- **Takeaway**: NEVER trust published/export weapon specs as actual max range. Assume 15-30% beyond what you think it is. Export specs may be deliberately conservative or the actual variant supplied may differ.
 
 **GlobalEye orbit planning:**
 ```
