@@ -1,0 +1,111 @@
+# Swedish Air Defense Doctrine & Engagement Logic
+
+> Principles for realistic decision-making in the simulation.
+
+## 1. Layered Defense Principle
+
+Swedish air defense operates in concentric layers. Each layer handles specific threat bands:
+
+```
+Layer 0: AEW&C (GlobalEye)     — Detect at 450-650 km, cue all layers
+Layer 1: Fighter intercept      — Engage at 150-200 km (Meteor BVR)
+Layer 2: Long-range SAM          — Engage at 40-70+ km (Patriot)
+Layer 3: Medium-range SAM        — Engage at 15-40 km (IRIS-T SLM)
+Layer 4: Short-range SAM         — Engage at 2-15 km (IRIS-T SLS, RBS 70)
+Layer 5: SHORAD/SPAAG            — Engage at 0.5-4 km (Lvkv 90 gun)
+```
+
+**Key rule**: A threat should be engaged at the **outermost effective layer**. If it leaks through, the next layer picks it up. The system must track "leakers" and reassign.
+
+## 2. Asset-Threat Matching Rules
+
+### Cost-Exchange Ratio
+Never use a high-value interceptor on a low-value target if alternatives exist:
+- Patriot missile ($3-4M) should NOT engage a $500 FPV drone
+- Lvkv 90 40mm rounds ($200/rd) ARE appropriate for FPV drones
+- Gripen sortie (fuel + Meteor at $2M+) should target high-value threats
+
+### Engagement Priority Matrix
+
+| Threat | Primary Response | Secondary | Avoid Using |
+|--------|-----------------|-----------|-------------|
+| Ballistic missile | Patriot PAC-3 | — | Everything else (can't reach it) |
+| Cruise missile (subsonic) | IRIS-T SLM | Gripen intercept | Patriot (overkill), SPAAG (too fast) |
+| Cruise missile (supersonic) | Patriot | Gripen (if enough warning) | Short-range (too fast) |
+| Fighter aircraft | Gripen + Meteor | Patriot (if in range) | Short-range SAM |
+| MALE/HALE UAV | IRIS-T SLM/SLS | Gripen (if nearby) | Patriot (waste) |
+| FPV / small drone | Lvkv 90 (gun) | RBS 70 | Patriot, IRIS-T SLM |
+| Loitering munition | Lvkv 90, IRIS-T SLS | RBS 70 | Patriot |
+| SEAD/ARM missile | Radar shutdown + relocate | IRIS-T SLS (if detected) | Keep radar on |
+
+## 3. SEAD/DEAD Evasion
+
+Anti-radiation missiles (ARMs) home on radar emissions. Defense doctrine:
+
+1. **Emit-and-move**: Radar on → detect → fire → radar off → relocate
+2. **Radar rotation**: Alternate which sites emit. Never have all radars on simultaneously
+3. **Emission time budget**: Track cumulative radar-on time. Above threshold → mandatory shutdown
+4. **Decoy emitters**: (Future feature) Deploy dummy radar sources
+5. **Close-in protection**: Every SAM site needs SHORAD escort (Lvkv 90, RBS 70) against ARMs that arrive after radar shutdown
+
+**Simulation rule**: If an asset has `radar_on = true` for > threshold_seconds, SEAD threat probability increases proportionally.
+
+## 4. Ammunition Management
+
+Ammunition is finite. The system must:
+
+1. **Track remaining rounds** for every asset
+2. **Project depletion time** based on current engagement rate
+3. **Recommend conservation**: If ammo drops below threshold, suggest:
+   - Switch to guns (Lvkv 90) for low-value targets
+   - Request fighter rearmament sortie
+   - Redistribute coverage from well-stocked units
+4. **Rearm priority**: Which unit to rearm first based on coverage gap analysis
+
+## 5. Scramble Decision Logic
+
+When to scramble fighters vs. rely on ground-based defense:
+
+| Factor | Favor Scramble | Favor Ground SAM |
+|--------|---------------|-----------------|
+| Threat distance | Far (>100 km, time to intercept) | Close (<50 km, SAM already covers) |
+| Threat type | Fighters, bombers (need BVR) | Missiles, drones (SAM effective) |
+| Fighter availability | Many ready | Few remaining |
+| Threat quantity | Small number (manageable) | Large swarm (SAM more efficient) |
+| Airfield threat | Airfield NOT threatened | Airfield under threat (scramble to save aircraft) |
+
+## 6. Forward Planning (Look-Ahead)
+
+The system should NOT be purely reactive. It must:
+
+1. **Predict resource state** N minutes into the future
+2. **Identify coverage gaps** that will emerge after engagements
+3. **Recommend pre-positioning**: Move mobile units to fill predicted gaps
+4. **Reserve management**: Keep a strategic reserve (e.g., 2 Gripen on ground alert) for unexpected threats
+5. **Wave analysis**: If detecting multi-wave attacks, conserve resources for subsequent waves
+
+## 7. Rules of Engagement (Simplified for Sim)
+
+1. AEW&C (GlobalEye) is NEVER a combatant — it detects and coordinates only
+2. Fighters may engage only targets classified as hostile (not "unknown")
+3. SAMs engage automatically within their assigned sectors unless overridden
+4. Commander can override any automated assignment
+5. Civilian aircraft corridors must be respected (no engagement in designated safe lanes)
+
+## 8. Swedish Dispersed Operations Concept
+
+Gripen is designed for dispersed operations:
+- Can operate from road bases (straight highway segments)
+- Turnaround time: ~10 minutes (refuel + rearm by conscript crew of 5-6)
+- Multiple road bases reduce single-point-of-failure risk
+- Simulation should model multiple dispersed bases, not just one main airfield
+
+## 9. Network-Centric Warfare
+
+All assets share a common operational picture via data links:
+- GlobalEye → all units: fused track data
+- Gripen ↔ Gripen: cooperative targeting (one detects, another shoots)
+- GlobalEye → Meteor: mid-course guidance (Silent Attack — Gripen doesn't need own radar)
+- Ground SAM sites share track data with fighter control
+
+**"Silent Attack" concept**: Gripen fires Meteor while radar-silent. GlobalEye provides target updates via data link. Target cannot detect the launching fighter. This is a KEY Saab selling point — highlight in demo.
