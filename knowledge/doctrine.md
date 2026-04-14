@@ -528,12 +528,230 @@ Gripen is designed for dispersed operations:
 - Multiple road bases reduce single-point-of-failure risk
 - Simulation should model multiple dispersed bases, not just one main airfield
 
-## 12. Network-Centric Warfare
+## 12. Distributed Sensor Network & Network-Centric Warfare
 
-All assets share a common operational picture via data links:
-- GlobalEye → all units: fused track data
-- Gripen ↔ Gripen: cooperative targeting (one detects, another shoots)
-- GlobalEye → Meteor: mid-course guidance (Silent Attack — Gripen doesn't need own radar)
-- Ground SAM sites share track data with fighter control
+### 12.1 Core Principle: Every Radar is a Sensor Node
 
-**"Silent Attack" concept**: Gripen fires Meteor while radar-silent. GlobalEye provides target updates via data link. Target cannot detect the launching fighter. This is a KEY Saab selling point — highlight in demo.
+The system does not depend on any single sensor. Every unit with a radar or sensor contributes to a shared picture via data links:
+
+```
+                    ┌─────────────────────────┐
+                    │   TDFE Fused Picture     │
+                    │  (one track per target)  │
+                    └────────┬────────────────┘
+                             │
+        ┌────────────────────┼────────────────────┐
+        │                    │                    │
+   ┌────┴────┐         ┌────┴────┐         ┌────┴────┐
+   │ Tier 1  │         │ Tier 2  │         │ Tier 3  │
+   │ Deep    │         │ Battle  │         │ Forward │
+   │ Rear    │         │ Zone    │         │ Edge    │
+   └─────────┘         └─────────┘         └─────────┘
+   GlobalEye            TRML-4D             Recon UAVs
+   (300 km behind)      Raven ES-05         Civilian AESA
+                        PS-95               EO/IR sensors
+```
+
+**Every unit with a radar shares track data**, not just GlobalEye:
+- Gripen ES-05 radar → shares tracks to network
+- TRML-4D (IRIS-T SLM) → shares tracks
+- PS-95 (Lvkv 90) → shares tracks
+- RBS 70 UTAOS thermal sight → passive detection, shares bearing
+- Recon UAVs → shares radar/EO tracks
+- Civilian AESA weather radar (modified) → shares tracks
+
+### 12.2 Tiered Sensor Architecture
+
+**Problem:** GlobalEye at 300+ km standoff has degraded detection against small/low-altitude targets at the front line. Detection range drops with distance, altitude, and target size.
+
+**Solution:** Layered sensor tiers, with expendable assets closest to enemy.
+
+| Tier | Distance from Front | Assets | Expendability | Role |
+|------|-------------------|--------|---------------|------|
+| **Tier 3: Forward Edge** | 0-50 km | Recon UAVs, civilian AESA nodes, EO/IR posts | **Expendable** | "Torches" — illuminate the front line |
+| **Tier 2: Battle Zone** | 50-150 km | Gripen (on CAP), TRML-4D, Lvkv 90 PS-95 | **Valuable but mobile** | Main engagement sensors, shoot-and-scoot |
+| **Tier 1: Deep Rear** | 150-300+ km | GlobalEye, ground C2 | **Irreplaceable** | Fusion hub, deep look, C2 |
+
+**Key insight:** The closer a sensor is to the front, the cheaper and more expendable it should be. GlobalEye provides the deep picture; forward UAVs provide the close picture. Together they cover all threat types and altitudes.
+
+### 12.3 Forward Sensor UAVs ("Torches")
+
+Deploy cheap radar/EO-equipped UAVs as forward sensor nodes:
+
+```
+recon_uav_sensor:
+  type: uav_recon
+  radar: small AESA or SAR (~30-50 km detection range) [est]
+  eo_ir: yes
+  data_link: yes — feeds tracks to TDFE
+  endurance_s: 28800        # 8 hrs [est, MALE class]
+  altitude_m: 5000-8000
+  speed_mps: 50
+  rcs_m2: 0.3-1.0
+  cost: low (relative to GlobalEye)
+  expendable: true          # expected to be shot down — plan for losses
+  
+  # Deployment:
+  # 4-6 UAVs on rotating station along front line
+  # spaced to overlap coverage
+  # each feeds tracks to TDFE → GlobalEye → all Blue assets
+  # if one is shot down, adjacent UAVs cover the gap
+```
+
+**What they provide that GlobalEye can't from 300 km:**
+- Low-altitude detection (sea-skimming cruise missiles, FPV drones)
+- Small RCS target detection at close range
+- EO/IR identification (visual confirmation of threat type)
+- Expendable radar emission (draws SEAD attention away from high-value radars)
+
+**If shot down:** Expected. Replace with next drone in rotation. Each loss tells you something — the kill location reveals enemy fighter or SAM positions.
+
+### 12.4 Civilian AESA Weather Radar Exploitation
+
+**Concept:** Modern civilian AESA weather radars (compact types already deployed in parts of China and Europe) can be repurposed as low-cost IADS sensor nodes with data link modifications.
+
+**Why this works:**
+- AESA is AESA — the physics is the same whether it's tracking rain clouds or aircraft
+- Modern weather AESA radars operate in C-band or X-band — same bands as military surveillance radars
+- They already have sophisticated signal processing for clutter rejection
+- They are CHEAP compared to military radars ($0.5-2M vs $20-50M+)
+- They are numerous — many sites already exist throughout Swedish territory
+- With data link integration, they become nodes in the TDFE fusion network
+
+**What they CAN do (with modification):**
+- Detect aircraft-sized targets at medium range (~50-100 km) [est]
+- Detect large slow targets (Shahed, MALE UAV) at shorter range
+- Provide track data (position + velocity) via data link
+- Act as additional radiation sources (diluting SEAD targeting)
+
+**What they CANNOT do:**
+- Fire control quality tracking (not precise enough for missile guidance)
+- Detect stealth targets (not enough power/sensitivity)
+- Survive a dedicated attack (unhardened, fixed location)
+
+**Strategic value as SEAD sponges:**
+
+```
+Scenario: Red launches 4x Kh-31P anti-radiation missiles
+  
+Without civilian radars:
+  → ARMs home on TRML-4D and AN/MPQ-65 (your only emitters)
+  → 2 high-value radars destroyed
+  
+With 20 civilian AESA nodes active:
+  → ARMs see 22+ radiation sources across the spectrum
+  → Kh-31P homes on the strongest / most "military-looking" signal
+  → Civilian radars at full power attract ARMs away from military radars
+  → Military radars operate at low power or intermittent mode
+  → Even if 4 civilian nodes destroyed: $2-8M loss vs $40-100M+ for military radars
+  → IADS intact, weather service loses a few nodes (replaceable in weeks)
+```
+
+**Operational concept:**
+```
+civilian_aesa_node:
+  type: sensor_civilian
+  radar_type: aesa_weather (modified)
+  band: c_band or x_band
+  detection_range_km: 80           # vs fighter-size target [est]
+  detection_range_small_km: 30     # vs Shahed-class [est]
+  track_quality: surveillance      # NOT fire control
+  data_link: modified (feeds to TDFE)
+  mobility: static (fixed installation)
+  hardened: false
+  cost: 50-200                     # abstract units (very cheap)
+  expendable: true                 # acceptable loss
+  sead_decoy_value: high           # attracts ARMs away from military radars
+  
+  # Operational modes:
+  # - continuous: always on, maximum SA contribution, maximum SEAD attraction
+  # - scheduled: on/off cycling synchronized with military radar schedule
+  # - bait: deliberately high-power emission to attract ARMs
+```
+
+### 12.5 Integrated Radar Emission Management
+
+Combining military radars, civilian nodes, and forward UAVs enables sophisticated emission control:
+
+```
+Radar emission schedule (per 60-second cycle):
+
+T+0s:   Civilian AESA nodes: ON (continuous, full power)
+         Forward UAVs: ON (radar + EO)
+         GlobalEye Erieye: ON (always, but 300+ km from threat)
+         TRML-4D: OFF
+         AN/MPQ-65: OFF
+         → Fused picture from civilian + UAV + GlobalEye = adequate SA
+
+T+15s:  TRML-4D Alpha: ON (3-second burst scan)
+         → High-quality track update, correlate with civilian data
+T+18s:  TRML-4D Alpha: OFF (relocate if needed)
+
+T+30s:  TRML-4D Bravo: ON (3-second burst scan)
+T+33s:  TRML-4D Bravo: OFF
+
+T+45s:  Continue cycle...
+
+Fire control activation:
+  → ONLY when engagement decision made
+  → Minimum time on: fire, guide, shut down
+  → Civilian radars remain on throughout (mask military emissions)
+```
+
+**Result:** Military radars are on for seconds per minute. Civilian radars and UAVs provide continuous SA. SEAD missiles see mostly civilian emissions. Military radar positions stay hidden until the moment of engagement.
+
+### 12.6 Data Link Architecture Summary
+
+```
+data_link_network:
+  backbone: TIDLS (Gripen ↔ GlobalEye, high bandwidth)
+  nato_interop: Link 16 (broadcast to all NATO assets)
+  ground: national air defense network (StriC / LuLIS)
+  
+  contributors:
+    globaleye:     erieye_er + seaspray + eo_ir + esm → TDFE
+    gripen:        es_05 + ew_suite → TIDLS → TDFE
+    trml_4d:       360° ground surveillance → ground network → TDFE
+    ps_95:         lvkv_90 local air picture → ground network → TDFE
+    rbs_70_utaos:  passive thermal tracks → ground network → TDFE
+    recon_uav:     radar + eo_ir → data link → TDFE
+    civilian_aesa: modified weather radar → data link → TDFE
+    
+  fusion_output:
+    → single recognized air picture for all Blue assets
+    → track confidence: single_sensor (tentative) → two+ (firm) → three+ (precise)
+    → every shooter can see every track
+    → "any sensor to any shooter" architecture
+
+  silent_attack:
+    → GlobalEye detects → Gripen fires Meteor radar-silent
+    → GlobalEye provides midcourse guidance via TIDLS relay
+    → target cannot detect launching fighter
+    → KEY Saab selling point — highlight in demo
+```
+
+### 12.7 Simulation Parameters
+
+```
+sensor_network:
+  # Tier 3: Forward
+  forward_uav_count: 4-6
+  forward_uav_coverage_km: 50       # per UAV
+  forward_uav_replacement_rate: 1 per 4 hours [est, attrition]
+  civilian_aesa_count: 10-20        # across defended territory
+  civilian_aesa_range_km: 80
+  
+  # Tier 2: Battle zone
+  trml_4d_burst_duration_s: 3       # per scan cycle
+  trml_4d_cycle_interval_s: 30      # between bursts
+  trml_4d_emission_duty_pct: 10     # only 10% of time emitting
+  
+  # Tier 1: Deep rear
+  globaleye_coverage: continuous (within 300° arc)
+  
+  # SEAD dilution factor
+  military_emitters: 3-5            # TRML-4D + AN/MPQ-65
+  total_emitters: 25-35             # military + civilian + UAV
+  arm_targeting_dilution: 0.12-0.20 # probability ARM hits military radar
+    # vs 1.0 without civilian nodes
+```

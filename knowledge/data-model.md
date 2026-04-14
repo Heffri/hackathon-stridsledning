@@ -7,7 +7,7 @@
 ```
 Asset:
   id:                   string        # unique identifier
-  type:                 enum          # fighter | sam_long | sam_mid | sam_short | shorad_missile | spaag | aew | uav_loyal | ew_ground | ew_airborne
+  type:                 enum          # fighter | sam_long | sam_mid | sam_short | shorad_missile | spaag | aew | uav_loyal | uav_recon | ew_ground | ew_airborne | sensor_civilian
   display_name:         string        # real-world name for demo (e.g., "Gripen E")
   position:             {lat, lng}    # current position
   base_position:        {lat, lng}    # home base / deployment site
@@ -113,5 +113,7 @@ SimulationState:
 | spaag | Lvkv 90 | Swedish, 40mm Bofors |
 | aew | GlobalEye (S 106) | Saab product, our "host platform" |
 | uav_loyal | F-series Wingman | Saab future concept |
+| uav_recon | Forward Sensor UAV | "Torch" — expendable sensor node |
+| sensor_civilian | Civilian AESA Weather Radar | Modified with data link, SEAD sponge |
 | ew_ground | Ground EW Station | Abstract / generic |
 | ew_airborne | Gripen E Arexis EW | Saab product (built-in) |
