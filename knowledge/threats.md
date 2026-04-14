@@ -278,6 +278,53 @@ threat_sead_arm:
 
 ---
 
+## Threat Priority Reference (Strike / Ground-Attack Threats)
+
+> **This is a default reference, NOT a hard rule.** The AI decision engine should use this as
+> a starting baseline but override based on actual tactical context. Unexpected situations
+> (e.g., a "T4" Shahed that happens to be heading for an irreplaceable asset) may warrant
+> a higher-priority response than the table suggests. Commander override always takes precedence.
+
+| Tier | Threat | Guidance | Speed | EW Jammable? | Evadable? | Default Response |
+|------|--------|----------|-------|-------------|-----------|-----------------|
+| T1 | FPV drone (RF link) | Operator via RF | ~40 m/s | ✅ RF jam breaks link | Situational | EW / Lvkv 90 / small arms |
+| T2 | FPV drone (fiber-optic) | Operator via fiber | ~40 m/s | ❌ Physical link | Situational | Lvkv 90 / autocannon |
+| T3 | Recon UAV (Orlan-10 class) | GPS + operator | ~30 m/s | ✅ GPS/RF jam | N/A — must engage (intel threat) | RBS 70 / MANPAD / patrol IFV |
+| T4 | Shahed-136 baseline | GPS/GNSS + INS | ~45 m/s | ✅ High | ✅ Pre-programmed coords, no seeker | EW → evade → Lvkv 90 |
+| T5 | Geran-2 upgraded | GPS/INS + camera/AI | ~45 m/s | ⚠️ Midcourse yes, terminal resistant | ⚠️ AI may recognize target visually | EW + Lvkv 90 / RBS 70 |
+| T6 | Armed UAV (TB2 class) | GPS + operator + ISR | ~60 m/s | ✅ RF/GPS jam | ❌ Actively hunting | IRIS-T SLS / Gripen |
+| T7 | Cruise missile subsonic (Kalibr) | GPS/INS + active radar terminal | ~260 m/s | ⚠️ Midcourse; terminal radar independent | ❌ Has seeker | IRIS-T SLM |
+| T8 | Cruise missile stealthy (Kh-101) | GPS/INS + terminal correction | ~260 m/s | ⚠️ Similar to T7 but smaller RCS | ❌ | IRIS-T SLM / Patriot |
+| T9 | Anti-radiation missile (Kh-31P) | Anti-radiation seeker | ~900 m/s | ❌ Homes on YOUR emissions | ✅ Shut down radar + relocate | Radar off → relocate |
+| T10 | Supersonic cruise missile | Active radar | ~900 m/s | ⚠️ Low | ❌ Too fast | Patriot |
+| T11 | Ballistic missile (Iskander) | INS + terminal optical/radar | ~2000 m/s | ❌ | ❌ Too fast | Patriot PAC-3 MSE only |
+
+### How the AI Should Use This Table
+
+```
+1. CLASSIFY incoming threat → map to tier (T1-T11)
+2. LOOK UP default response from table
+3. CHECK context overrides:
+   - Is the target heading for an irreplaceable asset? → escalate response
+   - Is the default responder out of ammo / unavailable? → substitute next cheapest
+   - Is there an unexpected factor? (larger swarm than expected, unusual flight path, etc.)
+   - Commander has issued specific guidance? → follow that instead
+4. RECOMMEND action with rationale
+5. ALLOW commander to override at any point
+```
+
+### Context Override Examples
+
+| Situation | Table Says | AI Should Recommend Instead | Why |
+|-----------|-----------|---------------------------|-----|
+| Single Shahed heading for empty field | T4: EW → evade → Lvkv 90 | Ignore entirely | Not worth any response |
+| 40x Shahed toward GlobalEye's ground base | T4: Lvkv 90 | Scramble aircraft + full IADS activation | Irreplaceable asset at risk |
+| Orlan-10 over friendly territory, no SAM sites nearby | T3: RBS 70 / MANPAD | Gripen cannon if CAP available, else track and monitor | No passive asset in range |
+| Iskander launch detected but only 1 Patriot battery, already engaging Kalibr | T11: Patriot PAC-3 | Alert commander: cannot engage both simultaneously, recommend prioritization | Resource conflict |
+| Unknown slow target, low altitude, could be civilian | Any | Hold fire, classify first | ROE requires ID before engagement |
+
+---
+
 ## RCS Reference Table
 
 | Target Category | Typical RCS (m²) | dBsm | Erieye ER Detection (km) [est] |
