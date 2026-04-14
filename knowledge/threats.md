@@ -40,7 +40,7 @@ threat_4gen_fighter:
 | Max speed | Mach 1.6-2.0 | |
 | Supercruise | Mach 1.2-1.8 | Without afterburner |
 | Service ceiling | 15,000-20,000 m | |
-| RCS (full stealth, frontal X-band) | F-22 class: ~0.0001 m², F-35 class: ~0.005 m² | |
+| RCS (full stealth, frontal X-band) | F-22 class: ~0.0001 m², F-35 class: ~0.001-0.005 m² | All RCS values are estimates |
 | RCS (partial stealth) | Su-57 class: 0.1-0.5 m² | |
 | BVR weapons range | ~150-200 km | Internal weapons bays |
 | ECM | Integrated EW suite, LPI radar, sensor fusion | Networked data links |
@@ -51,7 +51,7 @@ threat_5gen_fighter:
   speed_cruise_mps: 290
   speed_max_mps: 600
   altitude_m: 12000
-  rcs_m2: 0.005             # F-35 class; use 0.0001 for F-22 class
+  rcs_m2: 0.003             # F-35 class (0.001-0.005 range); use 0.0001 for F-22 class
   ecm: advanced
   weapons_range_km: 180
   threat_level: critical
@@ -193,8 +193,8 @@ threat_uav_small:
 | Warhead | 0.5-3 kg shaped charge or frag | |
 | Cost | $300-$500 | |
 | Endurance | 15-45 minutes | |
-| Operational wave size | Up to 117 drones (Ukraine Op Spider Web) | |
-| Monthly scale | 50,000+ FPV/month (Ukraine theater, both sides) | |
+| Coordinated strike demo | 117 drones (Ukraine Op Spider Web, 2025) | Covert strategic op, not typical tactical wave |
+| Monthly scale | 200,000+ FPV/month (Ukraine alone, 2025); 50K was 2023 figure | Rapidly increasing |
 | Detection challenge | Very small RCS, low speed (clutter), low alt, plastic/carbon fiber | |
 
 ```
@@ -214,29 +214,44 @@ threat_fpv:
 
 | Parameter | Value | Notes |
 |-----------|-------|-------|
-| Speed | 140-185 km/h (~45 m/s) | Slow, piston engine |
+| Speed | ~185 km/h cruise (~45 m/s); 140 km/h observed operational | Piston engine |
 | Service ceiling | 4,000 m | |
 | Attack altitude | Very low (below conventional radar) | |
-| RCS | 0.01-0.1 m² | Honeycomb structure for RCS reduction |
+| RCS | 0.01-0.1 m² | Honeycomb RCS reduction |
+| **Guidance (baseline)** | **GPS/GLONASS + INS** | No terminal seeker on original |
+| **Guidance (upgraded Geran-2)** | **GPS/GLONASS + INS + camera/AI terminal** | NVIDIA Jetson Orin, image matching — partially GPS-jam resistant |
 | Wingspan / Length | 2.5 m / 3.5 m | |
 | Mass | ~200 kg | |
 | Range | 1,500-2,500 km | Strategic range |
-| Warhead | ~40-50 kg HE | |
-| Cost | $20,000-$50,000 | |
+| Warhead | ~30-50 kg HE | Multiple sources; 30 kg lower bound |
+| Cost | $20-50K (est production); actual $70K-290K (export/Russia domestic) | CSIS low estimate disputed |
 | Challenge | Cheap, numerous, strategic range | |
 | Engagement | IRIS-T SLS, RBS 70, Lvkv 90 all effective | |
 
 ```
-threat_loitering:
+threat_loitering_baseline:
   type: loitering
   speed_mps: 45
   altitude_m: 1000
   rcs_m2: 0.2
+  guidance: gps_ins           # baseline — jammable
   ecm: none
   maneuvering: false
   threat_level: medium
   value: 5
-  quantity: 10                # often in waves
+  quantity: 10
+
+threat_loitering_upgraded:
+  type: loitering
+  speed_mps: 45
+  altitude_m: 1000
+  rcs_m2: 0.2
+  guidance: gps_ins_camera    # upgraded — partially GPS-jam resistant
+  ecm: none
+  maneuvering: false
+  threat_level: medium
+  value: 8                    # higher due to jam resistance
+  quantity: 10
 ```
 
 ### 10. SEAD/Anti-Radiation Missile (ARM)
@@ -270,7 +285,7 @@ threat_sead_arm:
 | Large bomber (non-stealth) | 10-100 | +10 to +20 | 600+ |
 | 4th-gen fighter (clean) | 3-15 | +5 to +12 | 450-550 |
 | 4.5-gen fighter | 0.5-1.5 | -3 to +2 | 350-450 |
-| 5th-gen stealth (frontal) | 0.0001-0.01 | -40 to -20 | 30-140 |
+| 5th-gen stealth (frontal) | 0.0001-0.005 | -40 to -23 | 30-120 |
 | 5th-gen partial stealth (Su-57) | 0.1-0.5 | -10 to -3 | 250-350 |
 | Cruise missile (stealthy) | 0.01-0.05 | -20 to -13 | 140-220 |
 | Cruise missile (conventional) | 0.1-1.0 | -10 to 0 | 250-350 |

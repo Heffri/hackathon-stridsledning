@@ -11,7 +11,7 @@
 | Wingspan | 8.6 m | |
 | Max speed | Mach 2.0 (~2,120 km/h) | At altitude |
 | Supercruise | Mach 1.1 (A2A loadout), Mach 1.2 demonstrated | Confirmed |
-| Service ceiling | 15,200 m (50,000 ft) | |
+| Service ceiling | ~16,000 m (~52,500 ft) | Saab official "over 52,500 ft"; 15,200 m may be Gripen C figure |
 | Combat radius | 800+ km; 1,300 km with 6x AAMs | |
 | Ferry range | ~4,000 km | With external tanks |
 | Range (internal fuel) | ~2,500 km one-way | |
@@ -33,8 +33,8 @@
 | Unit cost | ~$85M | |
 
 ### Typical Air-to-Air Loadout
-- 7x Meteor (BVR) + 2x IRIS-T (WVR, wingtip) + gun (typical)
-- 8x Meteor + 2x IRIS-T (max A2A confirmed by Saab)
+- 7x Meteor (BVR) + 2x IRIS-T (WVR, wingtip) + gun (Saab main product page)
+- 8x Meteor + 2x IRIS-T (max A2A, per Saab India marketing — discrepancy with main page)
 - 1x 27mm Mauser BK-27 cannon (internal)
 - Drop tank on centerline for extended range
 
@@ -44,7 +44,7 @@ gripen_e:
   type: fighter
   speed_max_mps: 589          # Mach 2.0
   speed_cruise_mps: 265       # Mach 0.9
-  ceiling_m: 15200
+  ceiling_m: 16000            # Saab official "over 52,500 ft"
   combat_radius_km: 1300      # with 6x AAMs
   turnaround_s: 600           # 10 minutes
   scramble_time_s: 300        # 5 min from alert [est]
@@ -71,10 +71,10 @@ gripen_e:
 |-----------|-------|-------|
 | Type | Beyond Visual Range Air-to-Air Missile | |
 | Propulsion | Ramjet (throttleable ducted rocket) | Key advantage: sustained energy |
-| Length / Diameter | 3.7 m / 178 mm | Confirmed |
+| Length / Diameter | 3.65 m / 178 mm | Wikipedia/MBDA (some sources round to 3.7 m) |
 | Weight | 190 kg | Confirmed |
 | Speed | Mach 4+ | |
-| Max range | >200 km (head-on, co-altitude) | Confirmed by MBDA |
+| Max range | >100 km (MBDA official); est >200 km (optimal: head-on, co-altitude, high alt) | MBDA deliberately vague |
 | No-Escape Zone | ~60+ km (geometry-dependent) | Largest NEZ of any AAM in service |
 | Guidance | Inertial + datalink midcourse, active radar terminal | |
 | Warhead | Blast-fragmentation, impact/proximity fuze | |
@@ -119,9 +119,9 @@ meteor:
   speed_mps: 1360             # Mach 4
   range_max_km: 200           # confirmed >200 km
   range_nez_km: 60
-  min_launch_speed_mps: 170   # ~Mach 0.5 [est]
-  min_launch_alt_m: 1000      # [est, significantly reduced range at sea level]
-  max_g_midcourse: 20         # [est, limited by ramjet intake]
+  min_launch_speed_mps: 170   # ~Mach 0.5 [est, unverified — ramjet needs airflow to ignite]
+  min_launch_alt_m: 1000      # [est, unverified — range degrades significantly at sea level]
+  max_g_midcourse: 20         # [est, unverified — ramjet intake disrupted by high-G]
   pk_vs_fighter: 0.85         # [est]
   pk_vs_cruise_missile: 0.70  # [est]
   guidance: active_radar_terminal
@@ -133,9 +133,9 @@ amraam_c7:                    # conventional solid-rocket BVR backup
   speed_mps: 1360             # Mach 4
   range_max_km: 120           # AIM-120C-7
   range_nez_km: 35
-  min_launch_speed_mps: 0     # can launch near-stationary (with reduced range)
-  min_launch_alt_m: 0         # sea level capable
-  max_g_midcourse: 40         # [est, solid rocket more maneuverable]
+  min_launch_speed_mps: 50    # [est — solid rocket self-propelled, but needs some airspeed for fins]
+  min_launch_alt_m: 0         # sea level capable (confirmed — ground-launched NASAMS uses AMRAAM)
+  max_g_midcourse: 40         # [est, unverified — solid rocket more maneuverable than ramjet]
   pk_vs_fighter: 0.75         # [est, shorter NEZ than Meteor]
   guidance: active_radar_terminal
   datalink: true
@@ -184,15 +184,15 @@ iris_t_aam:
 | Parameter | Value | Notes |
 |-----------|-------|-------|
 | Platform | Bombardier Global 6000/6500 | |
-| Endurance | >12 hours | Saab official product sheet |
+| Endurance | >12 h (Saab official); ~11 h mission time (Wikipedia) | Difference may be flight vs mission endurance |
 | Cruise speed | Mach 0.85 / ~904 km/h | |
 | Max speed | 1,110 km/h | |
 | Operating altitude | Up to 51,000 ft (15,545 m) | Service ceiling 16,000 m |
 | Engines | 2x Rolls-Royce BR710 (~14,750 lbf each) | |
 | Flight crew | 2 pilots | |
-| Mission crew | Up to 9 systems managers | |
-| C2 consoles | 5 operator workstations | |
-| Total onboard | Up to 11 | |
+| Mission crew | 5 operators confirmed; "up to 9" unverified | |
+| C2 consoles | 5 operator workstations | Confirmed (Wikipedia, GlobalMilitary) |
+| Total onboard | 7-11 (2 pilots + 5-9 mission) | Upper end unverified |
 | Range (base airframe) | >6,000 nm (11,110 km) | |
 | Primary radar | Erieye ER AESA | Dorsal "plank" |
 | Detection (fighter, 30kft) | ~450 km | |

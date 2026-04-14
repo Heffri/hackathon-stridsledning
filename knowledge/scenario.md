@@ -56,7 +56,12 @@
 
 4. **Engage with cheapest effector:** Lvkv 90 + RBS 70 for Shaheds approaching defended areas. **NOT** IRIS-T SLM (save for Wave 3).
 
-5. **Orlan-10:** Do NOT engage. They're trying to map your IADS. Shooting reveals your position; ignoring them is cheaper. Exception: if one is directly overhead a SAM site, engage with RBS 70 (passive, no radar emission).
+5. **Orlan-10:** Must be engaged — cannot allow recon UAVs to map IADS positions. But engage with **cost-appropriate passive/cheap assets only**:
+   - **RBS 70 NG** (laser beam riding = no radar emission, no position betrayal) — ideal
+   - **MANPADS** from forward infantry positions away from SAM sites
+   - **Gripen cannon** if CAP fighters are nearby
+   - **Forward patrol IFVs** with autocannon (cheap, expendable positions)
+   - **NOT** IRIS-T SLM or Patriot — cost overkill and reveals SAM radar positions
 
 **Trap to avoid:** Spending 24 IRIS-T SLM missiles on Shaheds, leaving nothing for the cruise missiles in Wave 3.
 

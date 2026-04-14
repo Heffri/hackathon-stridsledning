@@ -10,7 +10,7 @@
 | **PAC-3 MSE Missile** | | |
 | Range (vs TBM) | ~20-35 km (PAC-3), ~35-60 km (PAC-3 MSE) | |
 | Range (vs air-breathing) | ~70 km (PAC-3), ~100+ km (PAC-3 MSE) | |
-| Altitude | Up to 24 km (PAC-3), up to 40 km (PAC-3 MSE) | |
+| Altitude | Up to 24 km (PAC-3), ~33-40 km (PAC-3 MSE) | 40 km upper bound, some sources cite 33-36 km |
 | Speed | Mach 5+ | |
 | Guidance | Track-via-missile + active radar terminal (Ka-band) | Hit-to-kill for PAC-3 |
 | **PAC-2 GEM+ Missile** | | |
@@ -19,7 +19,7 @@
 | Guidance | Semi-active radar homing + TVM | Blast-fragmentation warhead |
 | **AN/MPQ-65 Radar** | | |
 | Type | C-band PESA (AN/MPQ-65A upgraded to AESA) | |
-| Range | ~180 km | |
+| Range | ~100-180 km (RCS dependent: ~100 km vs missile, ~180 km vs bomber) | |
 | Tracks | 100-125+ simultaneous | |
 | Coverage | 360° with rotation | |
 | **Battery composition** | | |
@@ -87,10 +87,10 @@ patriot_pac3:
 | **System composition** | ~7 vehicles per battery | |
 | - TRML-4D radar vehicle | 1 | |
 | - Command post vehicle | 1 | |
-| - Launcher vehicles (SX45 8x8) | 3 (8 missiles each) | |
+| - Launcher vehicles (SX45 8x8) | 3 standard (8 ea); Sweden ordered 2/battery | |
 | - Reload/maintenance vehicles | 2-3 | |
 | Missiles per launcher | 8 | |
-| Total ready per battery | 24 | |
+| Total ready per battery | 24 (standard) / 16 (Swedish config with 2 launchers) | |
 | Crew | ~20-25 personnel | |
 | Reload time | ~15-20 minutes [est] | |
 | Mobility | Mobile (wheeled) | |

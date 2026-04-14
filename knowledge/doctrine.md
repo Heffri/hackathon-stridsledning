@@ -50,7 +50,8 @@ Use EW to degrade or defeat threat guidance without expending munitions.
 
 | Guidance Type | EW Effectiveness | Notes |
 |---------------|-----------------|-------|
-| GPS/GNSS only (Shahed-136) | **High** | Jamming degrades CEP from 20m to 500m+; spoofing can redirect entirely |
+| GPS/GNSS + INS (Shahed-136 baseline) | **High** | Jamming degrades CEP significantly; spoofing can redirect. INS drift accumulates |
+| GPS/GNSS + INS + camera/AI (Shahed upgraded/Geran-2) | **Medium** | GPS jam still degrades midcourse, but camera/AI terminal guidance can correct — partial resistance |
 | GPS/INS combo (cheap cruise missiles) | **Medium** | GPS denied → falls back to INS, drift accumulates over time |
 | INS only | **None** | Pre-programmed, no external signal to jam |
 | Active radar seeker (Kalibr terminal) | **Low-Medium** | Noise jamming possible but seeker designed to resist |
@@ -241,7 +242,69 @@ Anti-radiation missiles (ARMs) home on radar emissions. Defense doctrine:
 
 **Simulation rule**: If an asset has `radar_on = true` for > threshold_seconds, SEAD threat probability increases proportionally.
 
-## 6. GlobalEye Protection Doctrine
+## 6. Mixed Defense Group Composition
+
+### Principle: No High-Value SAM Site Operates Alone
+
+Every major SAM position needs layered local protection. The SAM site itself handles medium/long range threats — but it needs escorts to handle close-in threats (drones, ARMs, leakers) and to prevent recon UAVs from mapping its position.
+
+### Standard Defense Group Templates
+
+**Template A: Long-Range SAM Group (around Patriot)**
+```
+OUTER RING (3-5 km radius):
+  1-2x IRIS-T SLM battery        — medium-range cover, catches what Patriot shouldn't waste ammo on
+  2-3x Lvkv 90                   — 40mm 3P airburst vs drones, loitering munitions
+  
+INNER RING (within 1-2 km of Patriot):
+  2x Lvkv 90                     — point defense, last line before anything reaches Patriot
+  2-3x RBS 70 NG / IRIS-T SLS    — passive IR/laser engagement, no radar emission
+  
+CORE:
+  Patriot PAC-3 battery           — fires only at ballistic missiles, supersonic cruise, high-value threats
+  AN/MPQ-65 radar                 — on MINIMUM duty cycle (see Section 12.5)
+```
+
+**Template B: Medium-Range SAM Group (around IRIS-T SLM)**
+```
+ESCORT (1-3 km radius):
+  1-2x Lvkv 90                   — point defense vs drones
+  1-2x RBS 70 NG                 — passive engagement, no radar signature
+  
+CORE:
+  IRIS-T SLM battery              — main engagement asset
+  TRML-4D                         — burst scanning only (3s on, 30s off)
+```
+
+**Template C: Forward Patrol Group (front line screen)**
+```
+2-3x Lvkv 90                     — PS-95 radar for local awareness + 40mm 3P
+2-3x RBS 70 NG / IRIS-T SLS      — passive missile engagement
+2-4x IFV with autocannon          — cheap vehicles with VT/AHEAD-type ammo, no dedicated radar
+                                    (e.g., CV90 variants with 30-40mm cannon)
+
+Tasks:
+  - Patrol designated sectors
+  - Engage recon UAVs (Orlan-10 class) to prevent IADS mapping
+  - Engage loitering munitions and FPV drones heading for rear areas
+  - If facing threats too large to handle → report and withdraw
+  - DO NOT engage with methods that reveal rear SAM positions
+  - These groups are relatively expendable — they protect by being forward, not by being invulnerable
+```
+
+### Core Operating Principle
+
+```
+Forward patrol groups:  SCREEN — prevent recon, kill cheap targets, absorb first contact
+Middle ring:            PROTECT — local defense of SAM sites, catch leakers
+SAM sites:              ENGAGE — only fire at threats worth the ammo cost, minimum radar exposure
+```
+
+The decision support system manages this hierarchy: it should **never recommend Patriot engagement against a target that a forward Lvkv 90 can handle**, and it should **alert if a recon UAV is approaching a SAM site unengaged**.
+
+---
+
+## 7. GlobalEye Protection Doctrine
 
 GlobalEye is the single most valuable Blue asset (~$300M, only 3 in Swedish inventory). Loss of GlobalEye = loss of situational awareness = cascading failure of entire IADS. Protection is absolute priority.
 
@@ -380,7 +443,7 @@ Known long-range air-to-air threats:
 |--------|----------------|---------------------------|-------------------|
 | R-37M | 300+ km (marketing) | ~200 km (Ukraine combat evidence, against large RCS) | **250+ km** |
 | R-77-1 | 110 km | ~80-100 km effective | 150 km |
-| PL-15E (reference) | 145 km (export spec) | ~200 km (2025 India-Pakistan combat, confirmed kill) | N/A (not in theater, but lesson applies) |
+| PL-15E (reference) | 145 km (export spec) | ~200 km claimed (2025 Op Sindoor, Pakistani/RUSI claim — disputed by Indian/US analysts) | N/A (not in theater, but lesson applies) |
 
 **Standoff calculation:**
 ```
@@ -397,9 +460,10 @@ For R-37M: 200 * 1.15 + 30 = 260 km minimum standoff
 ```
 
 **Lessons from India-Pakistan (2025 Operation Sindoor):**
-- Pakistani J-10CE fired PL-15E at Indian Rafale ("Godzilla 4") from ~200 km
+- Pakistani J-10CE reportedly fired PL-15E at Indian Rafale ("Godzilla 4") from ~200 km
+  (Pakistani/RUSI claim; disputed by Indian analysts and US expert Michael Dahm)
 - Indian intel assessed PL-15E max range at ~150 km (based on published export specs of 145 km)
-- Rafale crew believed they were outside engagement envelope — they were not
+- Rafale crew reportedly believed they were outside engagement envelope
 - PL-15E's AESA seeker is LPI (Low Probability of Intercept) — Rafale's SPECTRA EW suite failed to provide adequate warning
 - PL-15 lofts to high altitude, then dives at supersonic speed from above — worst angle for target's RWR
 - Result: first-ever combat loss of a Rafale, first combat use of PL-15
@@ -481,7 +545,7 @@ globaleye_protection:
 
 ---
 
-## 7. Ammunition Management
+## 8. Ammunition Management
 
 Ammunition is finite. The system must:
 
@@ -493,11 +557,11 @@ Ammunition is finite. The system must:
    - Redistribute coverage from well-stocked units
 4. **Rearm priority**: Which unit to rearm first based on coverage gap analysis
 
-## 8. Fighter Operations: 4-Tier CAP Rotation ("Volley Fire")
+## 9. Fighter Operations: CAP Rotation ("Volley Fire")
 
 ### Concept: Continuous Air Presence via Rotation
 
-Like musket-era volley fire — one line fires while others reload. Applied to air operations:
+Like musket-era volley fire — one line fires while others reload. The number of tiers scales with available aircraft: 3 tiers minimum (small force), 4-5 tiers for larger forces. Example with 4 tiers:
 
 ```
 Tier 1: FRONT LINE (on station, engaging)
@@ -598,7 +662,7 @@ When intelligence indicates air base strike imminent:
 
 **2025 lesson (India-Pakistan):** Reports suggest Pakistani Erieye AEW&C may have been destroyed on the ground, not in the air. Reinforces: **never let high-value assets sit on a runway when attack is possible**.
 
-## 9. Forward Planning (Look-Ahead)
+## 10. Forward Planning (Look-Ahead)
 
 The system should NOT be purely reactive. It must:
 
@@ -608,7 +672,7 @@ The system should NOT be purely reactive. It must:
 4. **Reserve management**: Keep a strategic reserve (e.g., 2 Gripen on ground alert) for unexpected threats
 5. **Wave analysis**: If detecting multi-wave attacks, conserve resources for subsequent waves
 
-## 10. Rules of Engagement (Simplified for Sim)
+## 11. Rules of Engagement (Simplified for Sim)
 
 1. AEW&C (GlobalEye) is NEVER a combatant — it detects and coordinates only
 2. Fighters may engage only targets classified as hostile (not "unknown")
@@ -616,7 +680,7 @@ The system should NOT be purely reactive. It must:
 4. Commander can override any automated assignment
 5. Civilian aircraft corridors must be respected (no engagement in designated safe lanes)
 
-## 11. Swedish Dispersed Operations Concept
+## 12. Swedish Dispersed Operations Concept
 
 Gripen is designed for dispersed operations:
 - Can operate from road bases (straight highway segments)
@@ -624,7 +688,7 @@ Gripen is designed for dispersed operations:
 - Multiple road bases reduce single-point-of-failure risk
 - Simulation should model multiple dispersed bases, not just one main airfield
 
-## 12. Distributed Sensor Network & Network-Centric Warfare
+## 13. Distributed Sensor Network & Network-Centric Warfare
 
 ### 12.1 Core Principle: Every Radar is a Sensor Node
 

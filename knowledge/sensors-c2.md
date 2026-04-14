@@ -106,17 +106,59 @@ At equivalent technology level, AESA radar performance scales with:
 
 ### AESA Seekers on BVR Missiles
 
-Same principle applies to missile seekers:
-- PL-15E: AESA seeker → LPI (Low Probability of Intercept), frequency-hopping, narrow beam
-- Traditional RWR designed against older seekers **fails** against AESA missile seekers (2025 Rafale loss)
-- **Simulation implication**: EW effectiveness against modern AESA-seeker missiles should be lower than against legacy seekers
+The same diameter-vs-capability rule applies to missile seekers. Missile body diameter is a hard physical constraint on how many T/R modules fit in the seeker head:
+
+| Missile | Body Diameter | Seeker Type | Implication |
+|---------|--------------|-------------|-------------|
+| R-37M | ~380 mm | Large AESA (est) | Largest seeker = best detection, designed for AWACS hunting |
+| PL-15E | ~203 mm | AESA (confirmed, 2025 combat) | Good seeker, LPI, defeated Rafale SPECTRA |
+| Meteor | 178 mm | Active radar (single-mode) | Smaller seeker aperture than PL-15 |
+| AIM-120D | 178 mm | Active radar | Similar class to Meteor |
+| R-77-1 | 200 mm | Active radar | Comparable to PL-15 body |
+
+**Simulation rule for seeker capability** `[derived, verify]`:
+At same technology level, seeker detection range scales approximately with diameter:
+```
+seeker_range ∝ diameter  (simplified from radar equation)
+```
+A 200mm diameter missile seeker has ~12% more detection range than a 178mm seeker, all else equal. An R-37M with ~380mm diameter could have roughly double the seeker range of a Meteor-class missile.
+
+**AESA seeker vs legacy RWR:**
+- PL-15E's AESA seeker uses LPI (Low Probability of Intercept): frequency-hopping, narrow beam, low peak power
+- Traditional RWR (including Rafale's SPECTRA) **failed** to provide adequate warning (2025 Operation Sindoor)
+- **Simulation implication**: EW effectiveness against modern AESA-seeker missiles should be modeled as significantly lower than against legacy seekers
 
 ```
 missile_seeker_ew_modifier:
   legacy_radar_seeker: 0.40    # EW has decent chance of disrupting
-  aesa_seeker: 0.10            # EW barely affects LPI AESA seeker
+  aesa_seeker: 0.10            # EW barely affects LPI AESA seeker [est]
   ir_seeker: 0.05              # only flares/DIRCM work
 ```
+
+### Radar Equation: Aperture Size to Detection Range `[derived, verify]`
+
+From the standard radar range equation, for an AESA radar:
+
+```
+R_detection ∝ (N_trm)^(1/2) × (P_element)^(1/4)
+
+Where:
+  N_trm = number of T/R modules ∝ antenna_area ∝ diameter²
+  P_element = power per T/R module (technology-dependent)
+
+Simplifying (same tech level, same T/R module generation):
+  R_detection ∝ (diameter²)^(1/2) = diameter
+
+Therefore: detection range scales linearly with antenna diameter.
+```
+
+**Practical implications:**
+- Diameter ×2 → detection range ×2 (same technology)
+- This applies to both aircraft nose radars AND missile seekers
+- A 1.0m nose radar detects ~1.67× further than a 0.6m nose radar
+- Compensating for smaller aperture requires better T/R module technology (GaN vs GaAs gives ~40-60% range improvement, partially offsetting size disadvantage)
+
+**For simulation**: When comparing radars of unknown specs but known physical dimensions, use diameter ratio as a first-order proxy for relative detection range, assuming equivalent technology generation.
 
 ### Radar Burn-Through vs Stealth
 
