@@ -396,7 +396,7 @@ For R-37M: 200 * 1.15 + 30 = 260 km minimum standoff
 # - NEVER trust published max range — it's marketing, not combat data
 ```
 
-**Lessons from India-Pakistan (2019 Balakot crisis):**
+**Lessons from India-Pakistan (2025 India–Pakistan conflict):**
 - Indian pilots trusted PL-15 exhibition data (145 km) as hard limit
 - Pakistani F-16s (with AIM-120C-5) engaged at distances Indians believed safe
 - RWR/MAWS warnings came "too late" by Indian pilot accounts
