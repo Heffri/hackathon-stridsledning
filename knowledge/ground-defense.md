@@ -171,13 +171,14 @@ iris_t_sls:
 |-----------|-------|-------|
 | Manufacturer | Saab | Saab product — highlight in demo |
 | Missile | Bolide | |
-| Range | ~8 km (Bolide), 9 km [some sources] | |
-| Altitude | Up to 5 km | |
-| Speed | Mach 2.2+ (Bolide, supersonic from launch) | |
-| Guidance | Laser beam riding | Operator-guided, jam-resistant |
+| Range | >9,000 m (Bolide) | Saab official datasheet |
+| Altitude | 0-5,000 m | Saab official datasheet |
+| Speed | Mach 2 (Bolide) | Saab official datasheet |
+| Guidance | Laser beam riding | Unjammable, operator-guided |
 | Deployment | Tripod (man-portable) or vehicle-mounted | |
-| Night capability | Yes (UTAOS thermal sight) | |
-| Time to fire | ~30 seconds from ready state | |
+| Night capability | Yes (integrated thermal imager, 8-12 um) | 24/7 capability |
+| Deployment time | 45 seconds | Saab official |
+| Reload time | <5 seconds | Saab official |
 | Crew | 2-3 operators | |
 | Key advantage | Passive (laser beam riding = no radar emission) | SEAD-immune |
 
@@ -185,12 +186,12 @@ iris_t_sls:
 ```
 rbs_70_ng:
   type: shorad_missile
-  missile_speed_mps: 750      # Mach 2.2+
-  range_max_km: 8
+  missile_speed_mps: 680      # Mach 2 (Saab official)
+  range_max_km: 9             # >9 km (Saab official)
   range_min_km: 0.2
   altitude_max_m: 5000
-  missiles_ready: 1           # single rail, manual reload
-  reload_time_s: 15           # fast reload, single missile
+  missiles_ready: 1           # single rail
+  reload_time_s: 5            # <5 sec (Saab official)
   mobility: mobile
   relocate_time_s: 300        # very mobile, 5 min
   radar_on_required: false    # PASSIVE — laser beam riding

@@ -14,29 +14,42 @@ All specs in this knowledge base are from publicly available, unclassified sourc
 
 ### Saab
 - [Gripen E-series product page](https://www.saab.com/products/gripen-e-series)
+- [Gripen E factsheet 2021 (PDF)](https://www.saab.com/globalassets/markets/brazil/gripen/brochures/saab_gripen_e_factsheet_2021.pdf)
+- [Gripen E brochure 2023 (PDF)](https://www.saab.com/globalassets/markets/brazil/4.-gripen/brochures/gripen-e---2023.pdf)
+- [Gripen E Canada brochure (PDF)](https://www.saab.com/globalassets/markets/canada/gripen-for-canada/gripen-e---210x297_3mm---double_foldout_canada_highres.pdf)
 - [GlobalEye product page](https://www.saab.com/products/globaleye)
+- [GlobalEye product sheet (PDF)](https://www.saab.com/contentassets/33fdd452c117497ba2a6e173c8f3680b/globaleye-product-sheet.pdf)
+- [GlobalEye brochure (PDF)](https://saab.com/globalassets/regional-websites/latin-america/f-air-col2019/brochures-pdf/globaleye-brochure-1.pdf)
 - [RBS 70 NG product page](https://www.saab.com/products/rbs-70-ng)
+- [RBS 70 NG datasheet (PDF)](https://www.saab.com/globalassets/event/ds/datasheet---rbs-70-ng-aw_screen-002.pdf)
+- [RBS 70 NG brochure (PDF)](https://www.saab.com/globalassets/event/laad/rbs-70-ng.pdf)
 - [Track Data Fusion Engine](https://www.saab.com/products/track-data-fusion-engine)
-- [Gripen NG Technical Brochure (PDF)](https://prokcssmedia.blob.core.windows.net/sys-master-images/h10/h59/8902959497246/Technical%20brochure,%20Gripen%20NG,%20English.pdf)
 
 ### MBDA
-- [Meteor product page](https://www.mbda-systems.com/products/air-dominance/meteor)
+- [Meteor product page](https://www.mbda-systems.com/product/meteor/)
+- [Meteor datasheet 2023 (PDF)](https://www.mbda-systems.com/sites/mbda/files/2024-06/2023%20METEOR%20datasheet.pdf)
 
 ### Leonardo
-- [Raven ES-05 datasheet (PDF)](https://www.leonardo.us/hubfs/Raven%20ES-05%20HQ%20(mm07819)_web.pdf)
+- [Raven ES-05 product page](https://electronics.leonardo.com/en/products/raven-1)
+- [Raven ES-05 datasheet (PDF)](https://electronics.leonardo.com/documents/16277707/18405906/LDO_UK25_01594+Raven+ES-05+LQ.pdf)
 - [SeaSpray 7500E product page](https://electronics.leonardo.com/en/products/seaspray-7500e)
+- [SeaSpray 7500E V2 datasheet (PDF)](https://electronics.leonardo.com/documents/16277707/18422005/Seaspray+7500E+V2+HQ+(mm09072).pdf)
 
 ### Diehl Defence
-- IRIS-T SLM / SLS — official specs from manufacturer website
+- [Air Defence Systems product page](https://new.diehl.com/defence/en/products/air-defence-systems)
+- [Guided Missiles product page](https://new.diehl.com/defence/en/products/guided-missiles/)
+- Note: Diehl does not publish detailed public datasheets; product pages are the most authoritative open source
 
 ### Hensoldt
-- TRML-4D radar — official product data
+- [TRML-4D product page](https://www.hensoldt.net/products/trml-4d-air-surveillance-and-target-acquisition-radar) — spec-rich, directly citable
 
-### BAE Systems
-- [Bofors 3P Ammunition](https://www.baesystems.com/en/product/fuze-3p-ammunition)
+### BAE Systems (Bofors)
+- [Bofors 3P Ammunition product page](https://www.baesystems.com/en/product/fuze-3p-ammunition)
+- [Bofors 3P datasheet (PDF)](https://www.baesystems.com/en-pl/dam/jcr:f0372775-5c34-4f3a-bcd9-47540a596fd1/baes_ds_Bofors+3P_redesign_digital+8.14.pdf)
+- [Bofors 40 Mk4 gun](https://www.baesystems.com/en-us/product/40mk4-naval-gun)
 
 ### Raytheon / RTX
-- Patriot PAC-3 MSE — manufacturer data via defense publications
+- Patriot PAC-3 MSE — manufacturer data via defense publications (no public PDF available)
 
 ### Teledyne FLIR
 - [Star SAFIRE 380-HD](https://www.flir.com/products/star-safire-380-hd/)

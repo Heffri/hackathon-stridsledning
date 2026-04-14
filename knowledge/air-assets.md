@@ -28,7 +28,7 @@
 | Radar tracks | Classified | Not publicly disclosed |
 | Data link | TIDLS (Swedish), Link 16 compatible | Bidirectional with GlobalEye |
 | RCS | ~1 m² [est] | Reduced signature design |
-| Turnaround time | ~10 minutes | Refuel + rearm, 5-6 person crew |
+| Turnaround time | 10 min (quick-turn goal), 15-25 min (Saab official) | 1 tech + 5 crew |
 | Road base capable | Yes | Core Gripen design philosophy |
 | Unit cost | ~$85M | |
 
@@ -138,7 +138,7 @@ iris_t_aam:
 | Parameter | Value | Notes |
 |-----------|-------|-------|
 | Platform | Bombardier Global 6000/6500 | |
-| Endurance | Up to 11 hours | |
+| Endurance | >12 hours | Saab official product sheet |
 | Cruise speed | Mach 0.85 / ~904 km/h | |
 | Max speed | 1,110 km/h | |
 | Operating altitude | Up to 51,000 ft (15,545 m) | Service ceiling 16,000 m |
@@ -167,7 +167,7 @@ globaleye:
   type: aew
   speed_cruise_mps: 251       # Mach 0.85
   ceiling_m: 16000            # 52,493 ft
-  endurance_s: 39600          # 11 hours
+  endurance_s: 43200          # >12 hours (Saab official)
   coverage_deg: 300           # 60° blind zone nose+tail!
   detection_range_fighter_km: 550   # at 35kft, benign env
   detection_range_cruise_km: 350    # confirmed by Saab
