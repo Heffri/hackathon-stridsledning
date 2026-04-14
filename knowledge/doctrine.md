@@ -493,17 +493,110 @@ Ammunition is finite. The system must:
    - Redistribute coverage from well-stocked units
 4. **Rearm priority**: Which unit to rearm first based on coverage gap analysis
 
-## 8. Scramble Decision Logic
+## 8. Fighter Operations: 4-Tier CAP Rotation ("Volley Fire")
 
-When to scramble fighters vs. rely on ground-based defense:
+### Concept: Continuous Air Presence via Rotation
 
-| Factor | Favor Scramble | Favor Ground SAM |
-|--------|---------------|-----------------|
-| Threat distance | Far (>100 km, time to intercept) | Close (<50 km, SAM already covers) |
-| Threat type | Fighters, bombers (need BVR) | Missiles, drones (SAM effective) |
-| Fighter availability | Many ready | Few remaining |
-| Threat quantity | Small number (manageable) | Large swarm (SAM more efficient) |
-| Airfield threat | Airfield NOT threatened | Airfield under threat (scramble to save aircraft) |
+Like musket-era volley fire — one line fires while others reload. Applied to air operations:
+
+```
+Tier 1: FRONT LINE (on station, engaging)
+  ├── 3/4 air superiority loadout (Meteor + AMRAAM + IRIS-T)
+  ├── 1/4 CAS/SEAD loadout (SDB + HARM/anti-radiation + self-defense AAM)
+  └── Task: BVR intercepts, SEAD suppression, high-value target strikes
+
+Tier 2: REAR PATROL (on station, defensive)
+  ├── Pure air superiority loadout
+  └── Task: intercept border-crossers (fighters, armed UAVs, helicopters),
+            protect rear area, backup for Tier 1 if overwhelmed
+
+Tier 3: INBOUND (en route to replace Tier 1)
+  ├── Loadout configured based on CURRENT frontline situation
+  │   (system recommends loadout based on active threats)
+  └── Task: transit to Tier 1 position, assume station as Tier 1 returns
+
+Tier 4: HOME BASE (just landed, rearming/refueling)
+  ├── Quick turnaround: 15-25 min (Saab official)
+  └── Task: rearm, refuel, crew rest (if available), prepare for Tier 3
+```
+
+### Rotation Cycle
+
+```
+Time 0:00   Tier 1 on station (2-4 fighters)
+            Tier 2 on station (2 fighters)
+            Tier 3 departing base
+            Tier 4 rearming
+
+Time 1:30   Tier 1 approaching bingo fuel / ammo expended
+            Tier 3 arrives at Tier 1 position → becomes new Tier 1
+            Old Tier 1 RTB → becomes Tier 4
+
+Time 1:45   Old Tier 4 finished rearm → becomes new Tier 3 (departs)
+
+Cycle continues indefinitely...
+```
+
+### High-Intensity Rotation Math
+
+```
+cap_rotation:
+  tier_1_strength: 4           # front line
+  tier_2_strength: 2           # rear patrol
+  tier_1_endurance_s: 7200     # ~2 hrs on station with drop tanks
+  turnaround_time_s: 1500      # 25 min (Saab official, conservative)
+  transit_time_s: 1800         # ~30 min each way [est]
+  
+  # Minimum fleet for continuous Tier 1 + Tier 2:
+  # Tier 1: 4 on station + 4 inbound + 4 rearming = 12
+  # Tier 2: 2 on station + 2 rearming = 4
+  # Total: ~16 fighters for 24/7 ops (not counting GlobalEye escort)
+  # With 6 Gripen available (scenario): can sustain ~4-6 hrs before exhaustion
+```
+
+### Loadout Decision Logic
+
+Tier 3 (inbound replacements) loadout should adapt to current situation:
+
+| Front Line Situation | Recommended Tier 3 Loadout |
+|---------------------|---------------------------|
+| Enemy fighters active | Max BVR (7 Meteor + 2 IRIS-T) |
+| Enemy fighters + SEAD needed | Mixed (4 Meteor + 2 AMRAAM + HARM + 2 IRIS-T) |
+| Mainly drones/cruise missiles | Mixed BVR + gun focus |
+| Enemy ground targets of opportunity | CAS heavy (SDB + Maverick + 2 Meteor self-defense) |
+| Unknown / first sortie | Standard mixed BVR (5 Meteor + 2 AMRAAM + 2 IRIS-T) |
+
+### Emergency Scramble vs Planned Rotation
+
+| Situation | Action |
+|-----------|--------|
+| Planned rotation | Normal: Tier 3 departs on schedule |
+| Tier 1 overwhelmed | Emergency: Tier 2 moves forward to support, Tier 4 (even if not fully armed) scrambles |
+| Base under attack | **Emergency scramble ALL serviceable aircraft** — get them airborne before runway is hit |
+| GlobalEye threatened | Divert nearest Tier 1/2 fighters to escort reinforcement |
+
+### Emergency Base Dispersal
+
+When intelligence indicates air base strike imminent:
+
+```
+1. SCRAMBLE: All flight-ready aircraft launch immediately
+   - Even unarmed / partially armed — survival > loadout
+   - Fly to pre-designated holding areas
+
+2. DISPERSE: Ground vehicles and mobile SAM relocate away from base
+   - Fuel trucks, ammo, maintenance equipment → pre-positioned road bases
+
+3. RECOVER: Aircraft divert to road bases for rearm
+   - Gripen road base capability is critical here
+   - Multiple road bases = no single point of failure
+   - 15-25 min turnaround at road base with prepared crew
+
+4. RESUME: Continue CAP rotation from dispersed road bases
+   - Longer transit times, but survivable
+```
+
+**2025 lesson (India-Pakistan):** Reports suggest Pakistani Erieye AEW&C may have been destroyed on the ground, not in the air. Reinforces: **never let high-value assets sit on a runway when attack is possible**.
 
 ## 9. Forward Planning (Look-Ahead)
 

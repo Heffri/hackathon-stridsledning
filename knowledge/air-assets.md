@@ -82,6 +82,36 @@ gripen_e:
 | Silent Attack | Yes — GlobalEye can provide midcourse updates | Gripen stays radar-silent |
 | Unit cost | ~$2M+ [est] | |
 
+### Operational Constraints (Ramjet-Specific)
+- **Requires initial airspeed**: Ramjet needs sufficient airflow to ignite. Cannot be fired from slow/stationary platforms or very low speeds. Minimum launch speed ~Mach 0.5+ [est].
+- **Altitude-dependent**: Best performance at medium-high altitude where air density supports ramjet. Low-altitude sea-level launch reduces range significantly.
+- **G-loading limitations**: Aggressive maneuvers compress/disrupt air intake flow. Meteor cannot sustain extreme G-loads during midcourse — less agile than solid-rocket missiles in flight.
+- **Implication for loadout**: Gripen should carry a MIX of Meteor + conventional solid-rocket BVR missiles (e.g., AIM-120 AMRAAM). Meteor for optimal BVR engagements at altitude; AMRAAM for low-altitude/low-speed snap shots, defensive launches, or when high-G maneuvering is needed during missile flight.
+
+### Recommended Mixed BVR Loadout
+```
+# Optimal A2A loadout considering Meteor constraints:
+mixed_bvr_loadout:
+  meteor: 4-5          # primary BVR, medium-high altitude engagements
+  amraam_c7: 2-3       # backup BVR, low-alt / snap shots / defensive
+  iris_t: 2            # WVR, wingtip
+  # Total: 8-10 missiles, covers all engagement envelopes
+  
+# Pure Meteor loadout (7+2) is optimal ONLY when:
+#   - launching from altitude (>5000 m)
+#   - sufficient airspeed (>Mach 0.7)
+#   - GlobalEye available for midcourse guidance
+# Otherwise mixed loadout preferred
+```
+
+### Fire-and-Forget with AEW&C Support
+With GlobalEye providing midcourse guidance, Gripen's optimal BVR tactic:
+1. Fire Meteor at max range using GlobalEye track data (Silent Attack)
+2. **Immediately turn away** (crank to 3-9 line or full 180°)
+3. Go low, pop chaff/flares, activate ECM, light afterburner toward home
+4. GlobalEye continues midcourse guidance — pilot is not needed in the loop
+5. At this point: Gripen is running away at Mach 1.5+, maneuvering, jamming, low altitude → extremely difficult for enemy BVR to hit
+
 ### Simulation Parameters
 ```
 meteor:
@@ -89,11 +119,27 @@ meteor:
   speed_mps: 1360             # Mach 4
   range_max_km: 200           # confirmed >200 km
   range_nez_km: 60
+  min_launch_speed_mps: 170   # ~Mach 0.5 [est]
+  min_launch_alt_m: 1000      # [est, significantly reduced range at sea level]
+  max_g_midcourse: 20         # [est, limited by ramjet intake]
   pk_vs_fighter: 0.85         # [est]
   pk_vs_cruise_missile: 0.70  # [est]
   guidance: active_radar_terminal
   datalink: true              # can receive midcourse updates
   cost: 200                   # abstract units
+
+amraam_c7:                    # conventional solid-rocket BVR backup
+  type: bvr_missile
+  speed_mps: 1360             # Mach 4
+  range_max_km: 120           # AIM-120C-7
+  range_nez_km: 35
+  min_launch_speed_mps: 0     # can launch near-stationary (with reduced range)
+  min_launch_alt_m: 0         # sea level capable
+  max_g_midcourse: 40         # [est, solid rocket more maneuverable]
+  pk_vs_fighter: 0.75         # [est, shorter NEZ than Meteor]
+  guidance: active_radar_terminal
+  datalink: true
+  cost: 120                   # abstract units
 ```
 
 ---

@@ -76,6 +76,82 @@ erieye_er:
 | Modes | Air-to-air, air-to-ground, SAR, GMTI, sea search | |
 | Track-while-scan | Yes | |
 
+## AESA Design Trade-offs (Affects Both Blue and Red)
+
+### Size Matters: More T/R Modules = Better BVR
+
+At equivalent technology level, AESA radar performance scales with:
+- **Antenna aperture area** (bigger nose cone → bigger array)
+- **Number of T/R modules** (more modules → more power, better sensitivity)
+- **T/R module generation** (GaN > GaAs, but same-gen comparison = size wins)
+
+| Aircraft | Nose Diameter [est] | AESA Capability | BVR Implication |
+|----------|-------------------|-----------------|-----------------|
+| Su-35S / Su-57 (large twin-engine) | ~1.0 m | Large array, many T/R modules | Strong BVR — detects further, guides better |
+| J-10CE (medium single-engine) | ~0.7 m | Fixed AESA, fills nose well | Good BVR, but FoR limited |
+| Gripen E (small single-engine) | ~0.6 m | Repositioner compensates | Smaller array, but wider FoR |
+| Rafale (medium twin-engine) | ~0.55 m | RBE2-AA AESA | Small nose = fewer T/R modules = BVR disadvantage (2025 PL-15 lesson) |
+
+**For threat modeling**: Assume enemy heavy fighters (Su-30/35 class) have ~20-30% radar range advantage over Gripen due to sheer antenna size. With GlobalEye compensating, this is neutralized.
+
+### Fixed vs Repositioner/Mechanical AESA
+
+| Type | Example | Pros | Cons |
+|------|---------|------|------|
+| **Fixed** | J-10C, F-35 | Max T/R modules (fills entire nose), simpler mechanics | Narrow FoR (~±60-70°), loses track in hard turns |
+| **Repositioner** | Gripen E (ES-05) | Wide FoR (±100°), maintains track during maneuvers | Slightly fewer T/R modules (space for mechanism) |
+| **Mechanical swivel** | Su-30SM2 | Can track while doing 3-9 maneuvers, wide angles | Smallest AESA array (needs clearance to move), heaviest |
+
+**With AEW&C support, this matters less**: Gripen fires and immediately turns away. GlobalEye handles midcourse guidance. The fighter's own radar FoR is irrelevant once it cranks away — this is a core advantage of network-centric warfare.
+
+### AESA Seekers on BVR Missiles
+
+Same principle applies to missile seekers:
+- PL-15E: AESA seeker → LPI (Low Probability of Intercept), frequency-hopping, narrow beam
+- Traditional RWR designed against older seekers **fails** against AESA missile seekers (2025 Rafale loss)
+- **Simulation implication**: EW effectiveness against modern AESA-seeker missiles should be lower than against legacy seekers
+
+```
+missile_seeker_ew_modifier:
+  legacy_radar_seeker: 0.40    # EW has decent chance of disrupting
+  aesa_seeker: 0.10            # EW barely affects LPI AESA seeker
+  ir_seeker: 0.05              # only flares/DIRCM work
+```
+
+### Radar Burn-Through vs Stealth
+
+Stealth reduces detection range but does NOT make aircraft invisible. At sufficient power and close enough range, any radar will "burn through" stealth:
+
+```
+burn_through_range = normal_detection_range × (target_rcs / reference_rcs)^0.25
+
+Example — Erieye ER vs stealth fighter:
+  Normal detection (5 m² RCS):     550 km
+  vs 0.01 m² stealth target:       550 × (0.01/5)^0.25 = 550 × 0.067 = ~37 km
+  vs 0.001 m² (F-22 class):        550 × (0.001/5)^0.25 = ~21 km
+
+Example — TRML-4D vs stealth fighter:
+  Normal detection (5 m² RCS):     120 km
+  vs 0.01 m² stealth target:       120 × 0.067 = ~8 km
+  vs 0.001 m² (F-22 class):        120 × 0.038 = ~4.5 km
+```
+
+**Implication for defense**: Stealth aircraft ARE detectable, just at much shorter ranges. Defense-in-depth means they eventually fly into detection range of *something*. High-power ground radars (Patriot AN/MPQ-65, TRML-4D) at close range can achieve fire-control lock on stealth targets. The key is having enough sensor density that stealth targets can't slip through gaps.
+
+```
+burn_through:
+  # For simulation: detection range modifier by RCS
+  # range_modifier = (target_rcs / reference_rcs)^0.25
+  # reference_rcs = 5.0 m² (fighter baseline)
+  
+  stealth_detection_examples:
+    rcs_0.01_range_modifier: 0.067   # 6.7% of normal range
+    rcs_0.001_range_modifier: 0.038  # 3.8% of normal range
+    rcs_0.1_range_modifier: 0.12     # 12% of normal range
+```
+
+---
+
 ## PS-95 (Lvkv 90 Fire Control Radar)
 
 | Parameter | Value | Notes |
