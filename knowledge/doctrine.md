@@ -397,9 +397,9 @@ For R-37M: 200 * 1.15 + 30 = 260 km minimum standoff
 ```
 
 **Lessons from India-Pakistan (2025 India–Pakistan conflict):**
-- Indian pilots trusted PL-15 exhibition data (145 km) as hard limit
-- Pakistani F-16s (with AIM-120C-5) engaged at distances Indians believed safe
-- RWR/MAWS warnings came "too late" by Indian pilot accounts
+- Indian pilots trusted PL-15E exhibition data (145 km) as hard limit
+- Pakistani J10C (with Pl15E) engaged at distances Indians believed safe
+- RWR/MAWS warnings is on but Indian pilot thought it was out of range so nothing would happen.
 - **Takeaway**: Always assume enemy range is 15-20% beyond what you think it is
 
 **GlobalEye orbit planning:**
