@@ -241,7 +241,244 @@ Anti-radiation missiles (ARMs) home on radar emissions. Defense doctrine:
 
 **Simulation rule**: If an asset has `radar_on = true` for > threshold_seconds, SEAD threat probability increases proportionally.
 
-## 6. Ammunition Management
+## 6. GlobalEye Protection Doctrine
+
+GlobalEye is the single most valuable Blue asset (~$300M, only 3 in Swedish inventory). Loss of GlobalEye = loss of situational awareness = cascading failure of entire IADS. Protection is absolute priority.
+
+### 6.1 Network-Centric Engagement ("A Shoots, B Guides")
+
+The data link architecture enables **separation of sensor and shooter**:
+
+```
+Detection:   GlobalEye Erieye ER detects target at 500+ km
+Tracking:    GlobalEye maintains continuous track, shares via TIDLS
+Launch:      Gripen fires Meteor — own radar OFF (Silent Attack)
+Midcourse:   GlobalEye sends track updates → Gripen relays → Meteor adjusts
+Terminal:    Meteor activates own active radar seeker at ~20 km from target
+```
+
+**Critical implications for simulation:**
+- Gripen with GlobalEye support has ZERO radar emission during BVR engagement
+- Enemy ESM/RWR cannot detect or locate the launching fighter
+- Multiple Gripen can fire simultaneously using the same GlobalEye track
+- Gripen can turn away ("crank") immediately after launch — GlobalEye maintains guidance
+- If GlobalEye is lost mid-engagement, Meteor falls back to own seeker (reduced Pk, but not zero)
+
+**System must model:**
+```
+engagement_mode:
+  autonomous:    # fighter uses own radar — detectable, SEAD risk
+    pk_modifier: 1.0
+    radar_emission: true
+  silent_attack: # GlobalEye provides guidance — undetectable
+    pk_modifier: 0.95    # slight reduction from relay latency
+    radar_emission: false
+    requires: globaleye_track_quality >= firm
+```
+
+### 6.2 Continuous Escort (CAP Rotation)
+
+GlobalEye must have fighter escort at ALL times. Specifically Gripen F (two-seat):
+
+**Why Gripen F (two-seat):**
+- Weapons Systems Officer (WSO) in rear seat can:
+  - Offload tactical C2 tasks from GlobalEye operators
+  - Manage loyal wingman drone formations (up to 3 drones per Gripen F)
+  - Operate EW/ECM systems during defensive actions
+  - Coordinate with GlobalEye crew on threat prioritization
+- Pilot focuses purely on flying and weapons delivery
+
+**Escort composition:**
+```
+globaleye_cap:
+  escort_fighters: 3-4x Gripen F (two-seat)
+  loadout_per_fighter:
+    meteor: 4-6          # BVR (reduced from max to make room for tanks)
+    iris_t: 2            # WVR
+    drop_tanks: 2        # extended endurance critical
+    cannon: full
+  loyal_wingman: 3 per Gripen F  # 9-12 drones total in escort package
+  rotation: seamless     # fresh pair takes over before current pair hits bingo fuel
+  
+  # Rotation math:
+  # Gripen F endurance with drop tanks: ~3-4 hrs on station
+  # Need 2 fighters on station at all times minimum
+  # With transit time, need 3-4 fighters total in rotation cycle
+  # Assumes 2+ road bases within range for recovery/rearm
+```
+
+### 6.3 Threat Response Escalation (Protect at All Costs)
+
+When GlobalEye is under direct attack, response escalates through five levels:
+
+**Level 1: Stand-off BVR Intercept (Normal)**
+- Escort Gripen F engage incoming threats at maximum range
+- Silent Attack via GlobalEye's own sensors
+- Loyal wingman drones used as forward sensor/shooter nodes
+
+**Level 2: Ground IADS Emergency Activation**
+- If escort Gripen cannot handle threat volume:
+- Ground SAM sites along GlobalEye's orbit path **force-activate radars**
+- Accept SEAD exposure risk — GlobalEye survival outweighs SEAD risk
+- IRIS-T SLM / Patriot engage any threats within their range
+
+**Level 3: Active Missile Defense (Shoot the Missile)**
+- Against incoming long-range AAMs (R-37M class):
+- Escort Gripen and drones attempt to **intercept the incoming missile** with own weapons
+- IRIS-T has 60G maneuverability — theoretically capable of engaging a maneuvering missile
+- Low Pk per attempt, but multiple shooters improve odds
+
+**Level 4: Drone Sacrifice + ECM**
+- If escort missiles expended:
+- WSO in Gripen F directs loyal wingman drones to:
+  - Deploy chaff/flares in the path of incoming missile
+  - Activate onboard ECM to jam missile's active radar seeker
+  - Physically position themselves between missile and GlobalEye as decoys
+  - Expendable drones are designed for this — each one costs a fraction of GlobalEye
+- Gripen F simultaneously performs maximum ECM from Arexis suite
+
+**Level 5: Manned Aircraft Self-Sacrifice (Last Resort)**
+- If all drones expended and threat still inbound:
+- Escort Gripen F pilots maneuver to draw incoming missiles away from GlobalEye
+- Deploy own chaff/flares, maximize ECM, present themselves as more attractive target
+- **Rationale**: 2 crew vs 11+ crew on GlobalEye + $300M asset + loss of entire air picture
+- System should flag this as last resort but not exclude it from recommendations
+
+```
+globaleye_defense_escalation:
+  level_1_bvr:
+    trigger: threat detected heading toward GlobalEye
+    action: escort engages at max range via Silent Attack
+    cost: missiles only
+  level_2_ground_iads:
+    trigger: escort overwhelmed OR threat count > escort capacity
+    action: activate ground SAM along orbit path, accept SEAD risk
+    cost: SEAD exposure + SAM missiles
+  level_3_missile_intercept:
+    trigger: incoming AAM detected, closing fast
+    action: escort + drones attempt to shoot down incoming missile
+    pk_per_attempt: 0.15-0.30  # very difficult shot
+    cost: escort missiles
+  level_4_drone_sacrifice:
+    trigger: escort missiles expended, threat still inbound
+    action: WSO directs drones as ECM decoys / physical shields
+    cost: drones destroyed (acceptable)
+  level_5_manned_sacrifice:
+    trigger: all drones gone, missile still inbound, no other option
+    action: escort Gripen draws missile away from GlobalEye
+    cost: potential loss of crew + fighter
+    authorization: automatic (pre-authorized by escort role)
+```
+
+### 6.4 Standoff Distance Management
+
+**Hard rule: GlobalEye stays outside enemy max weapon range + safety margin AT ALL TIMES.**
+
+Known long-range air-to-air threats:
+
+| Weapon | Published Range | Proven/Estimated Real Range | Required Standoff |
+|--------|----------------|---------------------------|-------------------|
+| R-37M | 300+ km (marketing) | ~200 km (Ukraine combat evidence, against large RCS) | **250+ km** |
+| R-77-1 | 110 km | ~80-100 km effective | 150 km |
+| PL-15 (reference) | 145 km (exhibition data) | Unknown — India-Pakistan incident suggests longer | N/A (not in theater) |
+
+**Standoff calculation:**
+```
+min_standoff_km = max_enemy_weapon_range_proven * 1.15 + 30
+  # 15% margin + 30 km buffer for unknowns
+
+For R-37M: 200 * 1.15 + 30 = 260 km minimum standoff
+
+# Additional factors:
+# - GlobalEye RCS is HUGE (large business jet + 10m radar plank)
+#   → enemy missiles get better Pk at range against large targets
+# - R-37M specifically designed for AWACS/tanker hunting
+# - NEVER trust published max range — it's marketing, not combat data
+```
+
+**Lessons from India-Pakistan (2019 Balakot crisis):**
+- Indian pilots trusted PL-15 exhibition data (145 km) as hard limit
+- Pakistani F-16s (with AIM-120C-5) engaged at distances Indians believed safe
+- RWR/MAWS warnings came "too late" by Indian pilot accounts
+- **Takeaway**: Always assume enemy range is 15-20% beyond what you think it is
+
+**GlobalEye orbit planning:**
+```
+orbit_constraints:
+  min_distance_from_threat_axis: 260 km  # hard floor
+  preferred_distance: 300 km             # comfortable margin
+  orbit_orientation: perpendicular to threat axis
+    # minimizes time spent with 60° blind zone toward enemy
+  orbit_altitude: 35,000 ft              # maximize radar range
+  orbit_pattern: racetrack
+    # turns should keep threat axis within 300° radar coverage at all times
+    # never turn nose/tail toward threat direction (blind zone!)
+```
+
+### 6.5 Emergency Retreat Procedure
+
+If GlobalEye crew determines attack is imminent or escort is overwhelmed:
+
+```
+1. TURN AWAY — fly toward friendly territory immediately
+   - Direction: toward nearest friendly IADS coverage
+   - Max speed (Mach 0.85)
+
+2. ALERT GROUND IADS — notify SAM sites along retreat path
+   - SAM sites activate radars to create defensive corridor
+   - Accept SEAD risk — GlobalEye survival is priority
+   
+3. SCRAMBLE REINFORCEMENTS — nearest available Gripen
+   - Emergency scramble from closest road base / airfield
+   - Directed to intercept threats pursuing GlobalEye
+   - Priority: cut off low-altitude attackers that might sneak under radar
+
+4. MAINTAIN SENSOR FUNCTION — keep Erieye ER operating during retreat
+   - GlobalEye is still the primary sensor even while retreating
+   - Rear-hemisphere coverage (within 300° arc) maintained
+   - Continue feeding track data to all Blue assets
+
+5. IF MISSILE INBOUND — execute defense escalation (6.3)
+   - Escort enters protection mode
+   - Ground IADS along path engages
+```
+
+**Low-altitude threat consideration:**
+- Enemy fighters could attempt low-altitude approach under Erieye coverage floor
+- Ground radar (TRML-4D) and Gripen look-down capability fill this gap
+- Emergency scramble specifically tasks interceptors to sweep low-altitude corridors between GlobalEye and threat axis
+
+### 6.6 Simulation Parameters
+
+```
+globaleye_protection:
+  # Escort
+  min_escort_strength: 2           # Gripen F on station at all times
+  desired_escort_strength: 4       # with rotation
+  drones_per_escort: 3             # loyal wingman per Gripen F
+  escort_endurance_s: 12600        # ~3.5 hrs with drop tanks [est]
+  rotation_overlap_s: 1800         # 30 min handover period
+
+  # Standoff
+  min_standoff_km: 260             # hard floor vs R-37M
+  preferred_standoff_km: 300
+  orbit_altitude_ft: 35000
+  blind_zone_deg: 60               # nose+tail, never toward threat
+
+  # Defense escalation thresholds
+  level_2_trigger: escort_ammo_pct < 50 OR threat_count > 4
+  level_3_trigger: incoming_missile_detected
+  level_4_trigger: escort_ammo_pct == 0
+  level_5_trigger: drones_remaining == 0 AND missile_still_inbound
+
+  # Value (for defense ROI calculation)
+  globaleye_value: 30000           # highest value asset in system
+  globaleye_replaceability: irreplaceable
+```
+
+---
+
+## 7. Ammunition Management
 
 Ammunition is finite. The system must:
 
@@ -253,7 +490,7 @@ Ammunition is finite. The system must:
    - Redistribute coverage from well-stocked units
 4. **Rearm priority**: Which unit to rearm first based on coverage gap analysis
 
-## 7. Scramble Decision Logic
+## 8. Scramble Decision Logic
 
 When to scramble fighters vs. rely on ground-based defense:
 
@@ -265,7 +502,7 @@ When to scramble fighters vs. rely on ground-based defense:
 | Threat quantity | Small number (manageable) | Large swarm (SAM more efficient) |
 | Airfield threat | Airfield NOT threatened | Airfield under threat (scramble to save aircraft) |
 
-## 8. Forward Planning (Look-Ahead)
+## 9. Forward Planning (Look-Ahead)
 
 The system should NOT be purely reactive. It must:
 
@@ -275,7 +512,7 @@ The system should NOT be purely reactive. It must:
 4. **Reserve management**: Keep a strategic reserve (e.g., 2 Gripen on ground alert) for unexpected threats
 5. **Wave analysis**: If detecting multi-wave attacks, conserve resources for subsequent waves
 
-## 9. Rules of Engagement (Simplified for Sim)
+## 10. Rules of Engagement (Simplified for Sim)
 
 1. AEW&C (GlobalEye) is NEVER a combatant — it detects and coordinates only
 2. Fighters may engage only targets classified as hostile (not "unknown")
@@ -283,7 +520,7 @@ The system should NOT be purely reactive. It must:
 4. Commander can override any automated assignment
 5. Civilian aircraft corridors must be respected (no engagement in designated safe lanes)
 
-## 10. Swedish Dispersed Operations Concept
+## 11. Swedish Dispersed Operations Concept
 
 Gripen is designed for dispersed operations:
 - Can operate from road bases (straight highway segments)
@@ -291,7 +528,7 @@ Gripen is designed for dispersed operations:
 - Multiple road bases reduce single-point-of-failure risk
 - Simulation should model multiple dispersed bases, not just one main airfield
 
-## 11. Network-Centric Warfare
+## 12. Network-Centric Warfare
 
 All assets share a common operational picture via data links:
 - GlobalEye → all units: fused track data
