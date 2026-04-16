@@ -1,0 +1,6 @@
+backend/__pycache__/
+backend/sim/__pycache__/
+*.pyc
+.venv/
+node_modules/
+.env
