@@ -1,0 +1,106 @@
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #050810;
+  color: #e8eef8;
+  font-family: 'Segoe UI', 'SF Pro Display', system-ui, sans-serif;
+}
+#view {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+}
+#hud {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  display: flex; flex-direction: column;
+  justify-content: space-between;
+  padding: 18px;
+}
+#hud > * { pointer-events: auto; }
+
+#hud-top, #hud-bottom {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.hud-block {
+  background: rgba(10, 18, 32, 0.72);
+  border: 1px solid rgba(120, 180, 255, 0.18);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  backdrop-filter: blur(6px);
+}
+.hud-block.stats { font-variant-numeric: tabular-nums; }
+.hud-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #9fd0ff;
+}
+.hud-sub {
+  font-size: 11px; opacity: 0.7;
+}
+
+#hud-bottom button, #hud-bottom input[type=range] {
+  font: inherit;
+}
+#hud-bottom button {
+  background: #153560;
+  color: #cfe1ff;
+  border: 1px solid #2a5a9a;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+#hud-bottom button:hover { background: #1e4a82; }
+.speed {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(10, 18, 32, 0.72);
+  border: 1px solid rgba(120, 180, 255, 0.18);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.speed input[type=range] { width: 120px; }
+
+#ws-status {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 3px;
+  background: rgba(10, 18, 32, 0.72);
+  border: 1px solid #333;
+}
+#ws-status.connected { border-color: #2d7a3f; color: #6fe39a; }
+#ws-status.disconnected { border-color: #882222; color: #ff8080; }
+
+#log {
+  display: flex;
+  gap: 10px;
+  max-height: 140px;
+}
+.log-col {
+  flex: 1;
+  background: rgba(10, 18, 32, 0.72);
+  border: 1px solid rgba(120, 180, 255, 0.18);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-y: auto;
+  max-height: 140px;
+  font-family: 'Consolas', 'SF Mono', monospace;
+}
+.log-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #9fd0ff;
+  margin-bottom: 4px;
+}
+#log-red > div { color: #ff9a9a; }
+#log-blue > div { color: #9fe1ff; }
