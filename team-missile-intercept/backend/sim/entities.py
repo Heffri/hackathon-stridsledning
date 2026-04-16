@@ -25,8 +25,15 @@ _VLS_SAM_KINDS = (
     InterceptorType.SHORT_SAM,
     InterceptorType.MED_SAM,
     InterceptorType.LONG_SAM,
+    InterceptorType.HIT_TO_KILL,
 )
 _VLS_BOOST_DURATION = 1.5  # seconds
+
+# HGV scripted manoeuvre — S-curve lateral offset, sinusoidal over elapsed
+# seconds during the glide phase. 8 G × 5 s sinusoid produces an obvious
+# weave before the terminal dive.
+_HGV_SCURVE_AMPL_MPS2 = 60.0   # ~6 G lateral peak
+_HGV_SCURVE_PERIOD_S = 10.0    # one full S cycle
 
 
 class Threat:
@@ -79,7 +86,23 @@ class Threat:
                 )
         all_wps.append(target.copy())
 
-        if kind == ThreatType.BALLISTIC:
+        if kind == ThreatType.HGV:
+            # Hypersonic glide: shallow descent on a straight line toward
+            # target with a pre-programmed lateral S-curve. Gravity is
+            # balanced by an implicit lift term in the step loop so the
+            # altitude holds until the terminal dive.
+            to_target_h = np.array([target[0] - start[0], target[1] - start[1], 0.0])
+            norm_h = float(np.linalg.norm(to_target_h))
+            if norm_h < 1e-6:
+                to_target_h = np.array([0.0, -1.0, 0.0])
+                norm_h = 1.0
+            horiz_unit = to_target_h / norm_h
+            vel = horiz_unit * self.spec.cruise_speed
+            # Slight initial descent so the glide isn't perfectly flat.
+            vel[2] = -80.0
+            self.waypoint = np.array([target[0], target[1], 0.0])
+            self._wp_queue = []
+        elif kind == ThreatType.BALLISTIC:
             # Terminal-phase ballistic trajectory: solve for the launch angle
             # below horizontal that lands on the base given spawn altitude h
             # and horizontal distance d at speed v, accounting for gravity.
@@ -164,6 +187,65 @@ class Threat:
         self._elapsed += dt
         pos = self.state.pos
         vel = self.state.vel
+
+        # --- HGV: shallow glide + pre-programmed S-curve + terminal dive ---
+        # Horizontal steering aims at the base; during the glide the
+        # vehicle weaves laterally (perpendicular to its horizontal
+        # velocity) and holds altitude. Inside 10 km horizontal it enters
+        # a terminal dive onto the base.
+        if self.spec.kind == ThreatType.HGV:
+            to_base_h = np.array(
+                [self.waypoint[0] - pos[0], self.waypoint[1] - pos[1], 0.0],
+                dtype=np.float64,
+            )
+            dh = float(np.linalg.norm(to_base_h))
+            if dh > 1.0:
+                h_dir = to_base_h / dh
+                # Perpendicular (left-hand) unit vector in XY plane.
+                perp = np.array([-h_dir[1], h_dir[0], 0.0])
+            else:
+                h_dir = np.array([0.0, -1.0, 0.0])
+                perp = np.array([-1.0, 0.0, 0.0])
+
+            h_speed = float(np.sqrt(vel[0] * vel[0] + vel[1] * vel[1])) or 1.0
+            if dh > 10_000.0:
+                # Glide phase: hold altitude, weave.
+                target_alt = self._base_alt
+                s_accel = perp * (
+                    _HGV_SCURVE_AMPL_MPS2
+                    * float(np.sin(2.0 * np.pi * self._elapsed / _HGV_SCURVE_PERIOD_S))
+                )
+            else:
+                # Terminal phase: dive onto base, no more weaving.
+                target_alt = 0.0
+                s_accel = np.zeros(3)
+
+            # Horizontal steer toward the base at the current horizontal
+            # speed, capped at max_g.
+            desired_h_vel = h_dir * h_speed
+            cur_h_vel = np.array([vel[0], vel[1], 0.0])
+            steer_h = (desired_h_vel - cur_h_vel) / max(dt, 1e-3)
+
+            alt_err = target_alt - pos[2]
+            alt_accel = np.array([0.0, 0.0, alt_err * 0.25 - vel[2] * 0.3])
+
+            # Lift term balances gravity during glide; natural ballistic
+            # fall takes over once alt_accel pulls the target_alt to 0.
+            lift = np.array([0.0, 0.0, config.GRAVITY])
+
+            accel = steer_h + s_accel + alt_accel + lift
+            accel = physics.cap_accel(accel, self.spec.max_g)
+            accel = accel + physics.gravity_accel()
+            accel = accel + physics.drag_accel(vel, self.spec.drag_k)
+
+            new_pos, new_vel = physics.integrate(pos, vel, accel, dt)
+            new_vel = physics.cap_speed(new_vel, self.spec.cruise_speed)
+            if new_pos[2] < config.GROUND_Z:
+                new_pos[2] = config.GROUND_Z
+                self.state.alive = False
+            self.state.pos = new_pos
+            self.state.vel = new_vel
+            return
 
         # --- Ballistic: gravity-driven re-entry with weak horizontal pull ---
         if self.spec.kind == ThreatType.BALLISTIC:

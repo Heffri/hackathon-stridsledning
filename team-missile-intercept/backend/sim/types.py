@@ -19,6 +19,7 @@ class ThreatType(str, Enum):
     DRONE = "drone"
     CRUISE_SUB = "cruise_sub"
     BALLISTIC = "ballistic"
+    HGV = "hgv"
 
 
 class InterceptorType(str, Enum):
@@ -26,6 +27,7 @@ class InterceptorType(str, Enum):
     SHORT_SAM = "short_sam"
     MED_SAM = "med_sam"
     LONG_SAM = "long_sam"
+    HIT_TO_KILL = "hit_to_kill"
 
 
 @dataclass
@@ -93,6 +95,20 @@ THREAT_SPECS = {
         color="#ff8020",
         hp=80,
         usd_cost=3_000_000,
+    ),
+    # Hypersonic glide vehicle (Kinzhal/DF-ZF class). Simplified:
+    # pre-programmed S-curve in the mid-phase, terminal dive on the base.
+    # "cruise_alt" is the initial glide altitude.
+    ThreatType.HGV: ThreatSpec(
+        kind=ThreatType.HGV,
+        cruise_speed=1700.0,
+        cruise_alt=25_000.0,
+        max_g=8.0,
+        drag_k=1.5e-6,
+        kill_radius=70.0,
+        color="#ff4080",
+        hp=60,
+        usd_cost=10_000_000,
     ),
 }
 
@@ -170,6 +186,26 @@ INTERCEPTOR_SPECS = {
         radius_direct=3.0,
         radius_prox=180.0,
         usd_cost=3_000_000,
+    ),
+    # Hit-to-kill (PAC-3 MSE). Pure kinetic kill mechanism — 200 dmg on
+    # a direct hit, one-shots ballistic / HGV. Our grid-stepped PN only
+    # achieves sub-metre CPA rarely, so the direct radius is widened to
+    # 25 m (within the fleet average miss). Proximity damage is intention-
+    # ally mild (kinetic body, no frag), so a fringe hit (30-60 m miss)
+    # still fails — the "sniper" feel survives.
+    InterceptorType.HIT_TO_KILL: InterceptorSpec(
+        kind=InterceptorType.HIT_TO_KILL,
+        max_speed=1700.0,
+        max_g=50.0,
+        max_range=60_000.0,
+        drag_k=4.0e-6,
+        kill_radius=60.0,
+        color="#ff7a7a",
+        damage_direct=200,
+        damage_prox=25,
+        radius_direct=25.0,
+        radius_prox=60.0,
+        usd_cost=4_000_000,
     ),
 }
 

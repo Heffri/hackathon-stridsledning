@@ -70,6 +70,9 @@ LAUNCHER_TEMPLATES: Dict[InterceptorType, Dict] = {
     InterceptorType.LONG_SAM: dict(
         magazine_capacity=4, inter_shot_cd=10.0, reload_time=180.0,
     ),
+    InterceptorType.HIT_TO_KILL: dict(
+        magazine_capacity=4, inter_shot_cd=10.0, reload_time=180.0,
+    ),
 }
 
 
@@ -79,6 +82,7 @@ DEFAULT_LOADOUT: Dict[InterceptorType, int] = {
     InterceptorType.SHORT_SAM: 2,
     InterceptorType.MED_SAM: 2,
     InterceptorType.LONG_SAM: 1,
+    InterceptorType.HIT_TO_KILL: 1,
 }
 
 

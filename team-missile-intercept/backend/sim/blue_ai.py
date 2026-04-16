@@ -35,15 +35,21 @@ RULES: Dict[ThreatType, List[InterceptorType]] = {
         InterceptorType.LONG_SAM,
     ],
     ThreatType.BALLISTIC: [
+        InterceptorType.HIT_TO_KILL,
+        InterceptorType.LONG_SAM,
+    ],
+    ThreatType.HGV: [
+        InterceptorType.HIT_TO_KILL,
         InterceptorType.LONG_SAM,
     ],
 }
 
 
 def _shots_to_kill(inter_kind: InterceptorType, threat_hp: int) -> int:
-    """Conservative estimate: assume proximity hits only (no guaranteed
-    direct hit), so ceil(hp / damage_prox). PAC-3 MSE (hit-to-kill) is
-    special-cased elsewhere.
+    """Expected shots to kill based on the damage_prox channel (since our
+    PN rarely achieves the direct-hit radius). Deliberately conservative —
+    if the AI over-estimates, it merely over-commits interceptors; if it
+    under-estimates, it burns ammo on a target that keeps flying.
     """
     spec = INTERCEPTOR_SPECS[inter_kind]
     dmg = max(1, spec.damage_prox)

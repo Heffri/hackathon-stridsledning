@@ -110,11 +110,33 @@ function buildModel(kind, team, color) {
       g.add(fin);
     }
     g.add(body, nose);
+  } else if (kind === 'hgv') {
+    // Wedge-shaped hypersonic glide body: wide flat underside, pointed
+    // nose, blunt tail. Long axis = +Y.
+    const body = new THREE.Mesh(
+      new THREE.ConeGeometry(0.6, 2.8, 4),
+      bodyMat,
+    );
+    body.rotation.y = Math.PI / 4;
+    body.scale.set(1.3, 1.0, 0.5); // flatten on Z → wedge
+    const nose = new THREE.Mesh(
+      new THREE.ConeGeometry(0.25, 0.9, 10),
+      bodyMat,
+    );
+    nose.position.y = 1.8;
+    // Small canards near the nose
+    const canardL = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2, 0.2, 0.05),
+      darkMat,
+    );
+    canardL.position.set(0, 0.8, 0);
+    g.add(body, nose, canardL);
   } else if (
     kind === 'ciws' ||
     kind === 'short_sam' ||
     kind === 'med_sam' ||
-    kind === 'long_sam'
+    kind === 'long_sam' ||
+    kind === 'hit_to_kill'
   ) {
     // Blue interceptor SAM. Slender rocket + nose cone + 4 tail fins + exhaust plume.
     const size = kind === 'long_sam' ? 1.15 : kind === 'ciws' ? 0.65 : 1.0;

@@ -23,12 +23,12 @@ BORDER_HALF_WIDTH = 30_000.0  # X spans ±30 km around base axis
 DRONE_ALT_RANGE = (200.0, 2_000.0)
 CRUISE_ALT_RANGE = (50.0, 500.0)
 BALLISTIC_ALT_RANGE = (30_000.0, 40_000.0)
+HGV_ALT_RANGE = (22_000.0, 28_000.0)
 
 
 def build_demo_waves() -> List[WaveSpec]:
-    """5 escalating waves. Threats are emitted symbolically (kind only); the
-    actual spawn coordinates are sampled per-launch inside RedAI.step so the
-    border distribution is genuinely random per run.
+    """5 escalating waves tuned so Blue is not guaranteed to hold —
+    wave 5's saturation attack regularly gets at least 1 threat through.
     """
     waves = [
         WaveSpec(
@@ -37,28 +37,29 @@ def build_demo_waves() -> List[WaveSpec]:
             label="Wave 1: Drones",
         ),
         WaveSpec(
-            time=35.0,
-            threats=[ThreatType.CRUISE_SUB] * 2,
-            label="Wave 2: Cruise",
+            time=25.0,
+            threats=[ThreatType.DRONE] * 3 + [ThreatType.CRUISE_SUB],
+            label="Wave 2: Drones + cruise",
         ),
         WaveSpec(
-            time=75.0,
-            threats=[ThreatType.DRONE] * 4 + [ThreatType.CRUISE_SUB],
-            label="Wave 3: Mixed",
+            time=55.0,
+            threats=[ThreatType.CRUISE_SUB] * 2 + [ThreatType.BALLISTIC],
+            label="Wave 3: Cruise + ballistic",
         ),
         WaveSpec(
-            time=120.0,
-            threats=[ThreatType.BALLISTIC],
-            label="Wave 4: Ballistic",
+            time=95.0,
+            threats=[ThreatType.HGV] + [ThreatType.DRONE] * 2,
+            label="Wave 4: HGV + drones",
         ),
         WaveSpec(
-            time=150.0,
+            time=145.0,
             threats=(
                 [ThreatType.BALLISTIC]
-                + [ThreatType.DRONE] * 2
+                + [ThreatType.HGV] * 2
+                + [ThreatType.DRONE] * 3
                 + [ThreatType.CRUISE_SUB]
             ),
-            label="Wave 5: High-low mixed",
+            label="Wave 5: Saturation attack",
         ),
     ]
     return waves
@@ -79,6 +80,8 @@ def _sample_spawn(kind: ThreatType, rng: np.random.Generator, base_x: float, bas
         z = float(rng.uniform(*CRUISE_ALT_RANGE))
     elif kind == ThreatType.BALLISTIC:
         z = float(rng.uniform(*BALLISTIC_ALT_RANGE))
+    elif kind == ThreatType.HGV:
+        z = float(rng.uniform(*HGV_ALT_RANGE))
     else:
         z = 0.0
     return (x, y, z)
