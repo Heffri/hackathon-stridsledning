@@ -78,6 +78,14 @@ Blue AI plays dual roles: **strategic commander** (decides what to fire at what)
 - **Key feature**: Passive (no radar) — invisible to enemy. No SEAD vulnerability.
 - **AI challenge**: Guide a Mach 2 missile to hit a potentially maneuvering target
 
+#### AI-Guided: IRIS-T SLS / RBS 98 (Short-range SAM+)
+- **Blue AI controls in real-time** — IR imaging seeker
+- Same IRIS-T missile as the AAM variant, ground-launched with short booster
+- Slower than SLM (Mach 2 vs Mach 3) and shorter range (12 km vs 40 km)
+- **60G maneuverability** — most agile interceptor in the arsenal (thrust vector control)
+- **Niche**: Terminal-phase "knife fight" vs maneuvering targets. If a stealth cruise missile or HGV gets close and starts jinking, the SLS's 60G can out-turn anything.
+- **AI challenge**: Short range means late launch — Blue AI must guide it perfectly in a compressed timeframe
+
 #### AI-Guided: IRIS-T SLM (Medium-range SAM)
 - **Blue AI controls in real-time** — acts as the missile's guidance computer
 - Faster (Mach 3) and more maneuverable (40G) than RBS 70
@@ -106,7 +114,7 @@ Blue AI plays dual roles: **strategic commander** (decides what to fire at what)
 | Pre-programmed | Drone, Ballistic | Set before launch, no changes | CIWS (Lvkv 90) | Predict trajectory, fire ballistic burst |
 | Waypoint-adjustable | Cruise (subsonic) | Modify waypoints mid-flight | — | — |
 | Terminal takeover | Stealth cruise | Waypoints + real-time terminal | — | — |
-| Full real-time | HGV | Direct control every tick | RBS 70, IRIS-T, Patriot | Direct guidance every tick |
+| Full real-time | HGV | Direct control every tick | RBS 70, IRIS-T SLS, IRIS-T SLM, Patriot | Direct guidance every tick |
 
 ---
 
@@ -128,7 +136,8 @@ Blue AI plays dual roles: **strategic commander** (decides what to fire at what)
 - Interceptor costs (see WEAPON_SPECS.md for details):
   - CIWS burst: $2,000
   - RBS 70 Bolide: $175,000
-  - IRIS-T SLM: $500,000
+  - IRIS-T SLS: $500,000
+  - IRIS-T SLM: $1,000,000
   - Patriot PAC-2 GEM+: $3,000,000
   - Patriot PAC-3 MSE: $4,000,000
 
@@ -145,6 +154,7 @@ Blue AI plays dual roles: **strategic commander** (decides what to fire at what)
   - Drone (Shahed): $30,000
   - Subsonic cruise missile: $1,500,000
   - Stealth cruise missile: $2,500,000
+  - Supersonic cruise missile: $3,000,000
   - Ballistic missile: $3,000,000
   - Hypersonic glide vehicle: $10,000,000
 
@@ -187,21 +197,38 @@ Blue AI plays dual roles: **strategic commander** (decides what to fire at what)
 2. **Operational (per-threat)**: Which interceptor to fire at which threat, launch timing
 3. **Tactical (real-time)**: Missile guidance — proportional navigation, lead pursuit, or custom guidance for each interceptor in flight
 
-### Physics Constraints Apply to All
+### Physics Constraints — Hard Rules
 
-- All maneuvers respect max G-limits per weapon type
-- Speed bleeds with maneuvers (especially HGV)
-- Gravity and drag always apply
-- Kill is determined by closest approach distance vs kill radius — no probability
-- Blue CIWS is purely ballistic after firing (no guidance)
-- No weapon can exceed its max speed or range
+Every missile and projectile in the simulation is a physical body subject to:
 
-### Attention Budget (Optional, Advanced)
+1. **G-limit**: Each weapon has a hard max G (e.g., IRIS-T SLS = 60G, HGV = 8G). The AI cannot exceed this, period.
+2. **Speed bleed from maneuvers**: Turning costs kinetic energy. Higher G = more speed loss. Formula: `speed_loss = drag_factor * G_applied * dt`. A hard 8G turn at Mach 5 will noticeably slow the missile.
+3. **Fuel / range limit**: Each weapon has finite fuel. When fuel runs out, the missile becomes ballistic (no more thrust, only gravity and drag). No infinite-range missiles.
+4. **Gravity**: Always -9.81 m/s² on Z. Affects all objects at all times.
+5. **Drag**: Quadratic drag with altitude-dependent air density. Faster = more drag. Lower altitude = denser air = more drag.
+6. **Speed cap**: No weapon can exceed its rated max speed. Thrust is limited.
+7. **Kill radius**: Intercept is determined by closest approach distance vs kill radius. No probability dice.
+8. **Ground collision**: Any missile that touches terrain = instant destruction. See Terrain section.
+9. **CIWS is ballistic**: Rounds follow a fixed trajectory after firing. No mid-course correction.
 
-Red AI piloting multiple real-time weapons simultaneously could be penalized:
-- Each HGV and stealth-cruise-in-terminal requires an "attention slot"
-- Limited attention slots (e.g., 3) mean Red can only actively guide 3 weapons at once
-- Others revert to pre-programmed behavior until a slot frees up
-- Creates interesting tradeoffs: buy many cheap weapons (no attention needed) or few expensive ones (need active guidance)?
+### Terrain
 
-*This is optional — implement if time allows, skip if not.*
+The arena has a **heightmap** — terrain is solid and has elevation.
+
+- **Sea/water**: Elevation 0. The strait between north and south landmasses.
+- **Landmasses**: Variable elevation — flat coastal areas, hills, ridges.
+- **Ground collision**: `if entity.pos.z < terrain_height(entity.pos.x, entity.pos.y) → destroyed`. Missiles cannot tunnel underground.
+- **Terrain following**: Cruise missiles that fly at 50m altitude must actually follow terrain contours. If terrain rises above their flight altitude, they either climb or crash.
+- **Tactical implications**:
+  - Mountains can block low-altitude approach routes
+  - Valleys can provide cover for terrain-following missiles
+  - Red AI must plan cruise missile routes that avoid high terrain
+  - Blue AI should consider where terrain forces missiles to climb (easier intercept)
+
+**Implementation**: 2D heightmap grid (e.g., 512x512), bilinear interpolation for any (x,y) query. Three.js renders it as a displacement-mapped plane.
+
+### AI Multitasking Rules
+
+- **Blue AI**: No attention limit. Can simultaneously make strategic decisions (which weapon to fire) AND guide all in-flight interceptors. The AI is both the commander and every missile's guidance computer at once.
+- **Red AI**: No attention limit (for now). Can simultaneously control all HGVs and stealth cruise missiles in terminal phase. If this causes balance issues, we add attention slots later.
+- **Concurrency**: Both AIs evaluate every tick. Each AI can issue commands to all its active weapons in a single tick.

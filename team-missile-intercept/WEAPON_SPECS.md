@@ -11,7 +11,8 @@
 |----------|-------------------|-------|-------|-------------|-------|----------|---------------|
 | CIWS | Lvkv 90 (40mm Bofors 3P, 10-round burst) | 1,000 m/s (projectile) | N/A | 5m (airburst) | 4 km | ~$2,000 | 2 |
 | Short-range SAM | RBS 70 NG (Bolide) | 680 m/s (Mach 2) | 20G [est] | 8m (frag) | 9 km | ~$175,000 [est] | 18 |
-| Medium-range SAM | IRIS-T SLM | 1,020 m/s (Mach 3) | 40G | 15m (frag) | 40 km | ~$500,000 | 50 |
+| Short-range SAM+ | IRIS-T SLS (RBS 98) | 400 m/s (Mach 2 avg) | 60G | 10m (frag) | 12 km | ~$500,000 | 50 |
+| Medium-range SAM | IRIS-T SLM | 1,020 m/s (Mach 3) | 40G | 15m (frag) | 40 km | ~$1,000,000 | 100 |
 | Long-range SAM | Patriot PAC-2 GEM+ | 1,700 m/s (Mach 5) | 25G | 20m (blast-frag) | 70 km | ~$3,000,000 | 300 |
 | Hit-to-kill | Patriot PAC-3 MSE | 1,700 m/s (Mach 5) | 50G | 0.3m (kinetic) | 60 km | ~$4,000,000 | 400 |
 
@@ -53,8 +54,22 @@
 - Launchers per battery: 3 (24 missiles ready)
 - Reload time: ~20 min
 - Combat record: 99% reported kill rate in Ukraine
-- Cost per missile: ~$500,000 [est]
+- Cost per missile: ~$1,000,000 (SLM version with larger booster, estimated from IRIS-T SLS ~$500K baseline)
 - Source: ground-defense.md
+
+#### Short-range SAM+ — IRIS-T SLS / RBS 98 (Diehl Defence)
+- Missile: IRIS-T air-to-air missile, ground-launched with short booster
+- Speed: Mach 2 (~400 m/s average) — slower than SLM due to smaller booster
+- Range: 12 km
+- Altitude: up to 8,000 m
+- Guidance: IR imaging seeker (all-aspect, 360 deg engagement)
+- **Maneuverability: 60G** — confirmed, thrust vector control. Most agile interceptor in the arsenal.
+- Warhead: 11.4 kg HE-fragmentation
+- Launcher: Vehicle-mounted VLS, 4 missiles per launcher
+- Reload time: ~10 min
+- Cost per missile: ~$500,000 ($430K-560K per threats.md)
+- **Niche**: Short range but hyper-agile. Best choice vs maneuvering targets within 12 km. The 60G capability means it can turn tighter than any threat in the sim.
+- Source: ground-defense.md, air-assets.md (IRIS-T AAM specs)
 
 #### Long-range SAM — Patriot PAC-2 GEM+ (Raytheon)
 - Speed: Mach 5 (1,700 m/s)
@@ -83,11 +98,12 @@
 | Type | Count | Total Value (USD) | Rationale |
 |------|-------|-------------------|-----------|
 | CIWS (bursts) | 14 | ~$28,000 | 144 rounds ÷ 10/burst |
-| Short-range SAM | 16 | ~$2,800,000 | 2 launchers × 8 |
-| Medium-range SAM | 12 | ~$6,000,000 | Partial battery (2 launchers × 6) [est] |
-| Long-range SAM | 4 | ~$12,000,000 | Limited Patriot inventory |
-| Hit-to-kill | 2 | ~$8,000,000 | Scarce PAC-3 MSE, save for ballistic |
-| **Total inventory** | **48** | **~$28,828,000** | |
+| Short-range SAM (RBS 70) | 16 | ~$2,800,000 | 2 launchers × 8 |
+| Short-range SAM+ (IRIS-T SLS) | 8 | ~$4,000,000 | 2 launchers × 4 |
+| Medium-range SAM (IRIS-T SLM) | 12 | ~$12,000,000 | Partial battery (2 launchers × 6) [est] |
+| Long-range SAM (PAC-2 GEM+) | 4 | ~$12,000,000 | Limited Patriot inventory |
+| Hit-to-kill (PAC-3 MSE) | 2 | ~$8,000,000 | Scarce, save for ballistic |
+| **Total inventory** | **56** | **~$38,828,000** | |
 
 ---
 
@@ -99,6 +115,7 @@
 |----------|-------------------|-------|-------|-----|----------|----------|----------------|
 | Suicide drone | FPV / Shahed-136 mix | 45 m/s | 2G | 0.2 m² | 500 m | ~$30,000 | 3 |
 | Subsonic cruise missile | Kalibr-class | 260 m/s | 2G | 0.08 m² | 50 m | ~$1,500,000 | 150 |
+| Stealth cruise missile | JASSM-ER / Kh-101 class | 260 m/s | 3G | 0.01 m² | 50 m | ~$2,500,000 [est] | 250 |
 | Supersonic cruise missile | BrahMos/Zircon-class | 900 m/s | 4G | 0.15 m² | 14,000 m | ~$3,000,000 [est] | 300 |
 | Ballistic missile (terminal) | Iskander-class SRBM | 2,000 m/s | 1G | 0.5 m² | 35,000 m entry | ~$3,000,000 | 300 |
 | Hypersonic glide vehicle | Kinzhal/DF-ZF class | 1,700 m/s | 8G | 0.1 m² [est] | 25,000 m | ~$10,000,000 [est] | 1,000 |
@@ -131,6 +148,19 @@
 - Cost: $1–2M
 - **Sim cost: ~$1,500,000**
 - Source: threats.md
+
+#### Stealth Cruise Missile — JASSM-ER / Kh-101 class
+- Speed: Mach 0.7–0.9 (~260 m/s) — same as subsonic cruise
+- Cruise altitude: 50 m (terrain following)
+- RCS: **0.01 m²** — 8× stealthier than standard Kalibr. Late detection.
+- Range: 500–2,500 km
+- Guidance: INS + GPS + terminal IR/radar seeker
+- Maneuverability: 3G (slightly better than standard, terminal evasion)
+- **Terminal takeover**: Red AI gains real-time control in final ~30 km
+- Cost: $1.5–3.5M (JASSM-ER ~$1.5M, Kh-101 ~$3M+)
+- **Sim cost: ~$2,500,000** [est]
+- **Key threat**: Combination of stealth (late detection) + terminal AI control makes it dangerous despite slow speed
+- Source: threats.md (stealthy RCS values), general estimates
 
 #### Supersonic Cruise Missile — BrahMos/Zircon-class
 - Speed: Mach 2.7 (~900 m/s)
@@ -180,24 +210,26 @@ The AI computes this in real-time to decide whether an engagement is cost-justif
 
 ### Full Matrix (USD-based)
 
-| | CIWS ($2K) | Short SAM ($175K) | Med SAM ($500K) | Long SAM ($3M) | HTK ($4M) |
-|---|---|---|---|---|---|
-| **Drone ($30K)** | 0.07 :white_check_mark: | 5.8 :warning: | 16.7 :x: | 100 :x: | 133 :x: |
-| **Cruise Sub ($1.5M)** | 0.001 :white_check_mark: | 0.12 :white_check_mark: | 0.33 :white_check_mark: | 2.0 :white_check_mark: | 2.7 :white_check_mark: |
-| **Cruise Super ($3M)** | — | — | 0.17 :white_check_mark: | 1.0 :white_check_mark: | 1.3 :white_check_mark: |
-| **Ballistic ($3M)** | — | — | — | 1.0 :white_check_mark: | 1.3 :white_check_mark: |
-| **Hypersonic ($10M)** | — | — | — | 0.30 :white_check_mark: | 0.40 :white_check_mark: |
+| | CIWS ($2K) | RBS 70 ($175K) | SLS ($500K) | SLM ($1M) | PAC-2 ($3M) | PAC-3 ($4M) |
+|---|---|---|---|---|---|---|
+| **Drone ($30K)** | 0.07 | 5.8 | 16.7 | 33 | 100 | 133 |
+| **Cruise Sub ($1.5M)** | 0.001 | 0.12 | 0.33 | 0.67 | 2.0 | 2.7 |
+| **Stealth Cruise ($2.5M)** | — | 0.07 | 0.20 | 0.40 | 1.2 | 1.6 |
+| **Cruise Super ($3M)** | — | — | — | 0.33 | 1.0 | 1.3 |
+| **Ballistic ($3M)** | — | — | — | — | 1.0 | 1.3 |
+| **Hypersonic ($10M)** | — | — | — | — | 0.30 | 0.40 |
 
-"—" = Cannot engage (too slow or out of range)
+- Ratio < 1.0 = favorable. Ratio > 20 = unacceptable. "—" = cannot engage.
 
 ### Key Decision Rules (for Blue AI)
 
-1. **Drones → CIWS first** (ratio 0.07 — excellent). Short SAM only if CIWS unavailable or out of range.
-2. **Subsonic cruise → Medium SAM** (ratio 0.33 — favorable). CIWS as last resort close-in.
-3. **Supersonic cruise → Long SAM preferred** (ratio 1.0 — break-even). Medium SAM if within envelope.
-4. **Ballistic → Hit-to-kill only** (ratio 1.3 — acceptable). Only PAC-3 MSE can intercept terminal phase.
-5. **Hypersonic → Long SAM or HTK** (ratio 0.30–0.40 — excellent). But extremely hard to hit due to maneuverability.
-6. **Never fire Patriot at a drone** — cost ratio 100:1+, this is the #1 rule the AI must enforce.
+1. **Drones → CIWS first** (ratio 0.07). Short SAM only if CIWS unavailable or out of range.
+2. **Subsonic cruise → IRIS-T SLM** (ratio 0.67). CIWS as last-ditch close-in backup.
+3. **Stealth cruise → IRIS-T SLS or SLM** (ratio 0.20–0.40). SLS's 60G agility ideal vs maneuvering terminal phase, but 12 km range means late engagement.
+4. **Supersonic cruise → Patriot PAC-2 or SLM** (ratio 0.33–1.0). Needs fast interceptor.
+5. **Ballistic → PAC-3 MSE only** (ratio 1.3). Only system that can intercept Mach 6 terminal.
+6. **Hypersonic → PAC-2 or PAC-3** (ratio 0.30–0.40). Excellent cost ratio but extremely hard to hit.
+7. **Never fire Patriot at a drone** — cost ratio 100:1+, the #1 rule the AI must enforce.
 
 ### Saturation Attack Economics
 
