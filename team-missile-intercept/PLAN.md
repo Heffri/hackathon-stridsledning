@@ -4,30 +4,41 @@
 
 Building a 3D missile intercept simulation for the Saab hackathon (April 25). Red AI launches threats, Blue AI selects and guides interceptors using real physics (proportional navigation, not dice rolls). We need to build the entire system from scratch.
 
+## Related Documents
+
+- **[GAME_DESIGN.md](GAME_DESIGN.md)** — full mechanics (control levels, fuel, HP/damage, magazine, terrain, economy)
+- **[WEAPON_SPECS.md](WEAPON_SPECS.md)** — complete weapon parameters (performance, damage, economy, costs)
+
 ## Architecture
 
 ```
 team-missile-intercept/
 ├── backend/
-│   ├── requirements.txt        # fastapi, uvicorn, numpy
+│   ├── requirements.txt        # fastapi, uvicorn, numpy, scipy (optional)
 │   ├── server.py               # FastAPI + WebSocket, sim loop
 │   ├── sim/
 │   │   ├── __init__.py
+│   │   ├── config.py           # All tunable parameters (HP, budgets, scaling)
 │   │   ├── types.py            # Dataclasses, enums, weapon spec tables
-│   │   ├── physics.py          # 3D kinematics, PN guidance, drag, gravity
-│   │   ├── world.py            # SimulationWorld: tick loop, collision detection
-│   │   ├── red_ai.py           # Wave spawner + threat flight behavior
-│   │   ├── blue_ai.py          # Threat assessment, interceptor selection, launch timing
-│   │   └── scenarios.py        # 5-wave demo scenario definitions
+│   │   ├── physics.py          # 3D kinematics, PN guidance, drag, gravity, speed bleed
+│   │   ├── terrain.py          # Heightmap, ground collision, bilinear interpolation
+│   │   ├── entities.py         # Missile/threat classes with HP, fuel, magazine state
+│   │   ├── launcher.py         # Launcher (magazine + reload CD) for both sides
+│   │   ├── world.py            # SimulationWorld: tick loop, collision, HP/damage
+│   │   ├── red_ai.py           # 5-tier control (pre-programmed → real-time HGV)
+│   │   ├── blue_ai.py          # Threat assessment, weapon selection, real-time guidance
+│   │   └── scenarios.py        # Demo scenario definitions + budgets
 │
 ├── frontend/
 │   ├── index.html              # Single page, Three.js from CDN
 │   ├── style.css               # HUD styling
 │   └── js/
 │       ├── main.js             # WebSocket client, app state, controls
-│       ├── scene.js            # Three.js scene, camera, ground, lighting
+│       ├── scene.js            # Three.js scene, camera, lighting
+│       ├── terrain.js          # Heightmap terrain rendering (displacement map)
 │       ├── entities.js         # 3D meshes for missiles, trails, explosions
-│       └── hud.js              # Score, ammo, wave info, AI decision log
+│       ├── status.js           # Per-entity status panel (fuel/speed/G/HP)
+│       └── hud.js              # Score, ammo, AI decision log, speed slider
 ```
 
 ## Core Physics
@@ -101,39 +112,44 @@ Server sends full state snapshots (all entities + events + score + ammo) at 15fp
 
 ## Implementation Phases
 
-### Phase 1: Backend core (types.py, physics.py, world.py)
-- All dataclasses and weapon spec tables
-- Proportional navigation guidance, gravity, drag, Euler integration
-- SimulationWorld with step loop, entity management, kill detection
+### Phase 1: Backend core physics
+- `config.py`: all tunable parameters in one place
+- `types.py`: dataclasses, enums, weapon spec tables with HP/damage/fuel/magazine
+- `physics.py`: PN guidance, gravity, drag, Euler integration, **speed bleed from G**
+- `terrain.py`: heightmap load, bilinear interpolation, ground collision check
+- `entities.py`: Missile/Threat classes with HP, fuel, status
+- `launcher.py`: Launcher magazine + reload CD
 
-### Phase 2: Red AI + server (red_ai.py, scenarios.py, server.py)
-- Wave spawner with 5-wave demo scenario
-- Threats fly toward defended target
-- FastAPI + WebSocket streaming state JSON
+### Phase 2: World + Red AI + server
+- `world.py`: tick loop, collision detection, HP/damage resolution
+- `red_ai.py`: 5-tier control — pre-programmed, waypoint-adjustable, terminal-takeover, real-time
+- `scenarios.py`: demo scenario + initial budgets
+- `server.py`: FastAPI + WebSocket streaming state JSON
 
-### Phase 3: Frontend basics (scene.js, entities.js, main.js, index.html)
-- Three.js scene with ground plane, orbital camera
-- WebSocket client parsing state frames
-- Red cones moving across 3D map
-- **Milestone: red threats visibly fly across screen**
+### Phase 3: Frontend basics
+- `index.html` + `scene.js`: Three.js scene, orbital camera, lighting
+- `terrain.js`: heightmap terrain rendering (displacement map)
+- `entities.js`: 3D meshes, trails, explosions
+- `main.js`: WebSocket client, state parsing
+- **Milestone: threats visibly fly across 3D terrain**
 
-### Phase 4: Blue AI + intercepts (blue_ai.py)
-- Threat assessment and cost-optimal interceptor selection
-- Launch timing and PN-guided intercept
-- Intercept/impact event handling
-- **Milestone: full intercept loop working**
+### Phase 4: Blue AI + real-time guidance
+- `blue_ai.py`: threat assessment, cost-exchange + HP math, weapon selection
+- Real-time guidance per in-flight interceptor (PN for all SAMs, ballistic prediction for CIWS)
+- Magazine + reload enforcement
+- **Milestone: full intercept loop with HP, damage, fuel, reload working**
 
-### Phase 5: HUD + polish (hud.js, style.css)
-- Score panel, ammo bars, wave announcements
-- AI decision log showing Blue AI reasoning
+### Phase 5: HUD + status display
+- `status.js`: per-entity panel (fuel/speed/G/HP)
+- `hud.js`: score, base HP, budgets, ammo, AI decision log
+- Speed slider (0.5x / 1x / 2x / 5x / 10x)
 - Trajectory trails, explosion effects
-- Start/pause/speed controls
 
-### Phase 6: Tuning
-- Physics parameters (drag coefficients, speed, G-limits)
-- Scenario wave timing and composition
-- Camera presets (overview, follow mode)
-- Visual polish
+### Phase 6: Tuning & polish
+- Balance playtesting: budget ratios, HP values, damage numbers, speed bleed coefficients
+- Scenario composition
+- Camera presets, visual polish
+- Red AI intelligence: smart waypoint planning, HGV evasion tactics
 
 ## How to Run
 

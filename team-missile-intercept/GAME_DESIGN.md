@@ -2,119 +2,176 @@
 
 ## Core Concept
 
-Two AIs fight over a defended base. Red AI launches missiles/drones to destroy the base. Blue AI selects and guides interceptors to defend it. Both AIs operate within realistic physics constraints and limited budgets.
+Two AIs fight over a defended base. Red AI launches missiles/drones to destroy the base. Blue AI selects and guides interceptors to defend it. Both AIs operate within realistic physics constraints, limited magazines, and finite budgets. Every weapon is a physical body subject to G-limits, fuel burn, and speed-bleed from maneuvering.
+
+---
 
 ## AI Control Levels
 
-The key differentiator: each weapon type has a different level of AI control, creating a tactical depth ladder.
+Each weapon type gives its controlling AI a different degree of control, creating a tactical depth ladder.
 
-### Red Force — Guidance Hierarchy
+### Red Force — Five-Tier Guidance Hierarchy
 
-Each weapon type gives Red AI a different degree of mid-flight control, from "fire and forget" to full real-time maneuvering.
+#### Level 1 — Pre-Programmed (Suicide Drone / Shahed-136)
+- **Before launch**: Red AI sets full flight plan — waypoints, altitudes, pre-programmed evasive maneuvers
+- **After launch**: No changes possible. Drone follows programmed trajectory exactly.
+- **Speed**: 45 m/s, **Max G**: 2
 
-#### Level 1: Pre-Programmed (Suicide Drone / Shahed-136)
-- **Before launch**: Red AI sets a complete flight plan — waypoints, altitudes, and pre-programmed evasive maneuvers (e.g., "at waypoint 3, jink left 30° for 2 seconds")
-- **After launch**: No changes possible. The drone follows its programmed trajectory exactly.
-- **AI challenge for Red**: Must predict Blue's likely intercept patterns and program evasion in advance
-- **AI challenge for Blue**: Easiest to intercept — trajectory is predictable once characterized
-- **Maneuverability**: 2G max
-- **Speed**: 45 m/s
-
-#### Level 2: Pre-Programmed + Fast (Ballistic Missile)
-- **Before launch**: Red AI sets the ballistic trajectory, plus a fixed number of terminal maneuvers (e.g., 1-3 course corrections in the last 30 seconds). Maneuver timing and magnitude are locked at launch.
+#### Level 2 — Pre-Programmed + Fast (Ballistic Missile)
+- **Before launch**: Red AI sets ballistic trajectory + fixed number of terminal maneuvers
 - **After launch**: No changes. Follows pre-set arc with pre-set terminal maneuvers.
-- **Design intent**: Upgraded Shahed — still pre-programmed but much faster, making the intercept window very short
-- **AI challenge for Red**: Must decide terminal maneuvers blind (doesn't know which interceptor Blue will use)
-- **AI challenge for Blue**: Very fast (Mach 6), predictable arc but short reaction time. Only PAC-3 MSE can catch it.
-- **Maneuverability**: 1G correction (terminal phase only)
+- **Design intent**: Upgraded Shahed — still pre-programmed but Mach 6 with short intercept window
+- **Maneuverability**: 1G correction (terminal only)
 - **Speed**: 2,000 m/s terminal
 
-#### Level 3: Waypoint-Adjustable (Subsonic Cruise Missile)
-- **Before launch**: Red AI sets initial flight plan with waypoints
-- **During flight**: Red AI can modify waypoints — insert new waypoints, change target approach angle, alter altitude. But this is NOT real-time stick-and-rudder control. Red AI issues a new waypoint plan, and the missile follows it.
-- **Planning requirement**: Red AI must "think ahead" — the waypoint change takes effect over the next several seconds as the missile turns toward the new path. Red AI should consider: "If I reroute through this corridor, will Blue have time to reposition?"
-- **AI challenge for Red**: Strategic re-routing to exploit gaps in Blue defenses, approach from unexpected angles
-- **AI challenge for Blue**: Can't rely on initial trajectory prediction — need to continuously track and re-assess
-- **Maneuverability**: 2G (wide turns only, not agile)
-- **Speed**: 260 m/s
+#### Level 3 — Waypoint-Adjustable (Subsonic Cruise Missile)
+- **Before launch**: Red AI sets initial flight plan
+- **During flight**: Red AI can modify waypoints — reroute, change approach angle, alter altitude. NOT real-time stick-and-rudder; the AI issues a new plan and the missile follows it.
+- **Planning requirement**: Red AI must think ahead — waypoint changes take effect over several seconds as the missile turns
+- **Speed**: 260 m/s, **Max G**: 2
 
-#### Level 4: Terminal Takeover (Stealth Subsonic Cruise Missile)
-- **Cruise phase**: Same as Level 3 (waypoint-adjustable). Red AI can modify the approach route.
-- **Terminal phase trigger**: When the missile crosses a geographic boundary (the sea strait on the Boreal Passage map, or within ~30 km of target), Red AI gains **full real-time control**.
-- **Terminal phase**: Red AI directly commands maneuvers every tick — jinking, altitude changes, evasive spirals. Still constrained by physics (low G-limit, speed doesn't change much).
-- **Design intent**: The geographic trigger creates tension — Blue watches the missile cross the sea knowing it's about to "wake up." Stealth (low RCS 0.01 m²) means late detection, compressing Blue's reaction window further.
-- **Why terminal-only, not full real-time**: (1) Differentiates from HGV which has full control, (2) creates meaningful geography, (3) realistic — real stealth cruise missiles activate terminal seekers late
-- **Maneuverability**: 3G (slightly better than standard cruise, but still not agile)
-- **Speed**: 260 m/s
-- **RCS**: 0.01 m² (10× stealthier than standard cruise)
+#### Level 4 — Terminal Takeover (Stealth Subsonic Cruise Missile)
+- **Cruise phase**: Waypoint-adjustable (same as Level 3)
+- **Terminal phase trigger**: When missile crosses the sea strait on the Boreal Passage map (or within ~30 km of target), Red AI gains **full real-time control**
+- **Terminal phase**: Red AI commands maneuvers every tick — jinks, altitude changes, evasive spirals
+- **Design intent**: The geographic trigger creates tension. Stealth (RCS 0.01 m²) means late detection, compressing Blue's reaction window.
+- **Speed**: 260 m/s, **Max G**: 3 (terminal)
 
-#### Level 5: Full Real-Time Control (Hypersonic Glide Vehicle)
-- **Full AI control from launch**: Red AI commands the HGV every simulation tick. Can execute skip-glide maneuvers, lateral jinks, altitude changes, dive-pull-up sequences — anything within physics limits.
-- **Speed-maneuver tradeoff**: Every maneuver bleeds speed. A hard 8G turn at Mach 5 might drop speed to Mach 4. This creates a strategic choice: maneuver now to dodge an interceptor, but become easier to catch for the next one.
-- **AI challenge for Red**: Must balance evasion vs speed preservation. Over-maneuvering makes the HGV vulnerable. Under-maneuvering means it gets intercepted.
-- **AI challenge for Blue**: Hardest target. Unpredictable trajectory, extreme speed. Requires multiple interceptors or perfect timing.
-- **Maneuverability**: 8G max (but costs speed proportional to G-force)
-- **Speed**: 1,700 m/s initial, degrades with maneuvers
-- **Speed bleed formula**: `speed_loss_per_second = (current_g / max_g) * bleed_rate` where bleed_rate ~ 50 m/s per second at max G [tunable]
+#### Level 5 — Full Real-Time Control (Hypersonic Glide Vehicle)
+- **Full AI control from launch**: Red AI commands the HGV every tick. Skip-glide, lateral jinks, altitude changes, dive-pull-up — anything within physics limits.
+- **Speed-maneuver tradeoff**: Every maneuver bleeds speed via drag. Hard 8G turn at Mach 5 noticeably slows the missile.
+- **Strategic tension**: Over-maneuver → slow → easier to intercept next time. Under-maneuver → caught by current interceptor.
+- **Speed**: 1,700 m/s initial (degrades), **Max G**: 8
 
-### Blue Force — Guidance Hierarchy
+### Blue Force — Dual Role (Commander + Guidance Computer)
 
-Blue AI plays dual roles: **strategic commander** (decides what to fire at what) AND **guidance computer** (steers the interceptor to the target).
+Blue AI simultaneously plays strategic commander (which weapon to fire at which threat) AND acts as the guidance computer living inside each in-flight interceptor (adjusting thrust/direction every tick).
 
-#### Unguided: Lvkv 90 (CIWS / 40mm Bofors)
-- **Before firing**: Blue AI predicts the target's trajectory over the next ~3 seconds and computes a firing solution (lead angle, burst timing, fuse programming for airburst).
-- **After firing**: The burst is ballistic — 10 rounds fly on a fixed path. No course correction. The airburst fuse detonates at the pre-programmed distance.
-- **If the target maneuvers after the burst is fired**: Miss.
-- **Design intent**: Cheapest option ($2K) but requires accurate prediction. Great vs pre-programmed targets (Shahed, ballistic terminal). Risky vs maneuvering targets.
-- **Effective range**: 4 km
-- **Time of flight**: Near-instant (~3 seconds at max range)
+#### Unguided Ballistic — Lvkv 90 CIWS (40mm Bofors 3P)
+- **Before firing**: Blue AI predicts target trajectory ~3 seconds ahead, computes lead angle + 3P fuse programming (airburst timing)
+- **After firing**: Round is ballistic. No course correction. Airburst detonates at pre-programmed distance.
+- **If target maneuvers after burst is fired**: Miss.
+- **Great vs pre-programmed targets** (Shahed, ballistic terminal). Risky vs maneuvering targets.
 
-#### AI-Guided: RBS 70 NG (Short-range SAM)
-- **Blue AI controls the missile in real-time** via laser beam riding
-- AI must keep the missile on the target's bearing — adjusts aim point every tick
-- **Proportional Navigation** or direct pursuit — AI chooses the guidance strategy
-- Limited speed (Mach 2) means it can't chase fast targets well
-- Short range (9 km) means late engagement
-- **Key feature**: Passive (no radar) — invisible to enemy. No SEAD vulnerability.
-- **AI challenge**: Guide a Mach 2 missile to hit a potentially maneuvering target
+#### AI-Guided Real-Time — RBS 70, IRIS-T SLS, IRIS-T SLM, PAC-2, PAC-3
+- **Blue AI controls each missile in real-time** every tick
+- Can implement proportional navigation, lead pursuit, or custom guidance laws
+- Respects each missile's physical limits (G, speed, fuel)
+- PAC-3 MSE is the ultimate guidance challenge: must score <0.3m miss distance at Mach 10+ closure rates for kinetic kill
 
-#### AI-Guided: IRIS-T SLS / RBS 98 (Short-range SAM+)
-- **Blue AI controls in real-time** — IR imaging seeker
-- Same IRIS-T missile as the AAM variant, ground-launched with short booster
-- Slower than SLM (Mach 2 vs Mach 3) and shorter range (12 km vs 40 km)
-- **60G maneuverability** — most agile interceptor in the arsenal (thrust vector control)
-- **Niche**: Terminal-phase "knife fight" vs maneuvering targets. If a stealth cruise missile or HGV gets close and starts jinking, the SLS's 60G can out-turn anything.
-- **AI challenge**: Short range means late launch — Blue AI must guide it perfectly in a compressed timeframe
+---
 
-#### AI-Guided: IRIS-T SLM (Medium-range SAM)
-- **Blue AI controls in real-time** — acts as the missile's guidance computer
-- Faster (Mach 3) and more maneuverable (40G) than RBS 70
-- Longer range (40 km) — earlier engagement opportunity
-- Blue AI can use advanced guidance laws: proportional navigation, augmented PN, predictive intercept
-- **AI challenge**: Balance fuel/energy (steep maneuvers cost speed) while achieving intercept
+## Core Mechanics
 
-#### AI-Guided: Patriot PAC-2 GEM+ (Long-range SAM)
-- **Blue AI controls in real-time**
-- Fastest conventional interceptor (Mach 5)
-- Blast-fragmentation warhead (20m kill radius) — doesn't need direct hit
-- 70 km range — earliest possible engagement
-- **AI challenge**: Very fast closure rate means tiny margin for guidance errors
+### Physics — Hard Rules
 
-#### AI-Guided: Patriot PAC-3 MSE (Hit-to-Kill)
-- **Blue AI controls in real-time**
-- Kinetic kill — must score a near-direct hit (0.3m kill radius)
-- Extreme maneuverability (50G) compensates for tiny kill radius
-- **The only interceptor that can stop a ballistic missile in terminal phase**
-- **AI challenge**: Hardest guidance problem. Must hit a Mach 6 target within 0.3 meters using a Mach 5 interceptor. This is the pinnacle Blue AI skill test.
+Every projectile is a physical body subject to:
 
-### Control Level Summary
+1. **G-limit**: Hard max per weapon (e.g., IRIS-T SLS = 60G, HGV = 8G). AI cannot exceed.
+2. **Speed cap**: No weapon exceeds its rated max speed.
+3. **Gravity**: Always -9.81 m/s² on Z axis.
+4. **Drag**: Quadratic, with altitude-dependent air density. Faster + lower altitude = more drag.
+5. **Speed bleed from maneuvers**: Turning trades kinetic energy. Formula: `speed_loss_per_s = bleed_coefficient * (G_applied / max_G)²`. Tuned per weapon so that a sustained max-G turn visibly slows the missile.
+6. **Ground collision**: Any entity whose Z drops below terrain height is destroyed instantly.
 
-| Level | Red Weapons | Red AI Control | Blue Weapons | Blue AI Control |
-|-------|-------------|----------------|--------------|-----------------|
-| Pre-programmed | Drone, Ballistic | Set before launch, no changes | CIWS (Lvkv 90) | Predict trajectory, fire ballistic burst |
-| Waypoint-adjustable | Cruise (subsonic) | Modify waypoints mid-flight | — | — |
-| Terminal takeover | Stealth cruise | Waypoints + real-time terminal | — | — |
-| Full real-time | HGV | Direct control every tick | RBS 70, IRIS-T SLS, IRIS-T SLM, Patriot | Direct guidance every tick |
+### Fuel System — Two Types
+
+**Type A: Thrust-Powered (Fuel Timer)**
+Applies to: CIWS rounds, RBS 70, IRIS-T SLS, IRIS-T SLM, PAC-2, PAC-3, drones, all cruise missiles.
+
+- `fuel_seconds = range_max / cruise_speed` (see WEAPON_SPECS.md for values)
+- Each tick: `fuel -= dt` (constant burn, regardless of maneuvering)
+- Maneuvers don't burn extra fuel — but because turning ≠ straight-line progress, a maneuvering missile covers less ground per second of fuel spent
+- **When fuel = 0**: engine cuts → rapid deceleration from drag → self-destruct (ground collision or speed < minimum threshold)
+
+**Type B: Gravity/Kinetic-Driven (No Fuel Timer)**
+Applies to: Ballistic missiles, HGV.
+
+- No fuel countdown. These enter the simulation already in terminal/coast phase.
+- Operate on initial kinetic energy + gravity. Cannot generate thrust.
+- Maneuvers bleed SPEED (not fuel) via the same formula as above.
+- When speed drops below critical threshold (~500 m/s for HGV, ~300 m/s for ballistic) → loss of aerodynamic control → crash.
+- Gravity always acts — they're falling toward Earth by definition.
+- **Implication**: HGV can still reach target with fuel = 0. It's a pure energy-management game.
+
+### HP & Damage System
+
+Every threat has **HP**. Every interceptor has two damage values — **direct hit** and **proximity**.
+
+**Damage calculation** (per closest-approach event):
+```
+if dist < direct_hit_radius (typically 0.5m, or 0.3m for PAC-3):
+    damage = direct_hit_damage
+elif dist < prox_radius:
+    damage = prox_damage * (1 - dist / prox_radius)²
+else:
+    damage = 0
+```
+
+**When target HP ≤ 0**: destroyed.
+
+See WEAPON_SPECS.md for full HP and damage tables.
+
+**Key design consequence — PAC-3 MSE:**
+- Direct hit: 200 dmg (one-shots any target)
+- Proximity: only 5 dmg in 0.3m radius (it's a kinetic body, no warhead)
+- Forces Blue AI to guide PAC-3 with extreme precision. A near-miss is nearly wasted.
+
+**Alternative tactic — blast-frag stacking:**
+- Ballistic missile has 80 HP
+- 2× PAC-2 GEM+ proximity hits (40 each) = 80 dmg → guaranteed kill
+- But uses $6M instead of $4M for PAC-3 direct hit
+- Tradeoff: higher success probability vs higher cost
+
+### Magazine & Reload System
+
+Every launcher has:
+- **Magazine capacity**: max missiles ready to fire
+- **Inter-shot cooldown**: seconds between consecutive shots from the same launcher
+- **Full reload**: seconds to refill an empty magazine (after all inter-shot shots used up)
+
+Both Blue and Red are subject to magazine/reload. Red cannot zerg-rush by dumping entire budget at t=0 — the launchers physically can't fire that fast.
+
+See WEAPON_SPECS.md for full magazine and reload values.
+
+### Time Scaling — ÷10 Rule for Long Reloads
+
+To fit realistic strategic dynamics into a 4-minute demo, we apply:
+
+**Short timers (<60s)**: kept at real-world values
+- Inter-shot cooldowns, box magazine swaps, RBS 70 reload, etc.
+
+**Long timers (>60s)**: scaled ÷10
+- Patriot reload: 1800s real → 180s sim
+- IRIS-T SLM reload: 1200s real → 120s sim
+- Missile flight, physics, and combat timing all run at **real time**. Only out-of-combat logistics are accelerated.
+
+Rationale: At 1x game speed, a Mach 5 missile takes the realistic ~40 seconds to fly 70 km. Observers can see the engagement clearly. But a 30-minute Patriot reload doesn't fit in a demo, so we compress those out-of-combat timers only.
+
+**Optional UI speed slider**: 0.5x / 1x / 2x / 5x / 10x globally accelerates everything (physics + clocks proportionally). Useful for debugging (10x) or slow-mo showcase (0.5x).
+
+### Terrain
+
+The arena has a **heightmap** — terrain is solid and has elevation.
+
+- **Sea/water**: elevation 0 (the strait between north and south landmasses on the Boreal Passage map)
+- **Landmasses**: variable elevation — coastal plains, hills, ridges
+- **Ground collision**: `if entity.pos.z < terrain_height(entity.pos.x, entity.pos.y) → destroyed`
+- **Terrain following**: Cruise missiles at 50m altitude must follow terrain contours; if terrain rises above, they either climb or crash
+- **Tactical implications**:
+  - Mountains can block low-altitude approach routes
+  - Valleys provide cover for terrain-following cruise missiles
+  - Red AI must plan routes that avoid high terrain
+  - Red AI can exploit low valleys to delay detection by Blue
+
+**Implementation**: 2D heightmap grid (e.g., 512×512), bilinear interpolation for arbitrary (x,y) queries. Three.js renders it as a displacement-mapped plane.
+
+### AI Multitasking
+
+- **Blue AI**: No attention limit. Simultaneously makes strategic decisions AND guides all in-flight interceptors.
+- **Red AI**: No attention limit (for now). Can simultaneously control all HGVs and stealth-cruise terminal-phase missiles.
+- Both AIs evaluate every tick. Each can issue commands to all its active weapons in a single tick.
+- If Red-side multitasking becomes a balance issue, we'll add attention slots later.
 
 ---
 
@@ -122,113 +179,123 @@ Blue AI plays dual roles: **strategic commander** (decides what to fire at what)
 
 ### Blue Force (Defender)
 
-**Base HP**: The defended installation has hit points. When HP reaches 0, Blue loses.
-- Base HP: 1000 [tunable]
-- Damage per threat type:
-  - Drone: 50 damage
-  - Cruise missile (subsonic): 200 damage
-  - Stealth cruise missile: 200 damage
-  - Ballistic missile: 500 damage
-  - Hypersonic glide vehicle: 300 damage
+**Base HP**: Defended installation has hit points. HP = 0 → Blue loses.
+- Starting base HP: 1,000 [tunable]
+- Damage per threat type impact:
+  - Drone: 50
+  - Cruise missile (subsonic/stealth): 200
+  - Supersonic cruise: 250
+  - Ballistic missile: 500
+  - Hypersonic glide vehicle: 300
 
-**Starting Budget**: Blue starts with a fixed budget to purchase interceptors.
-- Starting funds: $50,000,000 [tunable]
-- Interceptor costs (see WEAPON_SPECS.md for details):
-  - CIWS burst: $2,000
-  - RBS 70 Bolide: $175,000
-  - IRIS-T SLS: $500,000
-  - IRIS-T SLM: $1,000,000
-  - Patriot PAC-2 GEM+: $3,000,000
-  - Patriot PAC-3 MSE: $4,000,000
+**Starting Budget**: $50,000,000 [tunable]
+- Blue spends this on interceptor loadout before the game starts
+- Mid-game: if budget remains, Blue can "buy" additional missiles to load into empty launchers (subject to reload CD)
 
-**Loadout Decision**: Blue AI must decide how to spend its budget before the game starts. This is a strategic layer:
-- All CIWS? Cheap but only works at 4 km range — anything fast gets through
-- All Patriot? Can stop anything but runs out after 12 shots
-- Mixed loadout? Best strategy — but what mix?
+**Loadout Decision** (pre-game strategy):
+- All CIWS? Cheap but only 4 km range — fast threats get through
+- All Patriot? Can stop anything but thin magazine
+- Mixed loadout? Best strategy, but what mix?
 
 ### Red Force (Attacker)
 
-**Starting Budget**: Red starts with a fixed budget to purchase threats.
-- Starting funds: calculated as a ratio of Blue's budget [tunable, e.g., 0.8× to 1.2×]
-- Threat costs:
-  - Drone (Shahed): $30,000
-  - Subsonic cruise missile: $1,500,000
-  - Stealth cruise missile: $2,500,000
-  - Supersonic cruise missile: $3,000,000
-  - Ballistic missile: $3,000,000
-  - Hypersonic glide vehicle: $10,000,000
+**Starting Budget**: calculated as a ratio of Blue's budget (e.g., 0.8–1.2×) [tunable]
 
-**Attack Planning**: Red AI must decide:
+**Attack Planning**:
 - What mix of weapons to buy
-- When to launch each wave
+- When to launch each wave (limited by launcher reload CDs)
 - What trajectories/waypoints to program
-- How to allocate real-time control attention (HGV and stealth cruise terminal need active piloting)
+- How to allocate real-time control attention (HGV, stealth-cruise terminal)
+
+**No opening zerg**: Magazine/reload limits mean Red cannot fire entire arsenal at t=0. Even with unlimited budget, HGV launcher can only fire 1 every 360s, drones only 5 per minute per launcher.
 
 ### Win Conditions
 
 | Outcome | Condition |
 |---------|-----------|
 | **Red wins** | Blue base HP reaches 0 |
-| **Blue wins** | Red exhausts all weapons and Blue base survives |
-| **Draw** | Both sides exhaust resources, Blue base damaged but alive |
+| **Blue wins** | Red budget = 0 AND all Red weapons spent AND Blue base HP > 0 |
+| **Draw** | Both sides exhausted, Blue base damaged but alive |
 
-### Economic Balance Levers [Tunable]
+### Balance Levers [Tunable]
 
 | Parameter | Effect |
 |-----------|--------|
 | Red/Blue budget ratio | Higher = harder for Blue |
 | Base HP | Higher = more forgiving for Blue |
-| Threat damage values | Higher = each leak is more costly |
-| Interceptor costs | Market pricing creates natural cost-effectiveness pressure |
+| Threat damage values | Higher = each leak more costly |
+| Interceptor costs | Market pricing creates cost-effectiveness pressure |
+| Reload scaling factor | Lower = more strategic depth, longer games |
+
+---
+
+## Real-Time Status Display (HUD)
+
+Frontend shows live data for every active missile:
+
+**Per-entity panel** (click to focus, or hover for tooltip):
+- Type + team
+- Current speed (m/s + Mach equivalent)
+- Current G-load (live computed from acceleration magnitude)
+- Fuel remaining (seconds + % bar) — or "gravity-driven" tag for ballistic/HGV
+- HP (bar with numeric)
+- Target (if any) + predicted intercept point
+- Distance to target
+
+**Global side panel** — scrollable list of all active entities with key stats (type, HP, fuel, speed).
+
+**AI decision log** — scrolling text showing:
+- "SLS #3 launched at Cruise #2 — cost ratio 0.33, 60G guidance engaged"
+- "PAC-3 #1 direct hit on Ballistic #1 — 200 damage, target destroyed"
+- "CIWS burst missed Drone #5 — target maneuvered after round was fired"
+
+**Score panel**:
+- Blue base HP
+- Blue budget remaining + ammo counts per launcher
+- Red budget remaining + launcher status (ready / reloading)
+- Running cost totals (spent vs destroyed-target-value)
+
+**Playback controls**:
+- Start / Pause / Reset
+- Speed slider: 0.5x / 1x / 2x / 5x / 10x
 
 ---
 
 ## Implementation Notes
 
-### Red AI Decision Layers
+### AI Decision Layers
 
-1. **Strategic (pre-game)**: Budget allocation — how many of each weapon type to buy
-2. **Operational (per-wave)**: Launch timing, wave composition, approach routes
-3. **Tactical (real-time)**: Guide HGV, adjust cruise missile waypoints, take over stealth cruise terminal phase
+**Red AI:**
+1. Strategic (pre-game): Budget allocation — weapon mix
+2. Operational (per-wave): Launch timing, wave composition, approach routes
+3. Tactical (real-time): Guide HGV, adjust cruise waypoints, take over stealth-cruise terminal phase
 
-### Blue AI Decision Layers
+**Blue AI:**
+1. Strategic (pre-game): Budget allocation — interceptor loadout
+2. Operational (per-threat): Weapon selection, launch timing based on cost-exchange + HP math
+3. Tactical (real-time): Guidance law per in-flight interceptor (PN, lead pursuit, or custom)
 
-1. **Strategic (pre-game)**: Budget allocation — interceptor loadout composition
-2. **Operational (per-threat)**: Which interceptor to fire at which threat, launch timing
-3. **Tactical (real-time)**: Missile guidance — proportional navigation, lead pursuit, or custom guidance for each interceptor in flight
+### Physics Implementation Summary
 
-### Physics Constraints — Hard Rules
+- Coordinate system: X=east, Y=north, Z=up, meters
+- Arena: 150 km × 150 km × 40 km high
+- Timestep: dt=0.05s
+- WebSocket streaming: 15 fps state snapshots
+- Integration: Euler (adequate at 20 Hz physics for this scale)
+- Guidance: True Proportional Navigation (N=4) as the default, AI may choose others
+- Kill check: per-tick closest-approach distance calculation
+- Terrain check: per-tick heightmap lookup + ground collision
 
-Every missile and projectile in the simulation is a physical body subject to:
+### File Structure (unchanged from initial plan)
 
-1. **G-limit**: Each weapon has a hard max G (e.g., IRIS-T SLS = 60G, HGV = 8G). The AI cannot exceed this, period.
-2. **Speed bleed from maneuvers**: Turning costs kinetic energy. Higher G = more speed loss. Formula: `speed_loss = drag_factor * G_applied * dt`. A hard 8G turn at Mach 5 will noticeably slow the missile.
-3. **Fuel / range limit**: Each weapon has finite fuel. When fuel runs out, the missile becomes ballistic (no more thrust, only gravity and drag). No infinite-range missiles.
-4. **Gravity**: Always -9.81 m/s² on Z. Affects all objects at all times.
-5. **Drag**: Quadratic drag with altitude-dependent air density. Faster = more drag. Lower altitude = denser air = more drag.
-6. **Speed cap**: No weapon can exceed its rated max speed. Thrust is limited.
-7. **Kill radius**: Intercept is determined by closest approach distance vs kill radius. No probability dice.
-8. **Ground collision**: Any missile that touches terrain = instant destruction. See Terrain section.
-9. **CIWS is ballistic**: Rounds follow a fixed trajectory after firing. No mid-course correction.
+See PLAN.md for full directory layout.
 
-### Terrain
+### Key Tunable Parameters
 
-The arena has a **heightmap** — terrain is solid and has elevation.
-
-- **Sea/water**: Elevation 0. The strait between north and south landmasses.
-- **Landmasses**: Variable elevation — flat coastal areas, hills, ridges.
-- **Ground collision**: `if entity.pos.z < terrain_height(entity.pos.x, entity.pos.y) → destroyed`. Missiles cannot tunnel underground.
-- **Terrain following**: Cruise missiles that fly at 50m altitude must actually follow terrain contours. If terrain rises above their flight altitude, they either climb or crash.
-- **Tactical implications**:
-  - Mountains can block low-altitude approach routes
-  - Valleys can provide cover for terrain-following missiles
-  - Red AI must plan cruise missile routes that avoid high terrain
-  - Blue AI should consider where terrain forces missiles to climb (easier intercept)
-
-**Implementation**: 2D heightmap grid (e.g., 512x512), bilinear interpolation for any (x,y) query. Three.js renders it as a displacement-mapped plane.
-
-### AI Multitasking Rules
-
-- **Blue AI**: No attention limit. Can simultaneously make strategic decisions (which weapon to fire) AND guide all in-flight interceptors. The AI is both the commander and every missile's guidance computer at once.
-- **Red AI**: No attention limit (for now). Can simultaneously control all HGVs and stealth cruise missiles in terminal phase. If this causes balance issues, we add attention slots later.
-- **Concurrency**: Both AIs evaluate every tick. Each AI can issue commands to all its active weapons in a single tick.
+All balance numbers in this doc should live in a single `backend/sim/config.py` for easy adjustment during playtesting:
+- Base HP, damage values
+- Budgets (Blue/Red)
+- Reload scaling factor
+- Speed bleed coefficients
+- Drag coefficients per weapon type
+- Terminal-takeover distance threshold
