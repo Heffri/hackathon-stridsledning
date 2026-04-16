@@ -81,7 +81,7 @@ class World:
             prev_vel = inter.state.vel.copy()
             target = self.threats.get(inter.target_id)
             target_state = target.state if target is not None else None
-            inter.step(dt, target_state)
+            inter.step(dt, target_state, self.t)
             inter._prev_pos = prev_pos
             inter._prev_vel = prev_vel
 

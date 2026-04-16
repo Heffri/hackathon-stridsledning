@@ -38,9 +38,11 @@ def run():
     dt = config.DT
     min_dist = float("inf")
     hit = False
+    t_now = 0.0
     for step in range(int(60 / dt)):
         threat.step(dt)
-        inter.step(dt, threat.state)
+        inter.step(dt, threat.state, t_now)
+        t_now += dt
         d = float(np.linalg.norm(threat.state.pos - inter.state.pos))
         min_dist = min(min_dist, d)
         if step % 40 == 0:

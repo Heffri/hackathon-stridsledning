@@ -18,12 +18,14 @@ class Team(str, Enum):
 class ThreatType(str, Enum):
     DRONE = "drone"
     CRUISE_SUB = "cruise_sub"
+    BALLISTIC = "ballistic"
 
 
 class InterceptorType(str, Enum):
     CIWS = "ciws"
     SHORT_SAM = "short_sam"
     MED_SAM = "med_sam"
+    LONG_SAM = "long_sam"
 
 
 @dataclass
@@ -68,6 +70,18 @@ THREAT_SPECS = {
         kill_radius=35.0,
         color="#ff5050",
     ),
+    # Terminal-phase ballistic missile (Iskander-class, simplified).
+    # cruise_speed here = initial re-entry/terminal speed; cruise_alt is
+    # unused (gravity + initial downward velocity drive the trajectory).
+    ThreatType.BALLISTIC: ThreatSpec(
+        kind=ThreatType.BALLISTIC,
+        cruise_speed=1800.0,
+        cruise_alt=0.0,
+        max_g=1.0,
+        drag_k=2.0e-6,
+        kill_radius=70.0,
+        color="#ff8020",
+    ),
 }
 
 # --- Interceptor specs ---
@@ -98,6 +112,17 @@ INTERCEPTOR_SPECS = {
         drag_k=6.0e-6,
         kill_radius=75.0,
         color="#fff089",
+    ),
+    # Long-range SAM (Patriot PAC-2 class). Mach 5, 70 km, large blast-frag.
+    # Only interceptor cleared to engage ballistic threats.
+    InterceptorType.LONG_SAM: InterceptorSpec(
+        kind=InterceptorType.LONG_SAM,
+        max_speed=1700.0,
+        max_g=25.0,
+        max_range=70_000.0,
+        drag_k=4.0e-6,
+        kill_radius=90.0,
+        color="#ffec40",
     ),
 }
 
