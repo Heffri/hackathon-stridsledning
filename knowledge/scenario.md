@@ -7,23 +7,33 @@
 
 ## Scenario Overview
 
-**Setting:** Coastal Sweden, defending a mixed military-civilian area including:
-- 1x Air base (Gripen home, fixed infrastructure)
-- 1x Strategic C2 node (fixed)
-- Mobile IADS assets (can relocate)
+**Setting:** "The Boreal Passage" — fictional two-nation scenario provided by Saab.
+- **Blue Force (Country X, North):** Defends northern territory across a sea strait
+- **Red Force (Country Y, South):** Attacks northward across The Boreal Passage
+- Map: km-based coordinate grid (1666.7 × 1300 km), SVG provided by Saab
+- Key locations: 3 air bases, 1 capital, 2 major cities per side; strait islands as forward outposts
+
+**Blue defended areas:**
+- Arktholm (Capital X) — (418, 95) km — critical, irreplaceable
+- Northern Vanguard Base — (198, 335) km — air base, high priority
+- Highridge Command — (838, 75) km — air base, high priority
+- Boreal Watch Post — (1158, 385) km — forward island outpost
+- Nordvik — (140, 323) km — major city
+- Valbrek — (1423, 213) km — major city
 
 **Blue Force starting disposition:**
 
 | Asset | Quantity | Location | Status |
 |-------|----------|----------|--------|
-| GlobalEye (S 106) | 1 | Orbiting 200 km west, 35,000 ft | Airborne, full sensors |
-| Gripen E | 6 | Air base (4 alert, 2 maintenance) | 4 ready, 2 unavailable |
-| Patriot PAC-3 MSE | 1 battery (8 launchers, 96 missiles) | Defending air base | Ready |
-| IRIS-T SLM | 2 batteries (24 missiles each) | Positions Alpha and Bravo | Ready |
+| GlobalEye (S 106) | 1 | Orbiting ~(500, 200) km, 35,000 ft | Airborne, full sensors |
+| Gripen E | 6 | Northern Vanguard Base (198, 335) — 4 alert, 2 maintenance | 4 ready |
+| Gripen F (two-seat) | 2 | Highridge Command (838, 75) — GlobalEye escort duty | Airborne |
+| Patriot PAC-3 MSE | 1 battery (8 launchers, 96 missiles) | Defending Arktholm capital (420, 130) | Ready |
+| IRIS-T SLM | 2 batteries (16 missiles each, Swedish config) | Alpha: (200, 370) Bravo: (1160, 420) | Ready |
 | IRIS-T SLS | 3 launchers (4 missiles each) | Escorting SAM sites | Ready |
-| RBS 70 NG | 4 teams | Dispersed around defended area | Ready |
-| Lvkv 90 | 3 vehicles | Mobile patrol | Ready |
-| EW Ground Station | 1 | Forward position | Ready (optional module) |
+| RBS 70 NG | 4 teams | Dispersed around defended areas | Ready |
+| Lvkv 90 | 4 vehicles | Forward patrol in strait area ~(800, 500) | Ready |
+| EW Ground Station | 1 | Forward position ~(600, 450) | Ready (optional module) |
 
 **Red Force attack plan** (unknown to Blue at start — revealed progressively):
 
@@ -39,8 +49,8 @@
 
 | Threat | Qty | Speed | Altitude | RCS | Guidance | From |
 |--------|-----|-------|----------|-----|----------|------|
-| Shahed-136 loitering munition | 40 | 45 m/s | 500-1000 m | 0.1 m² | **GPS only** | East, spread across 60 km front |
-| Orlan-10 recon UAV | 4 | 30 m/s | 3,000 m | 0.1 m² | GPS + operator | Behind Shahed wave |
+| Shahed-136 loitering munition | 40 | 45 m/s | 500-1000 m | 0.1 m² | **GPS only** | From Spear Point Base (918, 835), spread across strait |
+| Orlan-10 recon UAV | 4 | 30 m/s | 3,000 m | 0.1 m² | GPS + operator | Behind Shahed wave, probing Blue IADS |
 
 **Detection timeline:**
 - GlobalEye detects Shahed wave at ~200 km → **~74 min warning**
@@ -208,10 +218,14 @@ The demo can show two runs of the same scenario:
 
 ## Simulation Parameters for This Scenario
 
-### Map Area
-- Defended area center: ~58.5°N, 17.5°E (generic coastal Sweden, Gotland vicinity)
-- Threat axis: East (over Baltic Sea)
-- Map extent: ~400 km × 300 km
+### Map Area (Saab-provided "Boreal Passage")
+- Coordinate system: km-based grid (1666.7 × 1300 km)
+- Blue (Country X): North mainland (y < 400 km) + northern islands
+- Red (Country Y): South mainland (y > 1000 km) + southern islands
+- The Boreal Passage (strait): y ≈ 400-1000 km
+- Threat axis: South → North (Red attacks across the strait)
+- Red launch positions: Spear Point Base (918, 835), Firewatch Station (1398, 1072), Southern Redoubt (322, 1238)
+- SVG map file: `the-boreal-passage-map.svg` (viewBox 1000×780, scale ~0.6 SVG units per km)
 
 ### Timing
 - Total scenario duration: ~35-40 minutes simulated time
