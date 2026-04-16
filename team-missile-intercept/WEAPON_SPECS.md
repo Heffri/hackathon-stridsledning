@@ -1,5 +1,8 @@
 # Weapon Specifications — Full Reference
 
+> ⚠️ **This is the full arsenal for the final product.**
+> The first playable MVP uses a reduced subset (drone + subsonic cruise vs CIWS + RBS 70 + IRIS-T SLM). See **[DEMO_PLAN.md](DEMO_PLAN.md)**.
+
 > Data sourced from xingyi-rts/knowledge/ (manufacturer datasheets, public domain).
 > Values marked [est] are reasonable estimates where exact data is unavailable.
 > Reload times >60s are scaled ÷10 for demo pacing (see GAME_DESIGN.md for the scaling rule).

@@ -1,11 +1,16 @@
-# Missile Intercept: AI vs AI — Implementation Plan
+# Missile Intercept: AI vs AI — Full Implementation Plan
+
+> ⚠️ **This document describes the full final product vision.**
+> For the current scope we're building first (simplified playable MVP),
+> see **[DEMO_PLAN.md](DEMO_PLAN.md)**.
 
 ## Context
 
-Building a 3D missile intercept simulation for the Saab hackathon (April 25). Red AI launches threats, Blue AI selects and guides interceptors using real physics (proportional navigation, not dice rolls). We need to build the entire system from scratch.
+Building a 3D missile intercept simulation for the Saab hackathon (April 25). Red AI launches threats, Blue AI selects and guides interceptors using real physics (proportional navigation, not dice rolls). This plan covers the complete vision with all systems (HP, fuel, magazines, terrain, economy). We build it incrementally, starting with the demo scope.
 
 ## Related Documents
 
+- **[DEMO_PLAN.md](DEMO_PLAN.md)** — the simplified Milestone B scope we're building first
 - **[GAME_DESIGN.md](GAME_DESIGN.md)** — full mechanics (control levels, fuel, HP/damage, magazine, terrain, economy)
 - **[WEAPON_SPECS.md](WEAPON_SPECS.md)** — complete weapon parameters (performance, damage, economy, costs)
 

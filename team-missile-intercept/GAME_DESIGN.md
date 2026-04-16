@@ -1,5 +1,8 @@
 # Game Design — AI vs AI Missile Intercept
 
+> ⚠️ **This is the full final product design.**
+> The first playable MVP we're building is a simplified subset — see **[DEMO_PLAN.md](DEMO_PLAN.md)**.
+
 ## Core Concept
 
 Two AIs fight over a defended base. Red AI launches missiles/drones to destroy the base. Blue AI selects and guides interceptors to defend it. Both AIs operate within realistic physics constraints, limited magazines, and finite budgets. Every weapon is a physical body subject to G-limits, fuel burn, and speed-bleed from maneuvering.
