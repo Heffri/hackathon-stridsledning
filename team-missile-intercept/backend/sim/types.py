@@ -54,7 +54,7 @@ class InterceptorSpec:
 THREAT_SPECS = {
     ThreatType.DRONE: ThreatSpec(
         kind=ThreatType.DRONE,
-        cruise_speed=45.0,
+        cruise_speed=120.0,
         cruise_alt=800.0,
         max_g=2.0,
         drag_k=1.0e-5,
@@ -77,7 +77,7 @@ THREAT_SPECS = {
         kind=ThreatType.BALLISTIC,
         cruise_speed=1800.0,
         cruise_alt=0.0,
-        max_g=1.0,
+        max_g=3.0,
         drag_k=2.0e-6,
         kill_radius=70.0,
         color="#ff8020",

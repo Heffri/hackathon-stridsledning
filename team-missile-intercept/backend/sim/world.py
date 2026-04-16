@@ -40,9 +40,22 @@ class World:
         return eid
 
     # --- spawning ---
-    def spawn_threat(self, kind: ThreatType, start_xy, target_xy) -> int:
+    def spawn_threat(
+        self,
+        kind: ThreatType,
+        start_xy,
+        target_xy,
+        intermediate_waypoints=None,
+    ) -> int:
         eid = self._new_id()
-        t = Threat(eid, kind, start_xy, target_xy, self.t)
+        t = Threat(
+            eid,
+            kind,
+            start_xy,
+            target_xy,
+            self.t,
+            intermediate_waypoints=intermediate_waypoints,
+        )
         self.threats[eid] = t
         self.threats_spawned += 1
         self.events.append({"type": "threat_spawn", "id": eid, "kind": kind.value})

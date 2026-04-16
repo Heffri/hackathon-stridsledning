@@ -34,15 +34,27 @@ class Threat:
         "state",
         "spec",
         "waypoint",
+        "_wp_queue",
+        "_base_alt",
+        "_alt_phase",
+        "_elapsed",
         "_prev_pos",
         "_prev_vel",
         "_cruise_alt_override",
     )
 
-    def __init__(self, eid: int, kind: ThreatType, start_xy, target_xy, t_now: float):
+    def __init__(
+        self,
+        eid: int,
+        kind: ThreatType,
+        start_xy,
+        target_xy,
+        t_now: float,
+        intermediate_waypoints=None,
+    ):
         self.spec: ThreatSpec = THREAT_SPECS[kind]
-        # start_xy may be (x, y) or (x, y, z). For ballistic, Z is required
-        # (spawn altitude); for others it falls back to the spec cruise_alt.
+        # start_xy may be (x, y) or (x, y, z). When Z is supplied it is the
+        # actual spawn altitude; otherwise we fall back to spec.cruise_alt.
         spawn_z = (
             float(start_xy[2])
             if len(start_xy) >= 3
@@ -55,36 +67,71 @@ class Threat:
             [float(target_xy[0]), float(target_xy[1]), 0.0], dtype=np.float64
         )
 
+        # Build the waypoint sequence: [intermediate..., final_target].
+        # For cruise/drone the queue's final element is the base (target).
+        # For ballistic intermediate_waypoints is ignored.
+        all_wps = []
+        if kind != ThreatType.BALLISTIC and intermediate_waypoints:
+            for wp in intermediate_waypoints:
+                wz = float(wp[2]) if len(wp) >= 3 else spawn_z
+                all_wps.append(
+                    np.array([float(wp[0]), float(wp[1]), wz], dtype=np.float64)
+                )
+        all_wps.append(target.copy())
+
         if kind == ThreatType.BALLISTIC:
-            # Ballistic terminal phase: initial velocity aims at the target
-            # ground position with a small extra downward bias so the dive
-            # looks visibly steeper than a direct line. Gravity and the weak
-            # 1 G horizontal correction handle the rest of the trajectory.
-            to_target = target - start  # e.g. (0, -40000, -35000)
-            norm = float(np.linalg.norm(to_target))
-            if norm < 1e-6:
-                to_target = np.array([0.0, 0.0, -1.0])
-                norm = 1.0
-            utt = to_target / norm
-            # Extra vertical bias of -0.25 to steepen the re-entry dive.
-            launch_dir = utt + np.array([0.0, 0.0, -0.25])
-            launch_dir = launch_dir / float(np.linalg.norm(launch_dir))
+            # Terminal-phase ballistic trajectory: solve for the launch angle
+            # below horizontal that lands on the base given spawn altitude h
+            # and horizontal distance d at speed v, accounting for gravity.
+            #
+            # Projectile motion: x = v cos(θ) t;  z = h − v sin(θ) t − ½ g t²
+            # Setting z = 0 and eliminating t gives a quadratic in tan(θ):
+            #     (g d² / 2 v²) tan²θ + d tan θ + (g d² / 2 v² − h) = 0
+            # The positive-root (shallow-angle) solution is the natural
+            # re-entry trajectory. Direct "aim at target" launches fall short
+            # because the aim is steeper than the actual ballistic arc.
+            dx = float(target[0] - start[0])
+            dy = float(target[1] - start[1])
+            dh = float(np.sqrt(dx * dx + dy * dy))
+            h_drop = float(start[2])
+            v = self.spec.cruise_speed
+
+            if dh > 1.0 and h_drop > 0.0:
+                # Aim ~2% past the base to counter drag-induced speed loss
+                # during descent. Empirically tuned so mean impact lands
+                # within a few hundred metres of the base across the 30 km
+                # wide random spawn band.
+                dh_aim = dh * 1.02
+                k = config.GRAVITY * dh_aim * dh_aim / (2.0 * v * v)
+                disc = dh_aim * dh_aim - 4.0 * k * (k - h_drop)
+                if disc > 0.0:
+                    tan_theta = (-dh_aim + float(np.sqrt(disc))) / (2.0 * k)
+                    theta = float(np.arctan(tan_theta))
+                else:
+                    theta = float(np.arctan2(h_drop, dh_aim))
+                horiz_unit = np.array([dx / dh, dy / dh, 0.0])
+                launch_dir = (
+                    horiz_unit * float(np.cos(theta))
+                    + np.array([0.0, 0.0, -float(np.sin(theta))])
+                )
+            else:
+                launch_dir = np.array([0.0, 0.0, -1.0])
             vel = launch_dir * self.spec.cruise_speed
             self.waypoint = np.array([target[0], target[1], 0.0])
+            self._wp_queue = []
         else:
-            # Default: cruise-at-altitude, straight line toward target.
-            # Start and target snap to cruise_alt so the horizontal steering
-            # below keeps altitude stable.
-            start[2] = self.spec.cruise_alt
-            target[2] = self.spec.cruise_alt
-            direction = target - start
+            # Default: head toward the first waypoint (spawn altitude
+            # preserved — the altitude-hold loop will keep it there).
+            first_wp = all_wps[0]
+            direction = first_wp - start
             norm = float(np.linalg.norm(direction))
             if norm < 1e-6:
                 direction = np.array([0.0, -1.0, 0.0])
             else:
                 direction = direction / norm
             vel = direction * self.spec.cruise_speed
-            self.waypoint = target
+            self.waypoint = first_wp
+            self._wp_queue = all_wps[1:]
 
         self.state = EntityState(
             id=eid,
@@ -95,14 +142,24 @@ class Threat:
             spawn_t=t_now,
             color=self.spec.color,
         )
+        # Spawn altitude — the cruise / drone altitude-hold targets this
+        # baseline when not in pop-up or drift modes.
+        self._base_alt = spawn_z
+        # Phase offset so concurrently spawned drones don't all drift in
+        # lockstep; deterministically derived from the entity id.
+        self._alt_phase = (eid * 0.7393) % (2.0 * float(np.pi))
         # Instantaneous target cruise altitude. For CRUISE_SUB this is
-        # overridden during terminal pop-up; for other kinds it follows
-        # the spec value.
-        self._cruise_alt_override = self.spec.cruise_alt
+        # overridden during terminal pop-up; for drones it slowly oscillates
+        # around _base_alt; otherwise it follows _base_alt.
+        self._cruise_alt_override = spawn_z
+        # Per-threat elapsed sim time (advanced inside step). Used by the
+        # drone altitude-drift sine and any future time-of-flight effects.
+        self._elapsed = 0.0
 
     def step(self, dt: float) -> None:
         if not self.state.alive:
             return
+        self._elapsed += dt
         pos = self.state.pos
         vel = self.state.vel
 
@@ -141,21 +198,55 @@ class Threat:
             self.state.vel = new_vel
             return
 
-        # --- Cruise-sub terminal pop-up ---
-        # Subsonic cruise missiles pop up at ~5 km from base then dive into
-        # the target from ~600 m. This gives the intercept geometry a real
-        # vertical component instead of a flat sea-level run.
-        if self.spec.kind == ThreatType.CRUISE_SUB:
-            horiz_to_target = np.sqrt(
+        # --- Waypoint advance (cruise + drone) ---
+        # When close enough horizontally to the current waypoint, switch to
+        # the next one in the queue. The 3 km threshold matches the
+        # cruise-class turn radius and avoids overshoot-then-loop behaviour.
+        horiz_to_wp = float(
+            np.sqrt(
                 (self.waypoint[0] - pos[0]) ** 2
                 + (self.waypoint[1] - pos[1]) ** 2
             )
-            if horiz_to_target < 1_500.0:
-                self._cruise_alt_override = 150.0
-            elif horiz_to_target < 5_000.0:
-                self._cruise_alt_override = 600.0
+        )
+        if horiz_to_wp < 3_000.0 and self._wp_queue:
+            self.waypoint = self._wp_queue.pop(0)
+            horiz_to_wp = float(
+                np.sqrt(
+                    (self.waypoint[0] - pos[0]) ** 2
+                    + (self.waypoint[1] - pos[1]) ** 2
+                )
+            )
+
+        # --- Cruise-sub terminal pop-up (only on the final approach) ---
+        # Subsonic cruise missiles pop up at ~5 km from base then dive into
+        # the target from ~600 m. Trigger only when no more waypoints follow
+        # so intermediate S-pattern legs stay at base altitude.
+        if self.spec.kind == ThreatType.CRUISE_SUB:
+            if not self._wp_queue:
+                if horiz_to_wp < 1_500.0:
+                    self._cruise_alt_override = 150.0
+                elif horiz_to_wp < 5_000.0:
+                    self._cruise_alt_override = 600.0
+                else:
+                    self._cruise_alt_override = self._base_alt
             else:
-                self._cruise_alt_override = self.spec.cruise_alt
+                self._cruise_alt_override = self._base_alt
+
+        # Drones: hold steady at their spawn altitude during cruise, then
+        # dive onto the base during the final 2 km so the drone enters the
+        # base hit sphere. The earlier sine drift caused visible nose
+        # bobbing — removing it and keeping the altitude flat reads far
+        # calmer on screen.
+        elif self.spec.kind == ThreatType.DRONE:
+            if horiz_to_wp < 500.0:
+                self._cruise_alt_override = 0.0
+            elif horiz_to_wp < 2_000.0:
+                # Smooth ramp from base altitude (at 2 km out) to ground (at
+                # 500 m out).
+                frac = (horiz_to_wp - 500.0) / 1_500.0
+                self._cruise_alt_override = self._base_alt * frac
+            else:
+                self._cruise_alt_override = self._base_alt
 
         target_alt = self._cruise_alt_override
 
@@ -177,9 +268,10 @@ class Threat:
         else:
             steer = np.zeros(3)
 
-        # Altitude-hold to current target altitude (spring/damper).
+        # Altitude-hold to current target altitude (gentler spring/damper
+        # than the original 0.5/0.8 gains — stops drones from bobbing).
         alt_err = target_alt - pos[2]
-        alt_accel = np.array([0.0, 0.0, alt_err * 0.5 - vel[2] * 0.8])
+        alt_accel = np.array([0.0, 0.0, alt_err * 0.2 - vel[2] * 0.4])
 
         accel = steer + alt_accel
         accel = accel + physics.drag_accel(vel, self.spec.drag_k)

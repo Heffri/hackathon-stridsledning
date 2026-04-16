@@ -27,37 +27,33 @@ function buildModel(kind, team, color) {
   const g = new THREE.Group();
 
   if (kind === 'drone') {
-    // Shahed-136 analog: delta wing + stubby fuselage + V-tail + prop.
-    // Built with long flight axis = +Y (nose points +Y) so the generic
-    // orientation code works unchanged.
+    // Simple delta-wing planform with a tail-mounted propeller disc.
+    // Long flight axis = +Y (nose forward), wing plane in X-Y, thin in Z.
+    // The body is a 3-segment cone squashed flat so it reads as a flat
+    // triangle: nose at +Y, two wing corners trailing at -Y.
     const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.35, 1.8, 0.28),
+      new THREE.ConeGeometry(0.95, 1.9, 3),
       bodyMat,
     );
-    // Delta wing: span along X, chord along Y, thin along Z.
-    const wing = new THREE.Mesh(
-      new THREE.BoxGeometry(2.6, 0.7, 0.08),
-      bodyMat,
-    );
-    wing.position.set(0, 0, 0.05);
-    // V-tail: two small inclined fins at the tail (tail = -Y side)
-    const finL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.35, 0.5), darkMat);
-    finL.position.set(0.3, -0.7, 0.25);
-    finL.rotation.y = -0.35;
-    const finR = finL.clone();
-    finR.position.x = -0.3;
-    finR.rotation.y = 0.35;
-    // Propeller disc at nose (+Y). Cylinder default axis is +Y so a thin
-    // cylinder already reads as a disc perpendicular to flight direction.
+    body.scale.set(1.0, 1.0, 0.18); // squash on Z → flat triangle
+    // Tail propeller: a thin disc at the rear (-Y), perpendicular to flight.
+    // Cylinder default axis is +Y so we tilt it 90° so the disc face points
+    // backward (its plane is X-Z = perpendicular to Y).
     const prop = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.4, 0.4, 0.04, 12),
+      new THREE.CylinderGeometry(0.32, 0.32, 0.05, 12),
       darkMat,
     );
-    prop.position.set(0, 0.95, 0);
-    g.add(body, wing, finL, finR, prop);
+    prop.rotation.x = Math.PI / 2; // disc face perpendicular to flight axis
+    prop.position.set(0, -0.95, 0);
+    g.add(body, prop);
+    // Tag the propeller for spin animation in the update loop.
+    g.userData.propeller = prop;
   } else if (kind === 'cruise_sub') {
-    // Kalibr-class: long slender cylinder, cruciform mid-fins + tail fins,
-    // pointed nose.
+    // Kalibr-class: long slender cigar with two horizontal mid-wings and a
+    // cruciform tail. Long axis = +Y (nose forward).
+    // Box dims = (X span, Y chord, Z thickness). Wings lie flat in the X-Y
+    // plane (thin Z) so the missile silhouette reads as a horizontal cross
+    // when viewed from above.
     const body = new THREE.Mesh(
       new THREE.CylinderGeometry(0.2, 0.24, 2.6, 14),
       bodyMat,
@@ -67,18 +63,27 @@ function buildModel(kind, team, color) {
       bodyMat,
     );
     nose.position.y = 1.65;
-    // Mid-body cruciform wings
-    const wingH = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.05, 0.3), darkMat);
-    const wingV = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.8, 0.3), darkMat);
-    wingH.position.y = 0.1;
-    wingV.position.y = 0.1;
-    // Tail fins (smaller cruciform)
-    const tailH = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.04, 0.22), darkMat);
-    const tailV = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.9, 0.22), darkMat);
+    // Mid-body horizontal wings ONLY: span 2.4 (X), chord 0.6 (Y), thin
+    // along vertical (Z). They extend symmetrically to either side of the
+    // fuselage and lie flat — no vertical mid-body fin.
+    const midWing = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 0.6, 0.05),
+      darkMat,
+    );
+    midWing.position.set(0, 0.1, 0);
+    // Cruciform tail: horizontal fin (X span) + vertical fin (Z span) —
+    // both have the same chord along Y so they read as a "+" from behind.
+    const tailH = new THREE.Mesh(
+      new THREE.BoxGeometry(1.0, 0.35, 0.04),
+      darkMat,
+    );
+    const tailV = new THREE.Mesh(
+      new THREE.BoxGeometry(0.04, 0.35, 1.0),
+      darkMat,
+    );
     tailH.position.y = -1.15;
     tailV.position.y = -1.15;
-    g.add(body, nose, wingH, wingV, tailH, tailV);
-    // Cylinder long axis is already +Y, no rotation needed.
+    g.add(body, nose, midWing, tailH, tailV);
   } else if (kind === 'ballistic') {
     // Big fat reentry body: larger cylinder + sharp ogive nose + 4 grid fins
     const body = new THREE.Mesh(
@@ -219,6 +224,13 @@ class EntityMesh {
       flame.material.opacity = 0.55 + 0.25 * Math.sin(t * 22 + this.id);
       const s = 0.9 + 0.2 * Math.sin(t * 18 + this.id * 1.3);
       flame.scale.set(s, 1, s);
+    }
+
+    // Spin the drone propeller around the flight axis (its local +Y, which
+    // is the cylinder's "ring" axis after the rotation.x = π/2 we applied).
+    const prop = this.mesh.userData?.propeller;
+    if (prop) {
+      prop.rotation.y += 0.6; // ~ visual spin per frame
     }
 
     // Trail

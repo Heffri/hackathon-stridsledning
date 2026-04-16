@@ -104,3 +104,89 @@ html, body {
 }
 #log-red > div { color: #ff9a9a; }
 #log-blue > div { color: #9fe1ff; }
+
+/* --- Launch banner (centered, fades after ~2 s) --- */
+#launch-banner {
+  position: fixed;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: rgba(8, 16, 30, 0.78);
+  border: 1px solid rgba(255, 200, 80, 0.55);
+  box-shadow: 0 0 20px rgba(255, 180, 60, 0.25);
+  backdrop-filter: blur(8px);
+  padding: 12px 22px;
+  border-radius: 8px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: #ffe2a3;
+  text-align: left;
+  min-width: 320px;
+  max-width: 480px;
+  opacity: 1;
+  transition: opacity 0.45s ease-out, transform 0.45s ease-out;
+  z-index: 10;
+}
+#launch-banner.hidden {
+  opacity: 0;
+  transform: translate(-50%, -10px);
+}
+#launch-banner .lb-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #ffd060;
+  margin-bottom: 6px;
+}
+#launch-banner .lb-line {
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.92;
+  color: #fff1ce;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Ammo / magazine panel (top-right area) --- */
+.hud-block.ammo {
+  min-width: 180px;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+.ammo-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9fd0ff;
+  letter-spacing: 0.4px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.ammo-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #cfe0f5;
+}
+.ammo-row .ammo-name { opacity: 0.85; }
+.ammo-row .ammo-count {
+  color: #ffd86b;
+  font-weight: 600;
+}
+.ammo-row[data-kind="long_sam"] .ammo-count { color: #ffec40; }
+.ammo-row[data-kind="med_sam"] .ammo-count { color: #fff089; }
+.ammo-row[data-kind="short_sam"] .ammo-count { color: #ffcc33; }
+.ammo-row[data-kind="ciws"] .ammo-count { color: #ffd24a; }
+.ammo-row[data-kind="hit_to_kill"] .ammo-count { color: #ff8a8a; }
+.ammo-row.low .ammo-count { color: #ffdd44; }
+.ammo-row.empty .ammo-count {
+  color: #ff5060;
+  animation: ammoFlash 0.6s ease-in-out infinite alternate;
+}
+.ammo-row.reloading .ammo-count {
+  color: #9dd0ff;
+  font-size: 11px;
+}
+@keyframes ammoFlash {
+  from { opacity: 0.4; }
+  to   { opacity: 1.0; }
+}
