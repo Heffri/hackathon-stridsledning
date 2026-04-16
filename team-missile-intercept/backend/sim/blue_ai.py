@@ -29,6 +29,12 @@ RULES: Dict[ThreatType, List[InterceptorType]] = {
         InterceptorType.MED_SAM,
         InterceptorType.SHORT_SAM,
     ],
+    # Ballistic terminal phase: only LONG_SAM is fast enough to catch it.
+    # If somehow not in envelope, Blue AI passes — better than wasting a
+    # cheaper interceptor that cannot reach Mach 5+ closing geometry.
+    ThreatType.BALLISTIC: [
+        InterceptorType.LONG_SAM,
+    ],
 }
 
 

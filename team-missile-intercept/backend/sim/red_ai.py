@@ -24,6 +24,11 @@ def build_demo_waves() -> List[WaveSpec]:
     # similar timescales (~1-2 min from spawn) and stay in launch envelope.
     DRONE_SPAWN_Y = base_y + 15_000.0     # 15 km — in SHORT_SAM range
     CRUISE_SPAWN_Y = base_y + 40_000.0    # 40 km — in MED_SAM range
+    # Ballistic enters ~40 km north, altitude 35 km — close enough to be
+    # inside LONG_SAM 70 km envelope at wave time, and high enough for a
+    # clearly visible parabolic dive.
+    BALLISTIC_SPAWN_Y = base_y + 40_000.0
+    BALLISTIC_SPAWN_Z = 35_000.0
 
     def xs(n: int, width: float = 8_000.0):
         if n == 1:
@@ -55,6 +60,30 @@ def build_demo_waves() -> List[WaveSpec]:
                 + [(ThreatType.CRUISE_SUB, (base_x, CRUISE_SPAWN_Y))]
             ),
             label="Wave 3: Mixed",
+        ),
+        WaveSpec(
+            time=120.0,
+            threats=[
+                (
+                    ThreatType.BALLISTIC,
+                    (base_x, BALLISTIC_SPAWN_Y, BALLISTIC_SPAWN_Z),
+                ),
+            ],
+            label="Wave 4: Ballistic",
+        ),
+        WaveSpec(
+            time=150.0,
+            threats=(
+                [
+                    (
+                        ThreatType.BALLISTIC,
+                        (base_x - 4_000.0, BALLISTIC_SPAWN_Y, BALLISTIC_SPAWN_Z),
+                    ),
+                ]
+                + [(ThreatType.DRONE, (x, DRONE_SPAWN_Y)) for x in xs(2, width=8_000.0)]
+                + [(ThreatType.CRUISE_SUB, (base_x + 6_000.0, CRUISE_SPAWN_Y))]
+            ),
+            label="Wave 5: High-low mixed",
         ),
     ]
     return waves
