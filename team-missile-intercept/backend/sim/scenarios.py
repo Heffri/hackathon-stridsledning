@@ -33,6 +33,7 @@ class Scenario:
         snap["total_waves"] = len(self.red.waves)
         snap["red_log"] = self.red.log[-6:]
         snap["blue_log"] = self.blue.log[-6:]
+        snap["ammo"] = self.blue.launchers.fleet_status(self.world.t)
         return snap
 
 

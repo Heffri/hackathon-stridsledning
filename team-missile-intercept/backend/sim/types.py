@@ -37,6 +37,8 @@ class ThreatSpec:
     drag_k: float            # simplified drag coefficient (unitless, tuned)
     kill_radius: float       # hit radius used when something hits this
     color: str               # hex, client render hint
+    hp: int = 10             # hull points; 0 = dead
+    usd_cost: int = 30_000   # per-unit price, used for cost-exchange logic
 
 
 @dataclass
@@ -46,8 +48,14 @@ class InterceptorSpec:
     max_g: float             # g's (used to cap commanded accel)
     max_range: float         # m (launch envelope)
     drag_k: float            # drag coefficient
-    kill_radius: float       # m
+    kill_radius: float       # m — bounding radius used by CPA checks
     color: str
+    # Damage model (see WEAPON_SPECS.md):
+    damage_direct: int = 40       # damage if CPA < radius_direct
+    damage_prox: int = 20         # max damage at radius 0, falling quadratically to 0 at radius_prox
+    radius_direct: float = 0.5    # direct-hit radius in metres
+    radius_prox: float = 8.0      # proximity-fuse radius
+    usd_cost: int = 175_000       # cost-exchange reference price
 
 
 # --- Threat specs ---
@@ -60,6 +68,8 @@ THREAT_SPECS = {
         drag_k=1.0e-5,
         kill_radius=30.0,
         color="#ff3040",
+        hp=10,
+        usd_cost=30_000,
     ),
     ThreatType.CRUISE_SUB: ThreatSpec(
         kind=ThreatType.CRUISE_SUB,
@@ -69,10 +79,10 @@ THREAT_SPECS = {
         drag_k=5.0e-6,
         kill_radius=35.0,
         color="#ff5050",
+        hp=30,
+        usd_cost=1_500_000,
     ),
     # Terminal-phase ballistic missile (Iskander-class, simplified).
-    # cruise_speed here = initial re-entry/terminal speed; cruise_alt is
-    # unused (gravity + initial downward velocity drive the trajectory).
     ThreatType.BALLISTIC: ThreatSpec(
         kind=ThreatType.BALLISTIC,
         cruise_speed=1800.0,
@@ -81,11 +91,29 @@ THREAT_SPECS = {
         drag_k=2.0e-6,
         kill_radius=70.0,
         color="#ff8020",
+        hp=80,
+        usd_cost=3_000_000,
     ),
 }
 
 # --- Interceptor specs ---
+# kill_radius is the CPA gate used to decide "this tick produced a hit";
+# damage is resolved from the CPA distance using (damage_direct, damage_prox,
+# radius_direct, radius_prox) per WEAPON_SPECS.md.
 INTERCEPTOR_SPECS = {
+    # Note on radius_prox vs WEAPON_SPECS.md: real-world warhead fuse radii
+    # (5–20 m) are much smaller than typical miss distances from our
+    # grid-limited PN implementation (~20–60 m CPA). We scale each
+    # radius_prox up so the damage model interacts meaningfully with the
+    # guidance error; damage magnitudes are kept at spec, so the visible
+    # "needs multiple shots for hardened targets" tension survives.
+    # Design: kill_radius is the CPA-gate (roughly sized to typical PN
+    # miss distance). radius_prox is the damage-falloff scale — set larger
+    # than kill_radius so that even near-edge hits (CPA ≈ kill_radius)
+    # still deal a meaningful fraction of damage_prox via the
+    # (1 - d/radius_prox)² falloff. Bigger, harder targets need a wider
+    # warhead to be reliably lethal; this is where the LONG-SAM/PAC-2's
+    # blast-frag pattern advantage shows up.
     InterceptorType.CIWS: InterceptorSpec(
         kind=InterceptorType.CIWS,
         max_speed=1000.0,
@@ -94,6 +122,11 @@ INTERCEPTOR_SPECS = {
         drag_k=2.0e-5,
         kill_radius=45.0,
         color="#ffd24a",
+        damage_direct=15,
+        damage_prox=8,
+        radius_direct=1.0,
+        radius_prox=80.0,
+        usd_cost=2_000,
     ),
     InterceptorType.SHORT_SAM: InterceptorSpec(
         kind=InterceptorType.SHORT_SAM,
@@ -103,6 +136,11 @@ INTERCEPTOR_SPECS = {
         drag_k=1.0e-5,
         kill_radius=60.0,
         color="#ffcc33",
+        damage_direct=40,
+        damage_prox=20,
+        radius_direct=1.0,
+        radius_prox=120.0,
+        usd_cost=175_000,
     ),
     InterceptorType.MED_SAM: InterceptorSpec(
         kind=InterceptorType.MED_SAM,
@@ -112,9 +150,13 @@ INTERCEPTOR_SPECS = {
         drag_k=6.0e-6,
         kill_radius=75.0,
         color="#fff089",
+        damage_direct=50,
+        damage_prox=25,
+        radius_direct=2.0,
+        radius_prox=150.0,
+        usd_cost=1_000_000,
     ),
     # Long-range SAM (Patriot PAC-2 class). Mach 5, 70 km, large blast-frag.
-    # Only interceptor cleared to engage ballistic threats.
     InterceptorType.LONG_SAM: InterceptorSpec(
         kind=InterceptorType.LONG_SAM,
         max_speed=1700.0,
@@ -123,6 +165,11 @@ INTERCEPTOR_SPECS = {
         drag_k=4.0e-6,
         kill_radius=90.0,
         color="#ffec40",
+        damage_direct=80,
+        damage_prox=40,
+        radius_direct=3.0,
+        radius_prox=180.0,
+        usd_cost=3_000_000,
     ),
 }
 
@@ -139,6 +186,8 @@ class EntityState:
     target_id: Optional[int] = None
     spawn_t: float = 0.0
     color: str = "#ffffff"
+    hp: int = 0
+    hp_max: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -151,6 +200,8 @@ class EntityState:
             "target_id": self.target_id,
             "spawn_t": self.spawn_t,
             "color": self.color,
+            "hp": self.hp,
+            "hp_max": self.hp_max,
         }
 
 

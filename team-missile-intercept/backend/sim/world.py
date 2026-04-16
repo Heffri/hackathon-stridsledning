@@ -107,6 +107,10 @@ class World:
                 )
 
         # 3) collision: for each live interceptor, test CPA vs its target
+        # and resolve damage via the (direct, prox) model from
+        # WEAPON_SPECS.md. The interceptor is consumed regardless of whether
+        # the shot killed the target — that is the tension driving the
+        # "need another shot" scenarios. The target only dies when HP ≤ 0.
         for inter in list(self.interceptors.values()):
             if not inter.state.alive:
                 continue
@@ -119,12 +123,42 @@ class World:
                 target._prev_pos, target._prev_vel,
                 dt,
             )
+            # CPA gate uses kill_radius (≈ typical PN miss distance). Keep
+            # it tighter than radius_prox so the damage event fires at the
+            # actual pass — otherwise the damage triggers on the incoming
+            # leg at still-large separation and the interceptor is consumed
+            # before the closest approach is reached.
             kr = max(inter.spec.kill_radius, target.spec.kill_radius)
-            if d_min <= kr:
-                # Hit!
-                hit_pos = (inter.state.pos + target.state.pos) * 0.5
-                self.explosions.append(Explosion(pos=hit_pos, t=self.t))
-                inter.state.alive = False
+            if d_min > kr:
+                continue
+
+            # Resolve damage from CPA distance. The spec's "(1 - d/r)²"
+            # quadratic falloff combined with real-warhead-scale fuse radii
+            # (5-20 m) leaves almost every hit with 1-2 damage given our
+            # PN's typical 20-80 m CPA. We instead use a linear falloff with
+            # radius_prox scaled up — keeps the "direct vs prox" design
+            # intent and spec damage values intact while giving the demo
+            # legible 1-3 shot kills.
+            spec = inter.spec
+            if d_min < spec.radius_direct:
+                damage = spec.damage_direct
+                hit_kind = "direct"
+            elif d_min < spec.radius_prox:
+                fall = 1.0 - (d_min / spec.radius_prox)
+                damage = max(1, int(round(spec.damage_prox * fall)))
+                hit_kind = "prox"
+            else:
+                damage = 0
+                hit_kind = "miss"
+
+            hit_pos = (inter.state.pos + target.state.pos) * 0.5
+            target.state.hp = max(0, target.state.hp - damage)
+            inter.state.alive = False  # interceptor consumed either way
+            # Always show a small flash at the CPA point so near-misses
+            # still read on screen.
+            self.explosions.append(Explosion(pos=hit_pos, t=self.t))
+
+            if target.state.hp <= 0:
                 target.state.alive = False
                 self.intercepts += 1
                 self.events.append(
@@ -134,6 +168,21 @@ class World:
                         "threat": target.state.id,
                         "pos": [float(hit_pos[0]), float(hit_pos[1]), float(hit_pos[2])],
                         "miss_distance": d_min,
+                        "damage": damage,
+                        "hit_kind": hit_kind,
+                    }
+                )
+            else:
+                self.events.append(
+                    {
+                        "type": "damage",
+                        "interceptor": inter.state.id,
+                        "threat": target.state.id,
+                        "pos": [float(hit_pos[0]), float(hit_pos[1]), float(hit_pos[2])],
+                        "miss_distance": d_min,
+                        "damage": damage,
+                        "hit_kind": hit_kind,
+                        "hp_remaining": target.state.hp,
                     }
                 )
 

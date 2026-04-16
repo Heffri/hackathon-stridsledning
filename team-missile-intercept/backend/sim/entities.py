@@ -141,6 +141,8 @@ class Threat:
             vel=vel,
             spawn_t=t_now,
             color=self.spec.color,
+            hp=self.spec.hp,
+            hp_max=self.spec.hp,
         )
         # Spawn altitude — the cruise / drone altitude-hold targets this
         # baseline when not in pop-up or drift modes.
