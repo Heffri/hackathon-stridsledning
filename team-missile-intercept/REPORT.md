@@ -105,3 +105,84 @@ cd backend && python test_pn.py
 ## 备注：未做的事（主动延后，不是遗漏）
 
 按 DEMO_PLAN.md 表格："HP、燃料、弹匣、地形、经济、stealth/HGV/ballistic、Red Levels 2-5、per-entity panel、AI decision log 面板、seeker cone、cost-exchange 计算" — 全部未实现，为 Milestone C+ 保留。此 Milestone B 交付物只覆盖"核心循环能跑通"，完全符合 DEMO_PLAN 的界定。
+
+---
+
+# Milestone B+ Update — 立体化改造
+
+目标：把"3D 渲染的 2D 战斗"升级成真正使用 Z 轴的立体战场。重点是 VLS 垂直发射、弹道导弹高空俯冲、巡航导弹末端 pop-up，以及突出 3D 感的默认相机视角。
+
+## 代码变化摘要
+
+| 文件 | 变化行数 | 核心逻辑变化 |
+|------|---------|--------------|
+| `backend/sim/types.py` | +25 | 新增 `ThreatType.BALLISTIC`、`InterceptorType.LONG_SAM` 枚举；在 `THREAT_SPECS` / `INTERCEPTOR_SPECS` 中加入对应 spec（ballistic 1800 m/s / kill_radius 70m / 颜色 `#ff8020`；LONG_SAM 1700 m/s / 25G / 70km / kill_radius 90m / 颜色 `#ffec40`） |
+| `backend/sim/entities.py` | 重写 (+180/-45) | `Threat.__init__` 对 ballistic 走单独分支计算初始下冲向量；`Threat.step` 按类型分派：ballistic 用重力主导 + 1G 横向修正 + 无高度保持；cruise_sub 在 <5km/<1.5km 水平距离处把目标高度抬升到 600m/150m（末端 pop-up）。`Interceptor.__init__` 对 SHORT_SAM/MED_SAM/LONG_SAM 三种 SAM 启用 VLS 初始垂直速度矢量；`Interceptor.step` 新增 boost phase：前 1.5s 禁用 PN，仅做强上推 + 重力 + 阻力；boost 结束后切换到 PN，且 sustain thrust 方向改为 LOS-to-target（避免 PN 与垂直推力互相打架）。Interceptor.step 签名加 `t_now` 参数 |
+| `backend/sim/world.py` | +1/-1 | `inter.step()` 调用传入 `self.t` 以支持 boost-phase 判定 |
+| `backend/sim/red_ai.py` | +29 | 新增常量 `BALLISTIC_SPAWN_Y=base_y+40km` / `BALLISTIC_SPAWN_Z=35km`；Wave 4 (T+120s) 单发 ballistic；Wave 5 (T+150s) 高低空混合（1 ballistic + 2 drones + 1 cruise）。`threats` 元组从 `(kind, (x,y))` 扩展到 `(kind, (x,y,z))` 对 ballistic 类型 |
+| `backend/sim/blue_ai.py` | +6 | `RULES` 新增 `BALLISTIC: [LONG_SAM]`；不放 fallback，宁可漏过也不浪费 SHORT/MED SAM |
+| `frontend/js/scene.js` | +14/-7 | 相机默认位置 `(18, 25, 55)`、OrbitControls target `(0, 6, -30)`，形成从南偏东、中高空向北俯视略仰视的视角，让 35km 高空 ballistic 明显落在地平线上方 |
+
+新增测试脚本：
+- `backend/test_ballistic.py` — 60 行独立 Python 脚本：生成 ballistic + LONG_SAM 并离线推进 30 秒，打印 Z 轴轨迹。当前输出：t=16.8s 拦截成功，miss 距离 86m，拦截点 Z=10.7km。
+- `backend/test_full_scenario.py` — 运行完整场景 200 秒，打印最终 stats。当前输出：spawned=15 intercepts=15 leaked=0（所有 5 波都全部拦截）。
+
+## 启动命令
+
+不变：
+```bash
+cd "C:/Users/xingyi chen/Documents/GitHub/hackathon-stridsledning/team-missile-intercept/backend"
+pip install -r requirements.txt
+python server.py
+# 浏览器打开 http://localhost:8000/
+```
+
+离线验证（不启动 server）：
+```bash
+cd backend && python test_ballistic.py     # ballistic + LONG_SAM 拦截
+cd backend && python test_full_scenario.py # 完整 5 波场景
+```
+
+## 验证清单（浏览器应能看到的 Z 轴表现）
+
+1. **默认视角** — 打开页面即看到偏南偏上的视角。基地在视野偏下方，地平线在画面中间，天空占上半屏，地面网格延伸向画面深处。这让高空 ballistic 不会"从屏幕顶部之外"出现。
+2. **Wave 1 (T+2s) — VLS 垂直发射**：SHORT_SAM 从基地几乎垂直窜上天（1.5 秒内到 ~400-500m 高度），然后才明显向北弯向 drone。尾迹呈标志性的"L 形"。
+3. **Wave 2 (T+35s) — Cruise pop-up**：60m 贴地巡航的 cruise 在距离基地 5km 时抬升到 600m，1.5km 处下探到 150m；Wave 2 的 2 枚 med_sam 因 pop-up 后几何匹配改善，全部命中。
+4. **Wave 3 (T+75s) — 多目标并行** + pop-up：4 drones + 1 cruise。原 REPORT 提到的"cruise 漏网"问题应已解决（测试显示 0 leak）。
+5. **Wave 4 (T+120s) — Ballistic**：橙色 (`#ff8020`) 弹道导弹从基地正北 40km、Z=35000m 点亮。初始下冲速度 1800 m/s，重力作用下明显抛物线俯冲。与此同时，LONG_SAM (亮黄色 `#ffec40`) 从基地垂直窜上，在 ~10km 高度与 ballistic 相遇爆炸。整个拦截过程清晰显示 Z 轴上的 3D 几何。
+6. **Wave 5 (T+150s) — 高低空夹击**：1 个 ballistic（上方）+ 2 drones（800m）+ 1 cruise（60m，末端 pop-up）。视觉上四个高度层同时在场。
+7. **Z 坐标分层观察**：Start 之后的任意时刻，你应该能在画面里看到：地表附近的 drone（~800m）、低空贴地的 cruise（60-600m）、中空飞行的 SAM 拦截弹（几 km）、天上砸下来的 ballistic（35km→地面）。这是"3D 战斗"的关键视觉凭证。
+8. **相机控制**：OrbitControls 保留；鼠标拖拽可以从俯视转侧视、远近缩放，验证战场确实是立体的而不是平面。
+
+## 技术决策
+
+1. **Ballistic 初始方向用 `normalize(target - start) + (0, 0, -0.25)` 而非规范示例的 `(0, -0.3, -1)`**。原因：在 40km 北 + 35km 高的刷新点上，`(0, -0.3, -1)` 归一化后水平速度只有 517 m/s，配合 26 秒下落时间仅能向前飞 10 km，会落在距基地 30km 的地方（远远偏离）。改用"瞄准基地 + 额外 0.25 垂直偏置"后，ballistic 在 t≈16.8s 被 LONG_SAM 成功拦截，几何戏剧性 + 拦截可行性兼得。
+2. **Ballistic 的 `drag_k = 2e-6`**。选值基于：空气密度在 10km+ 高空比海平面薄 ~4x，使用比 cruise_sub (5e-6) 低 2-3 倍的系数；同时让终端速度 ~1800 m/s 不会被阻力显著衰减。实测 20 秒下落速度从 1800 → 1830（重力微增），符合"Mach 5.5 再入"观感。
+3. **Ballistic `max_g = 1`**。规范要求。实测 1G 横向修正对于 20+ 秒弹道只能累计 ~2km 位移，不足以大幅调整落点，但足够让弹道弯向基地（demo 用足够）。
+4. **Cruise pop-up 阈值固定 5km/1.5km，高度 600m/150m**。未做可调参数。5km 是肉眼可见"开始爬升"的距离，1.5km 是俯冲命中基地最后一击。实测 Wave 2/3 全部 cruise 命中（之前 REPORT 里 Wave 3 漏 1 枚 cruise 的问题因此解决）。
+5. **VLS boost 1.5s 固定**。规范要求。实测 MED_SAM 在 1.5s 结束时到达 ~400m altitude，SHORT_SAM 到 ~300m。视觉上足够突出"垂直爬升"阶段。
+6. **Boost 期间仅做强上推 + 重力 + 阻力，不做 PN**。实现时让 boost 阶段的目标速度是 `0.7 × max_speed` 沿（0.2 水平 + 1.0 垂直）方向，加速度上限临时放大到 `1.5 × max_g`（允许更"暴力"的垂直爬升）。
+7. **Post-boost 关键修正：sustain thrust 改为沿 LOS-to-target 方向**，而非沿当前速度方向。这是实现 VLS 过程中踩到的核心坑：如果仍沿速度方向加速，当 boost 结束时速度是垂直的，加速度也会强化垂直方向，PN 的横向修正追不上——结果是 MED_SAM 拉成一个 25km 高的巨大弧线才转向目标，演示时间已经结束。改成沿 LOS 方向后，PN 和推力协同工作，SHORT_SAM 对远端 drone 的拦截时间从 >60s 降到 27s。
+8. **Wave 4 只放 1 发 ballistic**。ballistic 刷新耗费 CPU/视觉预算大，1 发足够看到拦截效果；多发会堆积渲染。
+9. **Wave 5 的 ballistic 从 `base_x - 4000` 位置刷新**（非正北），制造一个侧向偏移，测试 LONG_SAM 对非正上方来袭目标的拦截能力。
+10. **LONG_SAM 发射时机**：Blue AI 的现有逻辑"当威胁进入 `max_range × 1.1` 立即发射"对 ballistic 已经足够——ballistic 刷新时 3D 距离 53km < 77km 阈值，当 tick 就发射。规范要求"不等"，自然满足。
+11. **相机参数**：位置 `(18, 25, 55)`、target `(0, 6, -30)`，对应世界坐标 18km 东、25km 高、向南 55km，注视点在基地北方 30km、高度 6km。这个组合让 35km 高空 ballistic 从画面上方 1/3 处进入视野并向下画弧线。若需更夸张立体感可把 target.y 调到 8-10。
+
+## 已知问题 / 遗留 TODO
+
+1. **VLS boost 阶段尾迹在 1.5s 内会从原点拉出一条很短的垂直线**，因为 trailPoints 只采样 15fps × 1.5s ≈ 22 个点。视觉够看，但不如 SAM 稳态飞行阶段的尾迹飘逸。可在前端增加 boost-phase 期间的尾迹插值。
+2. **Ballistic 刷新后 1-2 帧内 Blue AI 就打出 LONG_SAM**，没有"发现 → 评估 → 决策"的节奏感。若要体现 C2 决策时间可在 blue_ai 里加一个 0.5-1s 的 detection delay。
+3. **Wave 5 的 ballistic 如果 LONG_SAM 在 Wave 4 的 ballistic 上消耗且未命中，第二枚 ballistic 仍会分配 LONG_SAM（目前无弹药追踪）**。Milestone C+ 引入 magazine 后需要处理"LONG_SAM 弹匣打空就漏 ballistic"的情况。
+4. **当 ballistic 落点在基地北 10+ km**（未被拦截时），当前 `leaked` 计数逻辑只在距基地 250m 内触发，所以远落的 ballistic 会一直到撞地 Z=0 才 alive=False，但不计 leaked。UI 显示上不会弹 leak 日志。可接受。
+5. **VLS boost 的上推加速度上限放到了 `1.5 × max_g`**，比 spec 的 `max_g` 高 50%。是为了让垂直爬升更戏剧化；如果要严格遵守 max_g，可以把这个 1.5 倍改回 1.0，代价是爬升更慢、初期 Z 轴观感没那么震撼。
+6. **scene.js 默认视角对于只关心低空 drone 的玩家来说偏高**。如果后续 demo 专门做近程防御演示，这个视角需要再往下拉。目前是"覆盖所有高度"的折中。
+7. **test_pn.py 的 MED_SAM 命中时间从原 24.5s 延长到 27.25s**。boost phase 浪费了 1.5s 加之 post-boost 需要 turn-around。miss 距离从 71m 改善到 16.6m（因为新 sustain-thrust 方向让终端几何更好）。整体净收益正向。
+8. **Ballistic 下落速度比真实 Iskander (Mach 6 ~2040 m/s) 略低 (1800 m/s)**。保留空间给未来的 HGV (Mach 5+ 机动性 8G) 和真正 Mach 6 ballistic 终端阶段。
+
+## 给下一个 session 的建议（按优先级）
+
+1. **加 HP/damage 系统（最优先）**。现在拦截是二元"在 kill_radius 内就死"。按 WEAPON_SPECS.md 的 direct_hit / prox / prox_radius 三档实现，让 PAC-3 的"200 直接伤害 / 5 擦边伤害"反差真正成立。预期改动：`EntityState` 加 `hp` 字段，`world.step` 的命中逻辑里按公式减 HP，只有 HP≤0 才 `alive=False`。
+2. **引入 supersonic cruise + stealth cruise**。二者都是 ~260-900 m/s、低空 14km+ 高空混合，和当前的 subsonic cruise 形成三层差异。代码成本很低（复制 CRUISE_SUB spec，调 speed/alt/rcs），但能显著增加 demo 武器多样性。
+3. **Magazine / 装弹 CD**。LONG_SAM 一个发射架 4 发、120s 装弹。引入后 Wave 4/5 必须权衡"ballistic 来了是否开火"。可以把 `InterceptorSpec` 加 `magazine_size + reload_s`，`blue_ai` 维护每种武器的剩余数和下次可用时间。
+4. **HGV (Level 5 红方 AI)**。真正的实时规避机动。需要在 Threat 里加"侦测附近 interceptor → 侧向规避"逻辑。但 HGV 也需要 kinetic energy bleed 机制（机动 → 速度下降 → 最终滑落）。是较大改动，留给 Milestone D。
+5. **Per-entity 状态面板 + AI decision log 面板**。用 Raycaster 点击实体显示详情。UI 框架已在，改 entities.js 加 click handler 和一个 `#status-panel` div 即可。这对 4 分钟 demo 的"透明度"评分帮助很大。
