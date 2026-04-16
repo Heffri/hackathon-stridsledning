@@ -26,16 +26,23 @@ export function createScene(canvas) {
     0.1,
     2000,
   );
-  // Pull camera south and up looking at the base. Three.js Y=up; we keep
-  // sim (X=east, Y=north, Z=up) and map to three (X=east, Y=up, -Z=north).
-  // We handle the axis swap in entities.js (see worldToScene()).
-  camera.position.set(0, 55, 95);
-  camera.lookAt(0, 0, 0);
+  // Pull camera south of the base, medium altitude (~25 km world → 25 units
+  // at SCALE=0.001), looking north and slightly up so high-altitude entities
+  // (ballistic threats at 30-40 km) clearly arc down from above the horizon.
+  // Three.js axes: +X=east, +Y=up, -Z=north. Camera is south-east of base
+  // looking toward the deep arena.
+  // Position: 18 east, 25 up, 55 south. OrbitControls target slightly north
+  // and above the base so the battle volume fills the view.
+  camera.position.set(18, 25, 55);
+  camera.lookAt(0, 6, -30);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
-  controls.target.set(0, 0, 0);
+  // Aim the orbit pivot a bit into the arena and up — this tilts the
+  // default view upward so ballistics entering from 35 km altitude are
+  // framed above the horizon line, not at screen top edge.
+  controls.target.set(0, 6, -30);
 
   // Lighting
   const amb = new THREE.AmbientLight(0x5577aa, 0.5);
