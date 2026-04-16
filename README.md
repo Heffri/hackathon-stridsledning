@@ -4,6 +4,13 @@ Prototype of an intelligent command & control decision support system for Swedis
 
 **Saab + KTH Hackathon** | Hack Day: April 25, 2026
 
+Our concept: We're building an AI-powered battle management decision support system for air defense. It takes in real-time threat data — incoming missiles, drones, aircraft — and recommends optimal resource allocation to the commander: which assets to deploy, what weapons to use, and critically, when not to shoot (to conserve ammo for higher-priority threats).
+
+How we'll demo it: A web-based interface styled like an RTS game — a map showing blue force assets and incoming red force threats in real-time. The AI engine analyzes each threat wave and displays recommendations. We'll run the same scenario twice: once with naive decisions (everything gets shot at, ammo runs out, defenses collapse) and once with AI-assisted decisions (smart triage, EW jamming, evasion, cost-effective intercepts). The contrast sells the value.
+
+The AI's key insight: A system that recommends "don't shoot, just move" against cheap GPS-guided drones — saving your expensive missiles for the cruise missiles coming 20 minutes later — is smarter than one that fires at everything.
+
+
 ## Knowledge Base
 
 The `knowledge/` directory contains structured domain reference data for building the simulation:
