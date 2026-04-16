@@ -42,37 +42,40 @@ team-missile-intercept/
 
 ## Weapon Specs
 
+See **[WEAPON_SPECS.md](WEAPON_SPECS.md)** for full data with real-world analogs, USD pricing, and sources.
+
 ### Red Arsenal (Threats)
 
-| Type | Speed | Max G | Kill Radius | Value |
-|------|-------|-------|-------------|-------|
-| Suicide drone | 55 m/s | 3G | 50m | 2 |
-| Subsonic cruise missile | 260 m/s | 2G | 200m | 30 |
-| Supersonic cruise missile | 900 m/s | 4G | 200m | 50 |
-| Ballistic missile (terminal) | 2000 m/s | 1G | 500m | 100 |
-| Hypersonic glide vehicle | 1700 m/s | 8G | 300m | 120 |
+| Type | Real Analog | Speed | Max G | USD/Unit |
+|------|-------------|-------|-------|----------|
+| Suicide drone | Shahed-136 | 45 m/s | 2G | ~$30K |
+| Subsonic cruise missile | Kalibr-class | 260 m/s | 2G | ~$1.5M |
+| Supersonic cruise missile | BrahMos-class | 900 m/s | 4G | ~$3M |
+| Ballistic missile (terminal) | Iskander SRBM | 2,000 m/s | 1G | ~$3M |
+| Hypersonic glide vehicle | Kinzhal/DF-ZF | 1,700 m/s | 8G | ~$10M |
 
 ### Blue Arsenal (Interceptors)
 
-| Type | Speed | Max G | Kill Radius | Cost | Range |
-|------|-------|-------|-------------|------|-------|
-| CIWS | 1200 m/s (instant) | N/A | 5m | 2 | 4 km |
-| Short-range SAM | 680 m/s | 30G | 10m | 15 | 12 km |
-| Medium-range SAM | 1020 m/s | 40G | 15m | 50 | 40 km |
-| Long-range SAM | 1700 m/s | 25G | 20m | 400 | 70 km |
-| Hit-to-kill | 2000 m/s | 50G | 1m | 800 | 60 km |
+| Type | Real Analog | Speed | Max G | Range | USD/Shot |
+|------|-------------|-------|-------|-------|----------|
+| CIWS | Lvkv 90 (Bofors 3P) | 1,000 m/s | N/A | 4 km | ~$2K |
+| Short-range SAM | RBS 70 NG (Saab) | 680 m/s | 20G | 9 km | ~$175K |
+| Medium-range SAM | IRIS-T SLM | 1,020 m/s | 40G | 40 km | ~$500K |
+| Long-range SAM | Patriot PAC-2 GEM+ | 1,700 m/s | 25G | 70 km | ~$3M |
+| Hit-to-kill | Patriot PAC-3 MSE | 1,700 m/s | 50G | 60 km | ~$4M |
 
 ### Blue Ammo Budget
 
-| Type | Count |
-|------|-------|
-| CIWS | 200 |
-| Short-range SAM | 24 |
-| Medium-range SAM | 12 |
-| Long-range SAM | 4 |
-| Hit-to-kill | 2 |
+| Type | Count | Total Value |
+|------|-------|-------------|
+| CIWS bursts | 14 | ~$28K |
+| Short-range SAM | 16 | ~$2.8M |
+| Medium-range SAM | 12 | ~$6M |
+| Long-range SAM | 4 | ~$12M |
+| Hit-to-kill | 2 | ~$8M |
+| **Total** | **48** | **~$28.8M** |
 
-Limited ammo forces the Blue AI to make cost-efficient decisions. Wasting a long-range SAM on a drone means it won't be available for a ballistic missile later.
+Limited ammo forces the Blue AI to make cost-efficient decisions. The AI computes real-time cost-exchange ratios (interceptor cost / threat cost) and refuses to fire Patriot ($4M) at a drone ($30K). See WEAPON_SPECS.md for full cost matrix.
 
 ## Blue AI Decision Logic
 
