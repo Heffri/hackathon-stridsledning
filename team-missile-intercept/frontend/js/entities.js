@@ -8,6 +8,34 @@ import { worldToScene, SCALE } from './scene.js';
 
 const TRAIL_LEN = 60;
 
+// Seeker scanning cone: forward-pointing translucent cone attached to
+// every interceptor except CIWS. Half-angle 8°, length 10 scene units
+// (= 10 km at SCALE=0.001). Default cyan, opacity 0.12; shifts to
+// orange / 0.30 opacity when distance-to-target drops below 2 km
+// (update logic lives in EntityMesh.update).
+//
+// Cone orientation: ConeGeometry default has apex at +Y=+h/2 and base
+// at -Y=-h/2. We rotate X by π to flip, then translate so apex sits at
+// local Y=0 and base extends to +Y=length. Caller positions the cone
+// at the nose tip; the cone then opens "forward" along the +Y body
+// axis exactly like the mesh convention.
+function makeSeekerCone() {
+  const len = 10;
+  const halfAngleRad = (8 * Math.PI) / 180;
+  const baseR = len * Math.tan(halfAngleRad);
+  const geom = new THREE.ConeGeometry(baseR, len, 16, 1, true);
+  geom.rotateX(Math.PI);            // apex now at -Y, base at +Y
+  geom.translate(0, len / 2, 0);    // apex → Y=0, base → Y=+len
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x44ccff,
+    transparent: true,
+    opacity: 0.12,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  return new THREE.Mesh(geom, mat);
+}
+
 function buildModel(kind, team, color) {
   const c = new THREE.Color(color || (team === 'red' ? '#ff3040' : '#ffd24a'));
   const bodyMat = new THREE.MeshStandardMaterial({
@@ -268,6 +296,11 @@ function buildModel(kind, team, color) {
     g.add(body, nose, seeker, flame);
     // tag the flame for pulsing animation
     g.userData.flame = flame;
+    // Seeker cone at the nose tip (sphere sits at y=1.5*size).
+    const seekerCone = makeSeekerCone();
+    seekerCone.position.y = 1.55 * size;
+    g.add(seekerCone);
+    g.userData.seeker = seekerCone;
   } else if (kind === 'iris_t_slm') {
     // IRIS-T SLM: longer than SLS, sharp pointed nose (no IR seeker dome,
     // since SLM uses a different seeker architecture and looks pointier in
@@ -339,6 +372,11 @@ function buildModel(kind, team, color) {
     flame.rotation.z = Math.PI;
     g.add(body, nose, flame);
     g.userData.flame = flame;
+    // iris_t_slm nose tip = body(1.4) + nose_h(0.8) = 2.2
+    const seekerCone = makeSeekerCone();
+    seekerCone.position.y = 2.2;
+    g.add(seekerCone);
+    g.userData.seeker = seekerCone;
   } else if (kind === 'pac_2') {
     // PAC-2 GEM: long slender missile, pointed nose, tail fins only (no
     // mid-body wings). Pink.
@@ -394,6 +432,11 @@ function buildModel(kind, team, color) {
     flame.rotation.z = Math.PI;
     g.add(body, nose, flame);
     g.userData.flame = flame;
+    // pac_2 nose tip = body(1.5) + nose_h(0.9) = 2.4
+    const seekerCone = makeSeekerCone();
+    seekerCone.position.y = 2.4;
+    g.add(seekerCone);
+    g.userData.seeker = seekerCone;
   } else if (kind === 'pac_3') {
     // PAC-3 CRI: compact hit-to-kill interceptor, thin ogive nose, short
     // tail fin section with 4 small fins, small ACM (attitude control)
@@ -451,6 +494,11 @@ function buildModel(kind, team, color) {
     flame.rotation.z = Math.PI;
     g.add(body, nose, flame);
     g.userData.flame = flame;
+    // pac_3 nose tip = body(1.0) + nose_h(0.9) = 1.9
+    const seekerCone = makeSeekerCone();
+    seekerCone.position.y = 1.9;
+    g.add(seekerCone);
+    g.userData.seeker = seekerCone;
   } else if (kind === 'rbs_70') {
     // RBS 70 NG: compact MANPADS-style laser beam-rider. Slender body with
     // sharp pointed nose, 4 small canards near the front, 4 larger
@@ -519,6 +567,11 @@ function buildModel(kind, team, color) {
     flame.rotation.z = Math.PI;
     g.add(body, nose, flame);
     g.userData.flame = flame;
+    // rbs_70 nose tip = body(0.8) + nose_h(0.5) = 1.3
+    const seekerCone = makeSeekerCone();
+    seekerCone.position.y = 1.3;
+    g.add(seekerCone);
+    g.userData.seeker = seekerCone;
   } else {
     // Fallback: original single cone.
     const h = team === 'red' ? 2.2 : 1.6;
@@ -565,7 +618,7 @@ class EntityMesh {
     scene.add(this.trail);
   }
 
-  update(pos, vel, thrustActive) {
+  update(pos, vel, thrustActive, targetState) {
     const [x, y, z] = worldToScene(pos[0], pos[1], pos[2]);
     this.mesh.position.set(x, y, z);
 
@@ -605,6 +658,26 @@ class EntityMesh {
     const prop = this.mesh.userData?.propeller;
     if (prop) {
       prop.rotation.y += 0.6; // ~ visual spin per frame
+    }
+
+    // Seeker scanning cone: cyan default, shifts to orange when the
+    // interceptor's target is within 2 km (locked). Hidden when no live
+    // target. Range uses world-space positions so it stays truthful at
+    // any scene scale; the mesh itself sits in scene units.
+    const seeker = this.mesh.userData?.seeker;
+    if (seeker) {
+      if (targetState) {
+        const dx = targetState.pos[0] - pos[0];
+        const dy = targetState.pos[1] - pos[1];
+        const dz = targetState.pos[2] - pos[2];
+        const distM = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const locked = distM < 2000;
+        seeker.material.color.setHex(locked ? 0xff8844 : 0x44ccff);
+        seeker.material.opacity = locked ? 0.30 : 0.12;
+        seeker.visible = true;
+      } else {
+        seeker.visible = false;
+      }
     }
 
     // Trail
@@ -648,6 +721,13 @@ export class EntityRegistry {
   }
 
   updateFromSnapshot(snap) {
+    // Build an id→state map so interceptors can look up their target
+    // (for seeker-cone colour / opacity). Only include alive entities —
+    // dead targets should make the seeker snap off.
+    const aliveById = new Map();
+    for (const e of snap.entities) {
+      if (e.alive) aliveById.set(e.id, e);
+    }
     // Reconcile entities
     const seen = new Set();
     for (const e of snap.entities) {
@@ -657,7 +737,12 @@ export class EntityRegistry {
         em = new EntityMesh(this.scene, e.id, e.team, e.kind, e.color);
         this.byId.set(e.id, em);
       }
-      if (e.alive) em.update(e.pos, e.vel, e.thrust_active);
+      if (e.alive) {
+        const tgt = (e.target_id !== null && e.target_id !== undefined)
+          ? aliveById.get(e.target_id)
+          : null;
+        em.update(e.pos, e.vel, e.thrust_active, tgt);
+      }
     }
     // Dispose disappeared entities
     for (const [id, em] of this.byId) {
