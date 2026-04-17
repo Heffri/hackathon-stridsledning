@@ -115,8 +115,12 @@ _ALL_INTERCEPTORS: List[InterceptorType] = [
 
 
 def _time_to_impact(threat_pos: np.ndarray, threat_vel: np.ndarray, base: np.ndarray) -> float:
-    """Seconds until threat reaches base, assuming constant closing
-    velocity. +inf if not closing."""
+    """Seconds until threat reaches `base`, assuming constant closing
+    velocity. +inf if not closing. Still anchored to the base as an
+    approximate "defended point" — with 7 Saab sites spread across the
+    south there's no single defended point, but the base sits roughly
+    central so urgency estimates via it are close enough for
+    wait-vs-escalate decisions."""
     to_base = base - threat_pos
     dist = float(np.linalg.norm(to_base))
     if dist < 1.0:
@@ -130,17 +134,18 @@ def _time_to_impact(threat_pos: np.ndarray, threat_vel: np.ndarray, base: np.nda
 def _time_to_enter_range(
     threat_pos: np.ndarray,
     threat_vel: np.ndarray,
-    base: np.ndarray,
+    launcher_pos: np.ndarray,
     max_range: float,
 ) -> float:
     """Seconds until the threat crosses inside `max_range × LAUNCH_RANGE_MARGIN`
-    of the base. 0 if already inside, +inf if it never will (not closing)."""
+    of `launcher_pos`. 0 if already inside, +inf if it never will (not
+    closing)."""
     gate = max_range * config.LAUNCH_RANGE_MARGIN
-    to_base = base - threat_pos
-    dist = float(np.linalg.norm(to_base))
+    to_lch = launcher_pos - threat_pos
+    dist = float(np.linalg.norm(to_lch))
     if dist <= gate:
         return 0.0
-    closing = float(np.dot(threat_vel, to_base / max(dist, 1e-6)))
+    closing = float(np.dot(threat_vel, to_lch / max(dist, 1e-6)))
     if closing <= 1.0:
         return float("inf")
     return (dist - gate) / closing
@@ -150,7 +155,11 @@ def _launcher_ready_time(
     launchers: LauncherFleet, kind: InterceptorType, t_now: float
 ) -> float:
     """Min seconds until any launcher of this kind can fire. 0 if one is
-    ready now, +inf if none exist."""
+    ready now, +inf if none exist. Position-agnostic: this is the
+    "will any launcher of this kind be ready within X seconds" upper
+    bound. Per-launcher ready time is computed inline in
+    _primary_available_in_time since it also needs the launcher's
+    position for the matching t_enter."""
     best = float("inf")
     for lch in launchers.launchers:
         if lch.kind != kind:
@@ -165,31 +174,51 @@ def _launcher_ready_time(
     return best
 
 
+def _launcher_ready_wait(lch: Launcher, t_now: float) -> float:
+    """Per-launcher ready wait: 0 if it can fire now, else max(reload
+    remaining, inter-shot CD remaining). Used by
+    _primary_available_in_time which needs the wait per individual
+    launcher instance (paired with that launcher's position)."""
+    if lch.can_fire(t_now):
+        return 0.0
+    rt = lch.reload_remaining(t_now) if lch.reloading else 0.0
+    cd = max(0.0, lch.inter_shot_cd - (t_now - lch.last_shot_t))
+    return max(rt, cd)
+
+
 def _primary_available_in_time(
     kinds: List[InterceptorType],
     launchers: LauncherFleet,
     threat_pos: np.ndarray,
     threat_vel: np.ndarray,
-    base: np.ndarray,
     t_impact: float,
     t_now: float,
     margin: float = 3.0,
 ) -> bool:
-    """True iff at least one of the primary `kinds` will be both in range
-    and have a ready launcher at some point before impact minus `margin`.
-    Used to decide whether to wait (primary will engage in time) or
-    escalate to fallback (primary can't engage, fire an expensive round
-    instead of letting the threat through)."""
+    """True iff at least one `(kind, launcher)` pair of the primary
+    `kinds` will be both in range and have that specific launcher ready
+    at some point before impact minus `margin`. Milestone H: per-
+    launcher range math replaces the Milestone F base-centred gate so
+    forward-deployed SLS / SLM aren't wrongly reported as "will reach
+    the threat" when their individual positions can't."""
     if t_impact == float("inf"):
         return True  # not closing, no pressure — keep waiting for primary
     deadline = t_impact - margin
     for kind in kinds:
         spec = INTERCEPTOR_SPECS[kind]
-        t_enter = _time_to_enter_range(threat_pos, threat_vel, base, spec.max_range)
-        t_ready = _launcher_ready_time(launchers, kind, t_now)
-        t_need = max(t_enter, t_ready)
-        if t_need < deadline:
-            return True
+        for lch in launchers.launchers:
+            if lch.kind != kind:
+                continue
+            lch_pos_3d = np.array(
+                [lch.pos[0], lch.pos[1], 0.0], dtype=np.float64
+            )
+            t_enter = _time_to_enter_range(
+                threat_pos, threat_vel, lch_pos_3d, spec.max_range
+            )
+            t_ready = _launcher_ready_wait(lch, t_now)
+            t_need = max(t_enter, t_ready)
+            if t_need < deadline:
+                return True
     return False
 
 
@@ -212,21 +241,35 @@ def _expected_damage(
 
 
 def _try_fire(
-    dist: float,
+    threat_pos: np.ndarray,
     kinds: List[InterceptorType],
     launchers: LauncherFleet,
     t_now: float,
 ) -> Tuple[Optional[InterceptorType], Optional[Launcher]]:
-    """Iterate kinds in list order; return (kind, launcher) for the first
-    in-range weapon whose launcher is ready. None if nothing fires."""
+    """Iterate `kinds` in preference order. For each kind, iterate every
+    launcher of that kind and return the first `(kind, launcher)` pair
+    whose individual position puts `threat_pos` inside
+    `max_range × LAUNCH_RANGE_MARGIN` AND whose state is ready to fire.
+    None if nothing qualifies.
+
+    Milestone H: replaces the Milestone F base-distance gate. Forward-
+    deployed SLS / SLM no longer get cleared to fire on threats that
+    their actual position can't reach, and they now DO get cleared to
+    fire on flank threats that the base-distance check would have
+    rejected.
+    """
     for kind in kinds:
         spec = INTERCEPTOR_SPECS[kind]
-        if dist > spec.max_range * config.LAUNCH_RANGE_MARGIN:
-            continue
-        lch = launchers.find_ready(kind, t_now)
-        if lch is None:
-            continue
-        return (kind, lch)
+        gate_sq = (spec.max_range * config.LAUNCH_RANGE_MARGIN) ** 2
+        for lch in launchers.launchers:
+            if lch.kind != kind:
+                continue
+            if not lch.can_fire(t_now):
+                continue
+            dx = float(threat_pos[0] - lch.pos[0])
+            dy = float(threat_pos[1] - lch.pos[1])
+            if dx * dx + dy * dy <= gate_sq:
+                return (kind, lch)
     return (None, None)
 
 
@@ -263,7 +306,9 @@ class BlueAI:
             threat_pos = threat.state.pos
             threat_vel = threat.state.vel
             threat_kind = ThreatType(threat.state.kind)
-            dist = float(np.linalg.norm(threat_pos - base))
+            # `dist_to_base` is kept only for the HUD log line — engagement
+            # decisions use per-launcher distances now (Milestone H).
+            dist_to_base = float(np.linalg.norm(threat_pos - base))
 
             # CIWS is counted separately from the main saturation cap —
             # it's the cheap point-defense layer that fires whenever
@@ -281,17 +326,26 @@ class BlueAI:
             # kind. Real Lvkv 90 doctrine is "anything that reaches the
             # inner ring gets sprayed" — cheap rounds, cheap kill
             # attempt even on hypersonic RVs that probably outrun it.
-            # Provides visible defensive fire for the demo.
+            # Milestone H: each CIWS launcher checks its own envelope
+            # independently, so a forward CIWS (if one is ever added)
+            # doesn't wait for a threat to approach the base.
             ciws_spec = INTERCEPTOR_SPECS[InterceptorType.CIWS]
-            if dist < ciws_spec.max_range * config.LAUNCH_RANGE_MARGIN:
-                lch = self.launchers.find_ready(InterceptorType.CIWS, t_now)
-                if lch is not None:
+            ciws_gate_sq = (
+                ciws_spec.max_range * config.LAUNCH_RANGE_MARGIN
+            ) ** 2
+            for lch in self.launchers.launchers:
+                if lch.kind != InterceptorType.CIWS:
+                    continue
+                if not lch.can_fire(t_now):
+                    continue
+                dx = float(threat_pos[0] - lch.pos[0])
+                dy = float(threat_pos[1] - lch.pos[1])
+                if dx * dx + dy * dy <= ciws_gate_sq:
                     self._fire(
                         world, t_now, tid, threat, InterceptorType.CIWS,
-                        lch, base, dist, tag=" [CIWS]",
+                        lch, base, dist_to_base, tag=" [CIWS]",
                     )
-                    # Continue to the main saturation pass below — SAMs
-                    # still layer on top if gates allow.
+                    break  # one CIWS launcher per tick per threat
 
             # --- Main saturation gate (excludes CIWS rounds) ---
             if len(non_ciws) >= MAX_SIMULTANEOUS_PER_THREAT:
@@ -300,11 +354,11 @@ class BlueAI:
             if expected_dmg >= threat.state.hp:
                 continue
 
-            # Primary pass: first in-range + ready weapon in preference
-            # order.
+            # Primary pass: first in-range + ready (kind, launcher) pair
+            # in preference order — now computed per-launcher.
             primary_kinds = PRIMARY_RULES.get(threat_kind, [])
             kind, lch = _try_fire(
-                dist, primary_kinds, self.launchers, t_now
+                threat_pos, primary_kinds, self.launchers, t_now
             )
             tag = ""
 
@@ -317,11 +371,13 @@ class BlueAI:
                 t_impact = _time_to_impact(threat_pos, threat_vel, base)
                 if _primary_available_in_time(
                     primary_kinds, self.launchers,
-                    threat_pos, threat_vel, base, t_impact, t_now,
+                    threat_pos, threat_vel, t_impact, t_now,
                 ):
                     continue  # wait for primary
                 fb_kinds = FALLBACK_RULES.get(threat_kind, [])
-                kind, lch = _try_fire(dist, fb_kinds, self.launchers, t_now)
+                kind, lch = _try_fire(
+                    threat_pos, fb_kinds, self.launchers, t_now
+                )
                 if kind is not None:
                     tag = " [FALLBACK]"
 
@@ -335,14 +391,19 @@ class BlueAI:
                         FALLBACK_RULES.get(threat_kind, [])
                     )
                     desperation = [k for k in _ALL_INTERCEPTORS if k not in tried]
-                    kind, lch = _try_fire(dist, desperation, self.launchers, t_now)
+                    kind, lch = _try_fire(
+                        threat_pos, desperation, self.launchers, t_now
+                    )
                     if kind is not None:
                         tag = " [LAST RESORT]"
 
             if kind is None:
                 continue  # nothing to do this tick
 
-            self._fire(world, t_now, tid, threat, kind, lch, base, dist, tag=tag)
+            self._fire(
+                world, t_now, tid, threat, kind, lch, base, dist_to_base,
+                tag=tag,
+            )
 
     def _fire(
         self,
@@ -357,14 +418,13 @@ class BlueAI:
         tag: str,
     ) -> None:
         # Milestone F: interceptors launch from the firing launcher's own
-        # position, not the base. `base` stays in the signature because
-        # the log line still reports threat-to-base range (that's the
-        # "distance from the thing we're defending" quantity the operator
-        # cares about). TODO: the engagement-decision math in _try_fire /
-        # _time_to_enter_range still ranks weapons by threat-to-base
-        # distance, even though each weapon actually fires from up to
-        # 25 km forward. Refactoring that properly touches every
-        # fallback / wait-for-primary path; deferred past Milestone F.
+        # position, not the base. `base` / `dist` stay in the signature
+        # because the HUD log line still reports threat-to-base range
+        # (approximate "distance from the thing we're defending"; the
+        # operator reads this as the urgency indicator). Milestone H:
+        # engagement-decision math now works per-launcher, so the
+        # decision to fire actually matches each launcher's physical
+        # reach — see `_try_fire` / `_primary_available_in_time`.
         launch_pos = (lch.pos[0], lch.pos[1], 0.0)
         launch_np = np.array(launch_pos, dtype=np.float64)
         initial_dir = threat.state.pos - launch_np
