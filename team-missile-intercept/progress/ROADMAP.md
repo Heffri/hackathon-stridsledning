@@ -1,28 +1,27 @@
 # Roadmap — What's Next
 
-> Context: Milestone D is complete. The sim has realistic physics (fuel / coast / atmosphere), saturation AI, per-weapon 3D meshes, 250 km arena, and real-world threat speeds.
+> Context: Milestone E is complete. Milestone D gave the sim realistic physics (fuel / coast / atmosphere), saturation AI, per-weapon 3D meshes, 250 km arena, and real-world threat speeds. Milestone E added visual packaging: per-entity status panel, enriched AI logs, seeker cones, Boreal Passage 3D terrain, and dusk sky + explosion flashes.
 > Time remaining until Hack Day: ~1 week (April 25, 2026).
 
-## What Milestone D Did to the Old Roadmap
+## What Milestone E Did to the Old Roadmap
 
-Old items now **closed**:
+Route 2 items now **closed**:
 
-- ✅ Route 2 Task 3 (per-kind distinct meshes) — each interceptor has its own silhouette and colour.
-- ✅ HGV terminal aim — CEP down from 1472 m to 18 m, leak radius widened to match visual base marker.
-- ✅ HGV Level 5 evasion — jink at 8 G when an interceptor is within 12 km, with realistic kinetic-energy bleed.
-- ✅ Fuel + coast physics — addresses operator's "interceptors aren't permanent motors" feedback.
-- ✅ Realistic threat speeds — 13 Mach ballistic, 17 Mach HGV, per operator's "real data over game tuning".
-- ✅ Cost-exchange flexibility — last-resort tier fires anything when impact is under 15 s.
-- ✅ CIWS visible firing — point-defense override + distinct cannon-round mesh.
+- ✅ Route 2 Task 1 — Per-entity status panel (click-to-inspect, 300 px glass panel with Mach/G/HP/fuel/target/range/cost)
+- ✅ Route 2 Task 2 — AI decision log enrichment (120-entry scrolling panels, coloured tags, weapon-colour dots)
+- ✅ Route 2 Task 3 — Seeker scanning cones (every non-CIWS interceptor, cyan → orange at 2 km)
+- ✅ Route 2 Task 4 — Boreal Passage 3D terrain (8 extruded landmasses from Saab CSV)
+- ✅ Route 2 Task 5 — Sky / polish (dusk gradient skydome + additive explosion flashes)
+- ✅ (From Milestone D) Route 2 Task 3 original intent (per-kind distinct meshes) — still valid.
 
-Old items still **open**:
+Route 2 is **fully closed**. Remaining routes:
 
-- Route 2 Task 1 — Per-entity status panel (largest remaining demo-transparency gap)
-- Route 2 Task 2 — AI decision log panel (Blue AI log already exists in HUD, could be richer)
-- Route 2 Task 4 — Boreal Passage terrain
-- Route 2 Task 5 — Sky / fog / post-processing polish
 - Route 3 — PN precision upgrade (RK4 + sub-tick guidance). Would shrink ballistic leak rate.
 - Route 4 — Overnight self-play tuning
+- Route 5 — Radar / sensor model
+- Route 6 — Red AI Levels 3 / 4 / 5 (adaptive waves, stealth, real-time HGV)
+- Route 7 — Base HP + economy
+- Terrain **stretch polish**: render `BOREAL_LOCATIONS` city/base labels as Sprites (~30 min work, deferred in Milestone E for time).
 
 New items **surfaced by Milestone D**:
 
@@ -206,24 +205,21 @@ Currently any leak = leak, regardless of weapon. PAC-3 expense doesn't matter.
 
 ## Recommended Path (1 week to April 25)
 
-**Day 1 (today / tomorrow):** Route 1 — verify Milestone D visually.
+**Day 1 (today / tomorrow):** Route 1 — verify Milestone E visually. Click-test entities, confirm Boreal terrain renders, watch Wave 5 end-to-end.
 
-**Day 2:** Route 2 Task 1 — per-entity status panel. This is the biggest demo-transparency win, and it makes Milestone D's fuel/coast physics visible.
+**Day 2:** Route 6 Level 5 HGV, or Route 7 base HP. The sim is visually complete; the missing axis is either "Red side feels more intelligent" (Route 6) or "Blue has stakes" (Route 7). Route 7 is the cheaper bang-for-buck (1–2 h).
 
-**Day 3:** Route 2 Task 2 + 3 — AI log panel + seeker cones.
+**Day 3:** Whichever of Route 6 / Route 7 wasn't done on Day 2. Also consider Route 5 (radar / sensor) if the "omniscient Blue AI" bothers anyone.
 
-**Day 4:** Pick based on state:
-- Route 7 (base HP + economy) if the sim feels stake-less
-- Route 6 (Red AI Level 5 HGV) if the Red side feels static
-- Route 2 Task 4/5 (terrain / polish) if visuals are the gap
+**Day 4:** Terrain location labels (Sprite-text for cities/bases), and general demo choreography — camera angles, default wave sequence, HUD layout sweep.
 
-**Day 5:** Whichever of Route 5/6/7 wasn't done + general polish. Dry-run the demo end-to-end, record a video.
+**Day 5:** Route 4 overnight self-play runner kickoff.
 
-**Day 6:** Route 4 overnight run (data for "our AI is tuned on N matches" pitch line).
+**Day 6:** Morning: analyse Route 4 output ("our AI was tuned via N matches"), bake the punchline into the pitch. Afternoon: dry-run demo end-to-end, record a video.
 
 **Day 7 (morning of Hack Day):** Only cosmetic tweaks. No new features.
 
-Route 3 (PN precision) is **not on the critical path**. The demo works fine with current bandaged values. Add it only if everything else frees up or if the 50 % ballistic leak rate becomes a pitch problem.
+Route 3 (PN precision) remains **not on the critical path**. The demo works fine with current bandaged values. Add it only if everything else frees up or if the 50 % ballistic leak rate becomes a pitch problem.
 
 ---
 

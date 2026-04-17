@@ -499,3 +499,222 @@ python test_full_scenario.py    # single scenario, prints final stats
 python test_pn.py               # PN guidance unit test (MED-SAM vs. cruise)
 python test_ballistic.py        # ballistic + LONG-SAM offline test
 ```
+
+# Milestone E — Visual Packaging + Boreal Passage Terrain
+
+Pure frontend pass on top of Milestone D. Goal: make the rich physics
+(fuel, coast, G-limits, saturation AI) legible to a non-technical
+demo jury, and anchor the simulation in Saab's own scenario geometry
+instead of a flat void. No backend changes — every snapshot field
+needed was already present in `EntityState.to_dict()`.
+
+## Task 1 — Per-entity status panel
+
+Click any missile or threat in the 3D view → a glass-morphism panel
+opens (top-right, 300 px wide) showing realtime stats:
+
+- Kind real name. Two lookup tables:
+  `INTERCEPTOR_NAMES` (Lvkv 90 / RBS 70 NG / IRIS-T SLS (RBS 98) /
+  IRIS-T SLM / Patriot PAC-2 GEM+ / Patriot PAC-3 MSE) and
+  `THREAT_NAMES` (Shahed-class drone, Kalibr-class cruise missile,
+  Iskander-class RV, Kinzhal/DF-ZF HGV).
+- Team badge (RED / BLUE), colour-coded.
+- Speed in m/s + rounded Mach (using Mach 1 = 343 m/s).
+- Instantaneous G-load estimated client-side from `|Δv|/Δt / 9.81`
+  using a 1-tick-old velocity cache keyed by entity id.
+- HP bar (gradient green → amber → red, hidden when `hp_max == 0`).
+- Motor status: green dot + "Motor burning" while `thrust_active`,
+  grey dot + "Coasting" once fuel is spent. Threats show "Inertial".
+- Fuel remaining (s) from `FUEL_S[kind] − (snap.t − spawn_t)`,
+  clamped to ≥ 0. Table copied verbatim from `InterceptorSpec.fuel_s`
+  (ciws 4, rbs_70 13, iris_t_sls 30, iris_t_slm 39, pac_2 41, pac_3 35).
+- Altitude (m, with km alongside above 1 km).
+- Target: `#id · kind name` cross-referenced via the latest snapshot,
+  falling back to `(lost)` if the target has died.
+- Range to target in m / km.
+- Unit USD cost from `WEAPON_SPECS.md` (ciws $2k, rbs_70 $175k,
+  iris_t_sls $500k, iris_t_slm $1M, pac_2 $3M, pac_3 $4M) or threat
+  cost (drone $30k → hgv $10M).
+
+A raycaster on the canvas resolves hits by walking up
+`mesh.userData.entityId` (set in `EntityMesh` ctor). Empty-canvas
+clicks and the × button clear the selection. On death, the panel
+lingers for ~1 s showing "DESTROYED" in flashing red before
+auto-closing.
+
+Files: `frontend/js/status_panel.js` (new, ~260 lines),
+`frontend/js/main.js` (wire init + per-tick update),
+`frontend/js/entities.js` (tag root Group with entityId),
+`frontend/index.html` (panel container), `frontend/style.css`
+(~130 lines of panel styles).
+
+## Task 2 — AI decision log enrichment
+
+Old HUD showed a 6-line tail of each AI's log. Replaced with two
+dedicated scrollable panels (Blue left / Red right) that hold up
+to 120 entries with auto-scroll-to-bottom (suppressed when the
+user has scrolled up to read history).
+
+- Each interceptor line is prefixed by a 6×6 px colour square
+  matching the weapon's mesh colour (CIWS tan, RBS 70 olive,
+  SLS amber, SLM orange, PAC-2 pink, PAC-3 purple). Wave-launch
+  lines from the Red AI get no dot.
+- Priority tags emitted by `blue_ai.py` are colourised:
+  `[CIWS]` tan, `[FALLBACK]` amber, `[LAST RESORT]` red + tinted
+  background panel. Untagged primary fires use the default log
+  text colour.
+- Per-side borders (blue/red) reinforce the left/right identity
+  of the panels at a glance.
+
+Files: `frontend/js/hud.js` (`formatLogLine` + `WEAPON_COLORS`
+table), `frontend/index.html` (swap column order, add log-scroll
+class), `frontend/style.css` (~40 lines of tag + panel styles).
+
+## Task 3 — Seeker scanning cones
+
+Every live interceptor except CIWS now renders a translucent
+forward-pointing cone attached at its nose:
+
+- 8° half-angle × 10 scene units (= 10 km world) length. Geometry
+  built as `ConeGeometry(r, 10, 16, 1, true)`, rotated `X` by π
+  and translated so the apex sits at local `Y=0` and the base
+  extends to `+Y=10`. Caller positions the cone at each kind's
+  nose-tip Y (sls 1.55, slm 2.2, pac_2 2.4, pac_3 1.9, rbs_70 1.3).
+- Cyan default (`0x44ccff`, opacity 0.12); orange (`0xff8844`,
+  opacity 0.30) when `distance-to-target < 2 km`. Material is
+  `MeshBasicMaterial` with `transparent: true`, `depthWrite: false`,
+  `side: THREE.DoubleSide`.
+- `EntityRegistry.updateFromSnapshot` builds an alive-only
+  `id → state` map once per tick and passes each interceptor its
+  target's state by `e.target_id`. Dead-target lookup returns
+  null, which hides the seeker.
+- CIWS is skipped — cannon rounds are unguided ballistic.
+
+Files: `frontend/js/entities.js` (seeker helper +
+per-kind insertion + `EntityMesh.update(targetState)`).
+
+## Task 4 — Boreal Passage 3D terrain
+
+Replaced the flat dark-blue rectangle ground with an extruded
+rendering of Saab's Boreal Passage landmasses (2 mainlands, 5
+islands, 1 peninsula, 12 named locations).
+
+Input: `xingyi-rts/saab-provided/Boreal_passage_coordinates.csv`.
+Baked at check-in into `frontend/js/terrain_data.js`
+(`BOREAL_TERRAIN` + `BOREAL_LOCATIONS`) as ES-module exports, so no
+static-mount change to `server.py` was needed. Regenerate with a
+short Python script if Saab updates the scenario.
+
+Transform `saabToScene(x_km, y_km)`:
+
+- Crop Saab Y window [280, 1080] km (800 km band containing
+  mainland → strait → mainland + all relevant islands).
+- Map the full Saab X [0, 1667] onto scene X [−75, +75] (150 km).
+- Map the cropped Saab Y onto scene Z [−245, +5]. Saab Y is
+  south-positive AND our scene Z is south-positive, so the
+  mapping sends `y_norm=0` (Saab north) to `scene_z=−245` (scene
+  far-north). This is the OPPOSITE direction of the task-spec
+  pseudocode; following the spec literally would have flipped the
+  scenario (southern mainland landing in scene north). The
+  acceptance criteria demand Blue base on the southern mainland,
+  so the direction was corrected. Noted as a concession in the
+  commit body.
+- Non-uniform compression (11× in X, 3.2× in Y) is accepted — the
+  jury reads "two lands across a strait", not a 1:1 overlay.
+
+Rendering:
+
+- Each terrain row → `THREE.Shape` → `ExtrudeGeometry(shape,
+  { depth: 0.3, bevelEnabled: false })` = 300 m land relief. High
+  enough to read as "above sea", low enough that HGV/ballistic
+  tracks still clear the landmass silhouette.
+- Mainland material `0x2f3a2a` (dark olive), island `0x2b382c`.
+  `side: THREE.DoubleSide` because the Y-negation in shape
+  construction inverts winding; without DoubleSide the top cap
+  would back-face-cull against the overhead camera.
+- Sea plane darkened to `0x0c182a` so the land reads as "above
+  water".
+- Weapon range arcs bumped from `y=0.05` to `y=0.35` so they sit
+  just above the 0.3-high terrain and stay visible when they
+  overlap a landmass.
+
+Location markers (Task 4 optional) were skipped for time — the
+scenario feels grounded enough with just the landmasses, and
+adding Sprite-text city labels would have chewed another 30–45
+min. Data is already exported in `BOREAL_LOCATIONS` so a future
+session can add them in minutes.
+
+Files: `frontend/js/terrain_data.js` (new),
+`frontend/js/scene.js` (`saabToScene` + extrude loop + arc lift).
+
+## Task 5 — Dusk sky gradient + explosion flash
+
+- Inverted `SphereGeometry(1000, 32, 16)` with a `ShaderMaterial`
+  that lerps world-space Y from a dark-blue zenith (`0x0a1524`)
+  through a warm amber horizon band (`0x2a1a10` + `0xffa64a` glow
+  near Y=0). `renderOrder = -1`, `depthWrite: false` so fog and
+  geometry composite correctly. Scene still fogs out at the far
+  arena edge to the original dark-blue tint; the sky is visible
+  past the 500-unit fog far plane but never fights arena geometry.
+- Explosions made brighter: hot-white core (`0xffffee`), larger
+  sphere (0.8 vs 0.5), `AdditiveBlending` + `depthWrite: false`
+  so overlapping sprites stack into a visible flash. No
+  `EffectComposer` bloom because the importmap-only setup
+  (unpkg three@0.160) can't easily bolt on post-processing
+  without a bundler.
+
+Files: `frontend/js/scene.js` (skydome), `frontend/js/entities.js`
+(`_spawnExplosion`).
+
+## Known issues / deferred
+
+1. **Status-panel G-load** uses the 1-tick velocity cache
+   (dt ≈ 1 / STREAM_HZ). For sub-tick commanded-G spikes the
+   displayed value is averaged, not instantaneous. Good enough
+   for demo legibility, not instrumentation-grade.
+2. **Terrain aspect distortion**: the 11× X / 3.2× Y non-uniform
+   scale squashes the Saab scenario. Unavoidable given our 150 ×
+   250 km arena. A future milestone could either widen the arena
+   (would cascade into spawn distances + weapon ranges — avoid
+   during demo week) or crop a narrower Saab X window.
+3. **No location labels**: `BOREAL_LOCATIONS` has 12 named
+   cities/bases parsed, but rendering `THREE.Sprite` text labels
+   was cut for time. ~30 min to add a single-canvas-per-label
+   pass, if desired.
+4. **No bloom post-processing**: the additive-flash trick fakes
+   bloom but doesn't actually bloom adjacent pixels. Proper
+   bloom needs `UnrealBloomPass` via a bundler (currently the
+   frontend is plain ES modules).
+5. **Status panel position**: positioned at top-right so it
+   doesn't collide with the now-taller log panels. If the ammo
+   panel grows past ~210 px tall on some displays the status
+   panel could overlap — no CSS collision detection.
+
+## How to test Milestone E
+
+```bash
+cd team-missile-intercept/backend
+python server.py
+# http://localhost:5174/
+```
+
+1. Click any moving entity → status panel opens. Watch speed +
+   G + thrust update live.
+2. Start a scenario, wait through Wave 5. Blue/Red log panels
+   fill with coloured lines (tag chips + weapon dots).
+3. Launch PAC-2 at HGV — seeker cone visible, tightens to orange
+   at close range.
+4. Terrain: two landmasses visible with a strait between; base
+   on the southern mainland; threats spawn over northern
+   mainland. Range arcs readable on top of the land.
+5. Explosions flash brighter than before against the dusk sky.
+
+## Suggested next session priorities (post-Milestone E)
+
+1. Red AI intelligence — Levels 3 / 4 / 5. Still the biggest
+   visual upgrade for scripted-feeling Red waves.
+2. Location labels + base markers on the terrain (cheap polish).
+3. Base HP + economy (Route 7) — gives the demo stakes.
+4. Sensor/radar model (Route 5) — limits Blue AI omniscience.
+5. PN precision upgrade (Route 3) — closes the 50 % ballistic
+   leak rate.
