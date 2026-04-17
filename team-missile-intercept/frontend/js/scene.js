@@ -1,7 +1,7 @@
 // Three.js scene setup: camera, lighting, ground grid, base marker.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { BOREAL_TERRAIN } from './terrain_data.js';
+import { BOREAL_TERRAIN, BOREAL_LOCATIONS } from './terrain_data.js';
 
 // World units: meters. Arena ~150km. We scale the whole world by 0.001 for
 // rendering so Three.js works in km (avoids z-fighting and huge numbers).
@@ -192,6 +192,94 @@ export function createScene(canvas) {
     scene.add(mesh);
   }
 
+  // Boreal Passage location landmarks — named air-bases, capitals, and
+  // major cities parsed from the Saab CSV. Each location gets a small 3D
+  // structure sitting on top of the extruded terrain (terrain top is at
+  // y=0.3, structures start at y=0.32) and a canvas-textured Sprite label
+  // above it. Side tinting: north = red accent, south = blue accent, so
+  // a judge can spot which coast owns which at a glance.
+  for (const loc of BOREAL_LOCATIONS) {
+    const [sx, sz] = saabToScene(loc.x, loc.y);
+    const group = new THREE.Group();
+    const tint = loc.side === 'north' ? 0x442020 : 0x202a44;
+
+    if (loc.subtype === 'air_base') {
+      // 1 km runway oriented along X (concrete strip) + small control tower
+      // offset to one side. Box dims: X × Y × Z = 1.0 (length) × 0.02
+      // (height) × 0.15 (width).
+      const runway = new THREE.Mesh(
+        new THREE.BoxGeometry(1.0, 0.02, 0.15),
+        new THREE.MeshStandardMaterial({ color: 0xb8b8b0, roughness: 0.85 }),
+      );
+      runway.position.set(0, 0.01, 0);
+      group.add(runway);
+      const tower = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.12, 0.1),
+        new THREE.MeshStandardMaterial({
+          color: 0x8a8a88,
+          emissive: tint,
+          emissiveIntensity: 0.45,
+          roughness: 0.7,
+        }),
+      );
+      tower.position.set(0.35, 0.06, 0.2);
+      group.add(tower);
+    } else if (loc.subtype === 'capital') {
+      // Cluster of 5 tall boxes (skyline). Varying heights 0.18..0.35.
+      const spec = [
+        { w: 0.16, d: 0.15, h: 0.35, x: 0,     z: 0 },
+        { w: 0.13, d: 0.13, h: 0.28, x: 0.18,  z: 0.05 },
+        { w: 0.15, d: 0.14, h: 0.22, x: -0.15, z: 0.1 },
+        { w: 0.12, d: 0.12, h: 0.3,  x: 0.05,  z: -0.15 },
+        { w: 0.1,  d: 0.1,  h: 0.18, x: -0.18, z: -0.1 },
+      ];
+      for (const p of spec) {
+        const box = new THREE.Mesh(
+          new THREE.BoxGeometry(p.w, p.h, p.d),
+          new THREE.MeshStandardMaterial({
+            color: 0x333338,
+            emissive: tint,
+            emissiveIntensity: 0.55,
+            roughness: 0.75,
+          }),
+        );
+        box.position.set(p.x, p.h / 2, p.z);
+        group.add(box);
+      }
+    } else {
+      // major_city: 3 mid-rise buildings in a smaller footprint.
+      const spec = [
+        { w: 0.12, d: 0.11, h: 0.2,  x: 0,    z: 0 },
+        { w: 0.1,  d: 0.1,  h: 0.14, x: 0.1,  z: 0.05 },
+        { w: 0.1,  d: 0.09, h: 0.09, x: -0.09, z: -0.08 },
+      ];
+      for (const p of spec) {
+        const box = new THREE.Mesh(
+          new THREE.BoxGeometry(p.w, p.h, p.d),
+          new THREE.MeshStandardMaterial({
+            color: 0x444448,
+            emissive: tint,
+            emissiveIntensity: 0.5,
+            roughness: 0.75,
+          }),
+        );
+        box.position.set(p.x, p.h / 2, p.z);
+        group.add(box);
+      }
+    }
+
+    group.position.set(sx, 0.32, sz);
+    scene.add(group);
+
+    const label = makeTextSprite(loc.name, loc.side);
+    // Sit the label ~700 m above sea so it clears the tallest (0.35 tall)
+    // capital buildings with headroom and reads well from the default
+    // overhead camera.
+    label.position.set(sx, 1.0, sz);
+    label.scale.set(4, 1, 1);
+    scene.add(label);
+  }
+
   // Blue base marker (a cylinder at BASE_POS, transformed to scene coords)
   const [bx, by] = worldToSceneXY(BASE_POS[0], BASE_POS[1]);
   const base = new THREE.Mesh(
@@ -277,4 +365,35 @@ export function worldToScene(x, y, z) {
 
 export function worldToSceneXY(x, y) {
   return [(x - BASE_X) * SCALE, -(y - BASE_Y) * SCALE];
+}
+
+// Canvas-textured Sprite label used for Boreal Passage landmarks. A 256×64
+// offscreen canvas with a dark translucent fill, a side-coloured border
+// (red for north, blue for south), and white bold text. Sprites billboard
+// to the camera so labels always face the operator. depthTest:false keeps
+// them readable even when they pass behind closer terrain silhouettes.
+function makeTextSprite(text, side) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(10, 14, 24, 0.78)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = side === 'north' ? '#c85050' : '#5080c8';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1.5, 1.5, canvas.width - 3, canvas.height - 3);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    depthTest: false,
+    transparent: true,
+  });
+  return new THREE.Sprite(mat);
 }
