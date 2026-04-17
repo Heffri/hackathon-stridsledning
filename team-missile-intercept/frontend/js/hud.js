@@ -10,6 +10,18 @@ const INTERCEPTOR_NAMES = {
   pac_3: 'Patriot PAC-3 MSE',
 };
 
+// Mesh-colour swatch per interceptor kind (mirrors scene.js range arcs
+// and entities.js bodyMat colours). Used as a 6×6 px dot prefix so an
+// operator can scan weapon usage at a glance.
+const WEAPON_COLORS = {
+  ciws: '#d9b36a',
+  rbs_70: '#4a8a3a',
+  iris_t_sls: '#ff9944',
+  iris_t_slm: '#ff8c1a',
+  pac_2: '#ff69b4',
+  pac_3: '#a855f7',
+};
+
 export function wireHud(sendCmd) {
   const bindClick = (id, cmd) => {
     const el = document.getElementById(id);
@@ -125,14 +137,59 @@ function setText(id, v) {
   if (el) el.textContent = String(v);
 }
 
+// Keep a bounded tail of the log so DOM-diff stays cheap at high entry
+// counts. With `renderLog` rewriting innerHTML every tick, rendering 80
+// entries 15 Hz is ~1200 div creations / second — still fine. The cap
+// is here in case scenarios produce hundreds of entries.
+const LOG_TAIL = 120;
+
 function renderLog(id, entries) {
   const el = document.getElementById(id);
   if (!el) return;
-  el.innerHTML = entries
-    .slice(-6)
-    .map((s) => `<div>${escapeHtml(s)}</div>`)
-    .join('');
-  el.scrollTop = el.scrollHeight;
+  // Preserve whether the user has scrolled up to read history: only
+  // auto-scroll if they were already pinned to the bottom.
+  const pinned = Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) < 4;
+  const tail = entries.slice(-LOG_TAIL);
+  el.innerHTML = tail.map(formatLogLine).join('');
+  if (pinned) el.scrollTop = el.scrollHeight;
+}
+
+// Format one raw backend log line into coloured HTML.
+//
+// Blue lines look like:
+//   "[ 42.3s] pac_3 [FALLBACK] → cruise_sub (hp 20/30, 2 in flight, …)"
+//   "[ 50.1s] ciws [CIWS] → drone (…)"
+//   "[ 30.0s] iris_t_slm → cruise_sub (…)"
+// Red lines are currently just wave announcements:
+//   "[  2.0s] Wave 1 launched (3 threats)"
+//
+// We look for a "[TIMESTAMP] <token>" prefix where <token> is a known
+// interceptor kind; if found, render a colour dot + class the whole line
+// by the priority tag it contains.
+function formatLogLine(raw) {
+  const safe = escapeHtml(raw);
+  // Detect trailing tags (colour takes precedence of seriousness).
+  let cls = '';
+  if (/\[LAST RESORT\]/.test(raw)) cls = 'log-last-resort';
+  else if (/\[FALLBACK\]/.test(raw)) cls = 'log-fallback';
+  else if (/\[CIWS\]/.test(raw)) cls = 'log-ciws';
+
+  // Highlight the tag token itself so it stands out even inside the
+  // coloured-class background.
+  const withTag = safe
+    .replace('[LAST RESORT]', '<span class="log-tag log-tag-lastresort">[LAST RESORT]</span>')
+    .replace('[FALLBACK]', '<span class="log-tag log-tag-fallback">[FALLBACK]</span>')
+    .replace('[CIWS]', '<span class="log-tag log-tag-ciws">[CIWS]</span>');
+
+  // Weapon-colour dot: take the first whitespace-separated token AFTER
+  // the "[Ts]" timestamp. Matches interceptor kind strings exactly.
+  const m = raw.match(/^\[\s*[\d.]+s\]\s+(\w+)/);
+  let dotHtml = '';
+  if (m && WEAPON_COLORS[m[1]]) {
+    dotHtml = `<span class="log-dot" style="background:${WEAPON_COLORS[m[1]]}"></span>`;
+  }
+
+  return `<div class="${cls}">${dotHtml}${withTag}</div>`;
 }
 
 function escapeHtml(s) {
