@@ -172,11 +172,12 @@ html, body {
   color: #ffd86b;
   font-weight: 600;
 }
-.ammo-row[data-kind="long_sam"] .ammo-count { color: #ffec40; }
-.ammo-row[data-kind="med_sam"] .ammo-count { color: #fff089; }
-.ammo-row[data-kind="short_sam"] .ammo-count { color: #ffcc33; }
-.ammo-row[data-kind="ciws"] .ammo-count { color: #ffd24a; }
-.ammo-row[data-kind="hit_to_kill"] .ammo-count { color: #ff8a8a; }
+.ammo-row[data-kind="pac_2"] .ammo-count { color: #ff69b4; }
+.ammo-row[data-kind="iris_t_slm"] .ammo-count { color: #ff8c1a; }
+.ammo-row[data-kind="iris_t_sls"] .ammo-count { color: #ff9944; }
+.ammo-row[data-kind="rbs_70"] .ammo-count { color: #5fb84a; }
+.ammo-row[data-kind="ciws"] .ammo-count { color: #d9b36a; }
+.ammo-row[data-kind="pac_3"] .ammo-count { color: #a855f7; }
 .ammo-row.low .ammo-count { color: #ffdd44; }
 .ammo-row.empty .ammo-count {
   color: #ff5060;

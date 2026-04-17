@@ -8,13 +8,13 @@ export const SCALE = 0.001;
 
 // Arena constants (must stay in sync with backend config.py)
 export const ARENA_X = 150_000;
-export const ARENA_Y = 150_000;
+export const ARENA_Y = 250_000;
 export const BASE_POS = [75_000, 5_000, 0];
 
 export function createScene(canvas) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a1424);
-  scene.fog = new THREE.Fog(0x0a1424, 80, 300);
+  scene.fog = new THREE.Fog(0x0a1424, 100, 500);
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
@@ -33,16 +33,15 @@ export function createScene(canvas) {
   // looking toward the deep arena.
   // Position: 18 east, 25 up, 55 south. OrbitControls target slightly north
   // and above the base so the battle volume fills the view.
-  camera.position.set(18, 25, 55);
-  camera.lookAt(0, 6, -30);
+  // Camera pulled further back + aimed deeper into the 250 km arena so
+  // HGV / ballistic spawn borders at Z ≈ -175 are in the frame.
+  camera.position.set(30, 50, 110);
+  camera.lookAt(0, 12, -70);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
-  // Aim the orbit pivot a bit into the arena and up — this tilts the
-  // default view upward so ballistics entering from 35 km altitude are
-  // framed above the horizon line, not at screen top edge.
-  controls.target.set(0, 6, -30);
+  controls.target.set(0, 12, -70);
 
   // Lighting
   const amb = new THREE.AmbientLight(0x5577aa, 0.5);
@@ -51,14 +50,26 @@ export function createScene(canvas) {
   sun.position.set(40, 80, 40);
   scene.add(sun);
 
-  // Ground plane (150x150km → 150x150 units at SCALE)
-  const gridSize = ARENA_X * SCALE;
-  const gridDivisions = 30;
+  // Arena is asymmetric (150 km wide × 250 km deep to accommodate HGV
+  // spawns 180 km north of the base). Ground plane is a rectangle
+  // centred on the arena centre, not the base, so the whole fight area
+  // is covered. Grid uses the larger dimension so gridlines extend
+  // through the full depth (few east-west gridlines drape off the edge,
+  // fine visually).
+  const widthUnits = ARENA_X * SCALE;
+  const depthUnits = ARENA_Y * SCALE;
+  const arenaCentreZ = -(ARENA_Y / 2 - BASE_POS[1]) * SCALE;
+  const gridSize = Math.max(widthUnits, depthUnits);
+  // 1 division per kilometre — gridSize is in scene units and 1 scene
+  // unit = 1 km (SCALE = 0.001). Lets the operator eyeball weapon
+  // ranges on the floor: CIWS 4 km = 4 cells, RBS 70 9 km = 9 cells,
+  // SLS 12, SLM 40, PAC-3 60, PAC-2 70.
+  const gridDivisions = Math.round(gridSize);
   const grid = new THREE.GridHelper(gridSize, gridDivisions, 0x224466, 0x152842);
-  grid.position.set(0, 0, 0);
+  grid.position.set(0, 0, arenaCentreZ);
   scene.add(grid);
 
-  const groundGeom = new THREE.PlaneGeometry(gridSize, gridSize);
+  const groundGeom = new THREE.PlaneGeometry(widthUnits, depthUnits);
   const groundMat = new THREE.MeshStandardMaterial({
     color: 0x0e1a2c,
     roughness: 0.95,
@@ -66,7 +77,7 @@ export function createScene(canvas) {
   });
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.01;
+  ground.position.set(0, -0.01, arenaCentreZ);
   scene.add(ground);
 
   // Blue base marker (a cylinder at BASE_POS, transformed to scene coords)

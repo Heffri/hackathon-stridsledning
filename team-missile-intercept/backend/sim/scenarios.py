@@ -12,6 +12,10 @@ class Scenario:
         self.blue = BlueAI()
 
     def step(self, dt: float) -> None:
+        # Clear last tick's events before anyone appends new ones. Doing
+        # this at world.step's start would wipe launch events that
+        # blue_ai.step just appended.
+        self.world.events = []
         self.red.step(self.world.t, self.world)
         self.blue.step(self.world.t, self.world)
         self.world.step(dt)

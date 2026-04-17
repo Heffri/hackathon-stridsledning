@@ -16,9 +16,11 @@ from .types import ThreatType, WaveSpec
 
 
 # --- Border-line geometry (relative to BLUE_BASE_POS) ---
-BORDER_DY = 60_000.0        # 60 km north of base (normal threats)
-BORDER_DY_HGV = 90_000.0    # 90 km north of base (HGV — visually distinct tier)
-BORDER_HALF_WIDTH = 30_000.0  # X spans ±30 km around base axis
+BORDER_DY = 60_000.0            # 60 km north of base (cruise)
+BORDER_DY_DRONE = 30_000.0      # 30 km — closer so SHORT_SAM / CIWS engage
+BORDER_DY_BALLISTIC = 120_000.0 # 120 km — long-range ballistic launch
+BORDER_DY_HGV = 180_000.0       # 180 km — deep-strike hypersonic tier
+BORDER_HALF_WIDTH = 30_000.0    # X spans ±30 km around base axis
 
 # --- Per-kind spawn altitude envelopes (m AGL) ---
 # Three visual tiers on the 150 km × 150 km arena:
@@ -37,6 +39,9 @@ def build_demo_waves() -> List[WaveSpec]:
     """5 escalating waves tuned so Blue is not guaranteed to hold —
     wave 5's saturation attack regularly gets at least 1 threat through.
     """
+    # Cruise count doubled (4 → 8) and ballistic count doubled (2 → 4)
+    # per the "more volume" brief. Drones still spawn from 30 km so
+    # SHORT_SAM / CIWS actually engage them.
     waves = [
         WaveSpec(
             time=2.0,
@@ -45,12 +50,12 @@ def build_demo_waves() -> List[WaveSpec]:
         ),
         WaveSpec(
             time=25.0,
-            threats=[ThreatType.DRONE] * 3 + [ThreatType.CRUISE_SUB],
+            threats=[ThreatType.DRONE] * 3 + [ThreatType.CRUISE_SUB] * 2,
             label="Wave 2: Drones + cruise",
         ),
         WaveSpec(
             time=55.0,
-            threats=[ThreatType.CRUISE_SUB] * 2 + [ThreatType.BALLISTIC],
+            threats=[ThreatType.CRUISE_SUB] * 4 + [ThreatType.BALLISTIC] * 2,
             label="Wave 3: Cruise + ballistic",
         ),
         WaveSpec(
@@ -61,10 +66,10 @@ def build_demo_waves() -> List[WaveSpec]:
         WaveSpec(
             time=145.0,
             threats=(
-                [ThreatType.BALLISTIC]
+                [ThreatType.BALLISTIC] * 2
                 + [ThreatType.HGV] * 2
                 + [ThreatType.DRONE] * 3
-                + [ThreatType.CRUISE_SUB]
+                + [ThreatType.CRUISE_SUB] * 2
             ),
             label="Wave 5: Saturation attack",
         ),
@@ -80,10 +85,15 @@ def _sample_spawn(kind: ThreatType, rng: np.random.Generator, base_x: float, bas
     hugs the deck, and ballistic re-enters from the upper atmosphere.
     """
     x = base_x + float(rng.uniform(-BORDER_HALF_WIDTH, BORDER_HALF_WIDTH))
-    # HGV spawns further north than other threats so it reads as its own
-    # "deep-strike" tier in the demo rather than sharing a border with the
-    # ballistic / cruise classes.
-    y = base_y + (BORDER_DY_HGV if kind == ThreatType.HGV else BORDER_DY)
+    # Per-kind border distance (see constants at top of file).
+    if kind == ThreatType.HGV:
+        y = base_y + BORDER_DY_HGV          # 180 km
+    elif kind == ThreatType.BALLISTIC:
+        y = base_y + BORDER_DY_BALLISTIC    # 120 km
+    elif kind == ThreatType.DRONE:
+        y = base_y + BORDER_DY_DRONE        # 30 km
+    else:
+        y = base_y + BORDER_DY              # 60 km (cruise)
     if kind == ThreatType.DRONE:
         z = float(rng.uniform(*DRONE_ALT_RANGE))
     elif kind == ThreatType.CRUISE_SUB:

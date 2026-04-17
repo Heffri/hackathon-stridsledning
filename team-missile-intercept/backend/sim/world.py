@@ -78,13 +78,16 @@ class World:
 
     # --- tick ---
     def step(self, dt: float) -> None:
-        self.events = []
+        # Note: events are cleared by Scenario.step at the start of the
+        # tick, not here — otherwise launch events appended by blue_ai
+        # (via spawn_interceptor) get wiped before they reach the client.
 
-        # 1) advance threats
+        # 1) advance threats. HGV needs world access to scan for nearby
+        # interceptors (Level-5 evasion); other threats ignore the arg.
         for threat in list(self.threats.values()):
             prev_pos = threat.state.pos.copy()
             prev_vel = threat.state.vel.copy()
-            threat.step(dt)
+            threat.step(dt, self)
             threat._prev_pos = prev_pos  # stored on-the-fly for CPA calc
             threat._prev_vel = prev_vel
 
@@ -186,13 +189,18 @@ class World:
                     }
                 )
 
-        # 4) threats that reached the base (distance < base_hit_radius)
+        # 4) threats that crossed the base footprint (horizontal distance
+        #    within config.BASE_HIT_RADIUS, any altitude). Using horizontal
+        #    2D distance rather than 3D — an HGV diving at 1700 m/s over
+        #    the base would otherwise skim above the 3D sphere and miss.
         base = np.array(config.BLUE_BASE_POS, dtype=np.float64)
+        base_hit_r_sq = config.BASE_HIT_RADIUS * config.BASE_HIT_RADIUS
         for tid, threat in list(self.threats.items()):
             if not threat.state.alive:
                 continue
-            d = float(np.linalg.norm(threat.state.pos - base))
-            if d < 250.0:  # base "hit" sphere
+            dx = threat.state.pos[0] - base[0]
+            dy = threat.state.pos[1] - base[1]
+            if (dx * dx + dy * dy) < base_hit_r_sq:
                 threat.state.alive = False
                 self.leaked += 1
                 self.explosions.append(Explosion(pos=threat.state.pos.copy(), t=self.t))
@@ -201,13 +209,9 @@ class World:
                 )
 
         # 4b) Unified ground collision — any live entity (threat or
-        # interceptor) that touches the ground explodes. Previously each
-        # entity's step() set alive=False on ground impact, but some
-        # paths (HGV, deep-diving cruise) slipped through the cracks and
-        # produced the "bouncing on the ground" glitch the reviewer saw.
-        # Centralising the check here also guarantees an explosion flash
-        # for every crash, no matter who crashed.
-        BASE_HIT_R_SQ = 250.0 * 250.0
+        # interceptor) that touches the ground explodes. Ground impact
+        # inside the base footprint counts as a leak (same horizontal
+        # radius as the in-air check); outside, it's a ground_crash.
         for tid, threat in list(self.threats.items()):
             if not threat.state.alive:
                 continue
@@ -216,13 +220,9 @@ class World:
                 hit_pos = threat.state.pos.copy()
                 hit_pos[2] = config.GROUND_Z
                 self.explosions.append(Explosion(pos=hit_pos, t=self.t))
-                dxy = hit_pos - base
-                dxy[2] = 0.0
-                if float(dxy[0] * dxy[0] + dxy[1] * dxy[1]) <= BASE_HIT_R_SQ:
-                    # Ground impact inside base footprint — count as a leak
-                    # so Wave 5 doesn't under-report when a threat lands
-                    # on the last tick a few metres short of the 250 m
-                    # base sphere but still on top of the base plate.
+                dx = hit_pos[0] - base[0]
+                dy = hit_pos[1] - base[1]
+                if (dx * dx + dy * dy) <= base_hit_r_sq:
                     self.leaked += 1
                     self.events.append(
                         {"type": "leak", "threat": tid, "kind": threat.state.kind}

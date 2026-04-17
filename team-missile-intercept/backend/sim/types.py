@@ -23,11 +23,15 @@ class ThreatType(str, Enum):
 
 
 class InterceptorType(str, Enum):
+    # All enum VALUES are real-weapon strings so the frontend can mount a
+    # distinct mesh per product. Python code refers to members by name
+    # (InterceptorType.SHORT_SAM) — the value string is the wire format.
     CIWS = "ciws"
-    SHORT_SAM = "short_sam"
-    MED_SAM = "med_sam"
-    LONG_SAM = "long_sam"
-    HIT_TO_KILL = "hit_to_kill"
+    SHORT_SAM = "rbs_70"
+    IRIS_T_SLS = "iris_t_sls"
+    MED_SAM = "iris_t_slm"
+    LONG_SAM = "pac_2"
+    HIT_TO_KILL = "pac_3"
 
 
 @dataclass
@@ -52,6 +56,8 @@ class InterceptorSpec:
     drag_k: float            # drag coefficient
     kill_radius: float       # m — bounding radius used by CPA checks
     color: str
+    # Propulsion:
+    fuel_s: float = 10.0     # seconds of powered flight (boost+sustain motor)
     # Damage model (see WEAPON_SPECS.md):
     damage_direct: int = 40       # damage if CPA < radius_direct
     damage_prox: int = 20         # max damage at radius 0, falling quadratically to 0 at radius_prox
@@ -84,10 +90,15 @@ THREAT_SPECS = {
         hp=30,
         usd_cost=1_500_000,
     ),
-    # Terminal-phase ballistic missile (Iskander-class, simplified).
+    # Terminal-phase ballistic missile. 13 Mach (4459 m/s) matches the
+    # public terminal velocity of modern MaRV / heavy-RV designs
+    # (Iskander upgrade, DF-17 depressed-trajectory test). Hard target
+    # for the interceptor fleet by design — PAC-3 / PAC-2 saturation has
+    # to land direct hits or stack proxy kills before the RV crosses
+    # the last 30 km.
     ThreatType.BALLISTIC: ThreatSpec(
         kind=ThreatType.BALLISTIC,
-        cruise_speed=1800.0,
+        cruise_speed=4459.0,
         cruise_alt=0.0,
         max_g=3.0,
         drag_k=2.0e-6,
@@ -96,13 +107,15 @@ THREAT_SPECS = {
         hp=80,
         usd_cost=3_000_000,
     ),
-    # Hypersonic glide vehicle (Kinzhal/DF-ZF class). Simplified:
-    # PN-guided virtual waypoints produce a wide S-curve in the mid-phase,
-    # then PN onto the base for the terminal dive.
-    # "cruise_alt" is the initial glide altitude.
+    # Hypersonic glide vehicle (Kinzhal/DF-ZF class). 17 Mach glide
+    # velocity — at this speed the R = v²/a formula gives a ~347 km
+    # turn radius under max_g=10, so HGV effectively flies straight
+    # through the 150 km arena unless it bleeds speed. Manoeuvres
+    # aggressively bleed kinetic energy (see _HGV_BLEED_RATE), and
+    # below _HGV_STALL_SPEED lift collapses and the HGV crashes.
     ThreatType.HGV: ThreatSpec(
         kind=ThreatType.HGV,
-        cruise_speed=1700.0,
+        cruise_speed=5831.0,
         cruise_alt=35_000.0,
         max_g=10.0,
         drag_k=1.5e-6,
@@ -139,6 +152,7 @@ INTERCEPTOR_SPECS = {
         drag_k=2.0e-5,
         kill_radius=45.0,
         color="#ffd24a",
+        fuel_s=4.0,
         damage_direct=15,
         damage_prox=8,
         radius_direct=1.0,
@@ -152,12 +166,32 @@ INTERCEPTOR_SPECS = {
         max_range=9_000.0,
         drag_k=1.0e-5,
         kill_radius=60.0,
-        color="#ffcc33",
+        color="#4a8a3a",  # matches rbs_70 mesh (olive green)
+        fuel_s=13.0,
         damage_direct=40,
         damage_prox=20,
         radius_direct=1.0,
         radius_prox=120.0,
         usd_cost=175_000,
+    ),
+    # Short-range SAM+ (IRIS-T SLS / RBS 98). Mach 2 average, 60G TVC —
+    # the most agile interceptor, designed for terminal "knife fight" vs
+    # manoeuvring targets within 12 km. Ground-launched IRIS-T with short
+    # booster; 11.4 kg HE-frag warhead.
+    InterceptorType.IRIS_T_SLS: InterceptorSpec(
+        kind=InterceptorType.IRIS_T_SLS,
+        max_speed=400.0,
+        max_g=60.0,
+        max_range=12_000.0,
+        drag_k=1.2e-5,
+        kill_radius=60.0,
+        color="#ff9944",
+        fuel_s=30.0,
+        damage_direct=50,
+        damage_prox=25,
+        radius_direct=1.0,
+        radius_prox=100.0,
+        usd_cost=500_000,
     ),
     InterceptorType.MED_SAM: InterceptorSpec(
         kind=InterceptorType.MED_SAM,
@@ -166,7 +200,8 @@ INTERCEPTOR_SPECS = {
         max_range=40_000.0,
         drag_k=6.0e-6,
         kill_radius=75.0,
-        color="#fff089",
+        color="#ff8c1a",  # matches iris_t_slm mesh (orange)
+        fuel_s=39.0,
         damage_direct=50,
         damage_prox=25,
         radius_direct=2.0,
@@ -181,7 +216,8 @@ INTERCEPTOR_SPECS = {
         max_range=70_000.0,
         drag_k=4.0e-6,
         kill_radius=90.0,
-        color="#ffec40",
+        color="#ff69b4",  # matches pac_2 mesh (pink)
+        fuel_s=41.0,
         damage_direct=80,
         damage_prox=40,
         radius_direct=3.0,
@@ -203,11 +239,17 @@ INTERCEPTOR_SPECS = {
         max_range=60_000.0,
         drag_k=4.0e-6,
         kill_radius=60.0,
-        color="#ff7a7a",
+        color="#a855f7",  # matches pac_3 mesh (purple)
+        fuel_s=35.0,
         damage_direct=200,
         damage_prox=25,
-        radius_direct=40.0,
-        radius_prox=60.0,
+        # Bumped from 40 m → 60 m: at Mach 13 ballistic closing (6159
+        # m/s relative to PAC-3), per-tick relative displacement is
+        # ~308 m, and typical PN CPA drifts 30-80 m. 40 m was borderline
+        # for direct hits at this speed; 60 m keeps PAC-3's hit-to-kill
+        # intent against the realistic fast-ballistic threat.
+        radius_direct=60.0,
+        radius_prox=80.0,
         usd_cost=4_000_000,
     ),
 }
@@ -227,6 +269,10 @@ class EntityState:
     color: str = "#ffffff"
     hp: int = 0
     hp_max: int = 0
+    # True while the motor is burning (interceptor boost + sustain phase).
+    # Frontend uses this to gate the exhaust flame visual. Threats that
+    # have no propulsion (ballistic, HGV) stay False throughout.
+    thrust_active: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -241,6 +287,7 @@ class EntityState:
             "color": self.color,
             "hp": self.hp,
             "hp_max": self.hp_max,
+            "thrust_active": self.thrust_active,
         }
 
 

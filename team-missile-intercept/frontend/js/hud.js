@@ -3,10 +3,11 @@
 // Real-world names for interceptor kinds, shown in the launch banner.
 const INTERCEPTOR_NAMES = {
   ciws: 'Lvkv 90',
-  short_sam: 'RBS 70 NG',
-  med_sam: 'IRIS-T SLM',
-  long_sam: 'Patriot PAC-2 GEM+',
-  hit_to_kill: 'Patriot PAC-3 MSE',
+  rbs_70: 'RBS 70 NG',
+  iris_t_sls: 'IRIS-T SLS (RBS 98)',
+  iris_t_slm: 'IRIS-T SLM',
+  pac_2: 'Patriot PAC-2 GEM+',
+  pac_3: 'Patriot PAC-3 MSE',
 };
 
 export function wireHud(sendCmd) {
@@ -57,7 +58,7 @@ export function updateHud(snap) {
 
   // Ammo rows (falls back to ∞ when server omits the field, e.g. legacy runs)
   const ammo = snap.ammo || {};
-  for (const kind of ['ciws', 'short_sam', 'med_sam', 'long_sam', 'hit_to_kill']) {
+  for (const kind of ['ciws', 'rbs_70', 'iris_t_sls', 'iris_t_slm', 'pac_2', 'pac_3']) {
     const el = document.getElementById(`ammo-${kind}`);
     if (!el) continue;
     const info = ammo[kind];

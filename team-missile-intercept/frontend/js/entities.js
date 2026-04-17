@@ -43,7 +43,9 @@ function buildModel(kind, team, color) {
       new THREE.CylinderGeometry(0.32, 0.32, 0.05, 12),
       darkMat,
     );
-    prop.rotation.x = Math.PI / 2; // disc face perpendicular to flight axis
+    // Cylinder default axis is +Y (= flight axis), so the disc face already
+    // sits in the X-Z plane — perpendicular to flight direction, which is
+    // what we want for a rear-mounted pusher prop.
     prop.position.set(0, -0.95, 0);
     g.add(body, prop);
     // Tag the propeller for spin animation in the update loop.
@@ -95,72 +97,114 @@ function buildModel(kind, team, color) {
       bodyMat,
     );
     nose.position.y = 2.25;
-    // Grid fins (4 small boxes at the base)
+    // 4 tail fins at the base — X=radial extent (sticks out), Y=chord along
+    // body, Z=tangential thickness (thin). Inner edge sits flush with body.
     for (let i = 0; i < 4; i++) {
       const fin = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08, 0.6, 0.45),
+        new THREE.BoxGeometry(0.45, 0.6, 0.08),
         darkMat,
       );
-      fin.position.set(
-        Math.cos((i * Math.PI) / 2) * 0.55,
-        -1.45,
-        Math.sin((i * Math.PI) / 2) * 0.55,
-      );
-      fin.rotation.y = -(i * Math.PI) / 2;
+      const a = (i * Math.PI) / 2;
+      // body radius at y=-1.45 ≈ 0.545 → fin center at 0.545 + 0.225 = 0.77
+      fin.position.set(Math.cos(a) * 0.77, -1.45, Math.sin(a) * 0.77);
+      fin.rotation.y = -a;
       g.add(fin);
     }
     g.add(body, nose);
   } else if (kind === 'hgv') {
-    // Wedge-shaped hypersonic glide body: wide flat underside, pointed
-    // nose, blunt tail. Long axis = +Y.
+    // Slender dart-shaped hypersonic glide body (DF-ZF / HTV-2 style):
+    // long tapered lifting body with a pointed nose at +Y and flared rear
+    // at -Y. Diamond cross-section (4-sided cone rotated 45°) flattened on
+    // Z gives a sharp dorsal ridge + flat-ish belly. Small dorsal fin and
+    // two horizontal side fins sit near the rear.
     const body = new THREE.Mesh(
-      new THREE.ConeGeometry(0.6, 2.8, 4),
+      new THREE.ConeGeometry(0.5, 5.5, 4),
       bodyMat,
     );
-    body.rotation.y = Math.PI / 4;
-    body.scale.set(1.3, 1.0, 0.5); // flatten on Z → wedge
-    const nose = new THREE.Mesh(
-      new THREE.ConeGeometry(0.25, 0.9, 10),
-      bodyMat,
-    );
-    nose.position.y = 1.8;
-    // Small canards near the nose
-    const canardL = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 0.2, 0.05),
+    // ConeGeometry(...,4) places base vertices on the ±X and ±Z axes, so
+    // the default cross-section is already a diamond. NO rotation needed:
+    // rotating 45° would move the vertices onto the diagonals, giving a
+    // rectangle after the Z scale — top would be a flat face, not a ridge.
+    body.scale.set(1.0, 1.0, 0.35); // flatten on Z → lifting-body silhouette
+    // Body spans y ∈ [-2.75, +2.75]. At y=-1.8 (near rear) the diamond has
+    // half-extent ~0.41 in X and ~0.14 in Z (after Z-scale).
+    // Dorsal vertical fin — sits on top ridge, inner edge flush with body.
+    const dorsal = new THREE.Mesh(
+      new THREE.BoxGeometry(0.04, 0.55, 0.3),
       darkMat,
     );
-    canardL.position.set(0, 0.8, 0);
-    g.add(body, nose, canardL);
-  } else if (
-    kind === 'ciws' ||
-    kind === 'short_sam' ||
-    kind === 'med_sam' ||
-    kind === 'long_sam' ||
-    kind === 'hit_to_kill'
-  ) {
-    // IRIS-T style interceptor: slender body, ogive nose with IR seeker dome,
-    // 4 mid-body canards, 4 large trapezoidal tail fins, 2 accent bands.
-    const size = kind === 'long_sam' ? 1.15 : kind === 'ciws' ? 0.65 : 1.0;
+    dorsal.position.set(0, -1.75, 0.29);
+    // Two horizontal side fins — inner edge flush with body side vertices.
+    const wingL = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 0.5, 0.04),
+      darkMat,
+    );
+    wingL.position.set(0.68, -1.8, 0);
+    const wingR = wingL.clone();
+    wingR.position.set(-0.68, -1.8, 0);
+    g.add(body, dorsal, wingL, wingR);
+  } else if (kind === 'ciws') {
+    // Lvkv 90 / Bofors 3P 40 mm round — a short stubby cannon shell, no
+    // fins, no plume (cannon rounds are unguided ballistic). Small tan
+    // cylinder body + nose-mounted fuze cap + dark driving band. Solid
+    // silhouette keeps it readable at very small scale when it streams
+    // out of the inner defense ring at 300 rpm.
+    const shellMat = new THREE.MeshStandardMaterial({
+      color: 0xd9b36a,
+      emissive: 0x5a4220,
+      emissiveIntensity: 0.35,
+      roughness: 0.4,
+      metalness: 0.6,
+    });
+    const shellDark = new THREE.MeshStandardMaterial({
+      color: 0x5a3e1a,
+      roughness: 0.7,
+      metalness: 0.2,
+    });
+    const shellBody = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.12, 0.7, 10),
+      shellMat,
+    );
+    const shellNose = new THREE.Mesh(
+      new THREE.ConeGeometry(0.12, 0.28, 10),
+      shellMat,
+    );
+    shellNose.position.y = 0.49;
+    const drivingBand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.13, 0.13, 0.06, 10),
+      shellDark,
+    );
+    drivingBand.position.y = -0.25;
+    g.add(shellBody, shellNose, drivingBand);
+    // No flame — CIWS rounds are unguided ballistic, no motor plume.
+  } else if (kind === 'iris_t_sls') {
+    // IRIS-T SLS (RBS 98): IR imaging seeker, thrust-vector 60G agility.
+    // Slender body, ogive nose with IR seeker dome, 4 mid-body canards,
+    // 4 large trapezoidal tail fins, 2 accent bands.
+    const size = 1.0;
     const body = new THREE.Mesh(
       new THREE.CylinderGeometry(0.11 * size, 0.13 * size, 2.0 * size, 14),
       bodyMat,
     );
+    // Truncated nose cone (tapers from body radius to small flat tip where
+    // the seeker dome mounts). Using CylinderGeometry with different top/bottom
+    // radii gives a frustum instead of a pointed cone.
     const nose = new THREE.Mesh(
-      new THREE.ConeGeometry(0.11 * size, 0.55 * size, 14),
+      new THREE.CylinderGeometry(0.05 * size, 0.11 * size, 0.5 * size, 14),
       bodyMat,
     );
-    nose.position.y = 1.275 * size;
-    // IR seeker dome at nose tip (dark glassy sphere)
+    nose.position.y = 1.25 * size; // bottom at +1.0 (body top), flat tip at +1.5
+    // IR seeker dome: half-embedded at the flat nose tip, upper hemisphere visible
     const seekerMat = new THREE.MeshStandardMaterial({
       color: 0x1a1a22,
       roughness: 0.25,
       metalness: 0.7,
     });
     const seeker = new THREE.Mesh(
-      new THREE.SphereGeometry(0.06 * size, 12, 10),
+      new THREE.SphereGeometry(0.05 * size, 14, 12),
       seekerMat,
     );
-    seeker.position.y = 1.55 * size;
+    seeker.position.y = 1.5 * size;
     // 2 accent bands around body (slightly wider & darker than body)
     const bandMat = new THREE.MeshStandardMaterial({
       color: c.clone().multiplyScalar(0.6),
@@ -176,32 +220,35 @@ function buildModel(kind, team, color) {
       band.position.y = yPos * size;
       g.add(band);
     }
-    // 4 mid-body canards (small forward control fins)
+    // 4 LARGE mid-body wings — IRIS-T's prominent main control surfaces.
+    // Box dims: X=radial extent, Y=chord along body, Z=tangential thickness.
     for (let i = 0; i < 4; i++) {
-      const canard = new THREE.Mesh(
-        new THREE.BoxGeometry(0.035 * size, 0.18 * size, 0.28 * size),
+      const wing = new THREE.Mesh(
+        new THREE.BoxGeometry(0.15 * size, 0.7 * size, 0.04 * size),
         darkMat,
       );
       const a = (i * Math.PI) / 2;
-      canard.position.set(
-        Math.cos(a) * 0.22 * size,
-        0.4 * size,
-        Math.sin(a) * 0.22 * size,
+      // center at body_radius + half_radial = 0.11 + 0.25 = 0.36
+      wing.position.set(
+        Math.cos(a) * 0.185 * size,
+        0.2 * size,
+        Math.sin(a) * 0.185 * size,
       );
-      canard.rotation.y = -a;
-      g.add(canard);
+      wing.rotation.y = -a;
+      g.add(wing);
     }
-    // 4 large tail fins
+    // 4 SHORT tail cruciform fins at the base.
     for (let i = 0; i < 4; i++) {
       const fin = new THREE.Mesh(
-        new THREE.BoxGeometry(0.04 * size, 0.7 * size, 0.55 * size),
+        new THREE.BoxGeometry(0.22 * size, 0.18 * size, 0.035 * size),
         darkMat,
       );
       const a = (i * Math.PI) / 2;
+      // center at body_radius(tail) + half_radial = 0.13 + 0.11 = 0.24
       fin.position.set(
-        Math.cos(a) * 0.28 * size,
+        Math.cos(a) * 0.24 * size,
         -0.95 * size,
-        Math.sin(a) * 0.28 * size,
+        Math.sin(a) * 0.24 * size,
       );
       fin.rotation.y = -a;
       g.add(fin);
@@ -220,6 +267,257 @@ function buildModel(kind, team, color) {
     flame.rotation.z = Math.PI; // tip points -Y
     g.add(body, nose, seeker, flame);
     // tag the flame for pulsing animation
+    g.userData.flame = flame;
+  } else if (kind === 'iris_t_slm') {
+    // IRIS-T SLM: longer than SLS, sharp pointed nose (no IR seeker dome,
+    // since SLM uses a different seeker architecture and looks pointier in
+    // reference photos). Orange.
+    const slmColor = new THREE.Color('#ff8c1a');
+    bodyMat.color.copy(slmColor);
+    bodyMat.emissive.copy(slmColor);
+    darkMat.color.copy(slmColor).multiplyScalar(0.55);
+    darkMat.emissive.copy(slmColor).multiplyScalar(0.2);
+    c.copy(slmColor);
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11, 0.13, 2.8, 14),
+      bodyMat,
+    );
+    // Pointed ogive nose
+    const nose = new THREE.Mesh(
+      new THREE.ConeGeometry(0.11, 0.8, 14),
+      bodyMat,
+    );
+    nose.position.y = 1.8;
+    // Accent bands
+    const bandMat = new THREE.MeshStandardMaterial({
+      color: c.clone().multiplyScalar(0.6),
+      emissive: c.clone().multiplyScalar(0.25),
+      emissiveIntensity: 0.3,
+      roughness: 0.5,
+    });
+    for (const yPos of [0.9, -0.3]) {
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.135, 0.135, 0.08, 14),
+        bandMat,
+      );
+      band.position.y = yPos;
+      g.add(band);
+    }
+    // 4 large mid-body wings
+    for (let i = 0; i < 4; i++) {
+      const wing = new THREE.Mesh(
+        new THREE.BoxGeometry(0.15, 0.7, 0.04),
+        darkMat,
+      );
+      const a = (i * Math.PI) / 2;
+      wing.position.set(Math.cos(a) * 0.185, 0.3, Math.sin(a) * 0.185);
+      wing.rotation.y = -a;
+      g.add(wing);
+    }
+    // 4 short tail fins
+    for (let i = 0; i < 4; i++) {
+      const fin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.22, 0.18, 0.035),
+        darkMat,
+      );
+      const a = (i * Math.PI) / 2;
+      fin.position.set(Math.cos(a) * 0.24, -1.25, Math.sin(a) * 0.24);
+      fin.rotation.y = -a;
+      g.add(fin);
+    }
+    // Exhaust plume
+    const flameMat = new THREE.MeshBasicMaterial({
+      color: 0xffb347,
+      transparent: true,
+      opacity: 0.75,
+    });
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.18, 0.9, 10),
+      flameMat,
+    );
+    flame.position.y = -1.85;
+    flame.rotation.z = Math.PI;
+    g.add(body, nose, flame);
+    g.userData.flame = flame;
+  } else if (kind === 'pac_2') {
+    // PAC-2 GEM: long slender missile, pointed nose, tail fins only (no
+    // mid-body wings). Pink.
+    const pinkColor = new THREE.Color('#ff69b4');
+    bodyMat.color.copy(pinkColor);
+    bodyMat.emissive.copy(pinkColor);
+    darkMat.color.copy(pinkColor).multiplyScalar(0.55);
+    darkMat.emissive.copy(pinkColor).multiplyScalar(0.2);
+    c.copy(pinkColor);
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.14, 3.0, 14),
+      bodyMat,
+    );
+    const nose = new THREE.Mesh(
+      new THREE.ConeGeometry(0.12, 0.9, 14),
+      bodyMat,
+    );
+    nose.position.y = 1.95;
+    // One accent band
+    const bandMat = new THREE.MeshStandardMaterial({
+      color: c.clone().multiplyScalar(0.6),
+      emissive: c.clone().multiplyScalar(0.25),
+      emissiveIntensity: 0.3,
+      roughness: 0.5,
+    });
+    const band = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.145, 0.145, 0.08, 14),
+      bandMat,
+    );
+    band.position.y = 0.6;
+    g.add(band);
+    // 4 tail fins only
+    for (let i = 0; i < 4; i++) {
+      const fin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.35, 0.55, 0.04),
+        darkMat,
+      );
+      const a = (i * Math.PI) / 2;
+      fin.position.set(Math.cos(a) * 0.315, -1.2, Math.sin(a) * 0.315);
+      fin.rotation.y = -a;
+      g.add(fin);
+    }
+    const flameMat = new THREE.MeshBasicMaterial({
+      color: 0xffb347,
+      transparent: true,
+      opacity: 0.75,
+    });
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.2, 0.95, 10),
+      flameMat,
+    );
+    flame.position.y = -1.95;
+    flame.rotation.z = Math.PI;
+    g.add(body, nose, flame);
+    g.userData.flame = flame;
+  } else if (kind === 'pac_3') {
+    // PAC-3 CRI: compact hit-to-kill interceptor, thin ogive nose, short
+    // tail fin section with 4 small fins, small ACM (attitude control)
+    // ring near the nose. Purple.
+    const purpleColor = new THREE.Color('#a855f7');
+    bodyMat.color.copy(purpleColor);
+    bodyMat.emissive.copy(purpleColor);
+    darkMat.color.copy(purpleColor).multiplyScalar(0.55);
+    darkMat.emissive.copy(purpleColor).multiplyScalar(0.2);
+    c.copy(purpleColor);
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.11, 2.0, 14),
+      bodyMat,
+    );
+    // Long sharp nose
+    const nose = new THREE.Mesh(
+      new THREE.ConeGeometry(0.1, 0.9, 14),
+      bodyMat,
+    );
+    nose.position.y = 1.45;
+    // ACM (divert thruster) ring near nose
+    const acm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.12, 0.12, 14),
+      darkMat,
+    );
+    acm.position.y = 0.7;
+    g.add(acm);
+    // Compact tail fin assembly: small skirt + 4 stubby fins
+    const skirt = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.13, 0.14, 0.2, 14),
+      darkMat,
+    );
+    skirt.position.y = -1.05;
+    g.add(skirt);
+    for (let i = 0; i < 4; i++) {
+      const fin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.32, 0.035),
+        darkMat,
+      );
+      const a = (i * Math.PI) / 2;
+      fin.position.set(Math.cos(a) * 0.23, -1.05, Math.sin(a) * 0.23);
+      fin.rotation.y = -a;
+      g.add(fin);
+    }
+    const flameMat = new THREE.MeshBasicMaterial({
+      color: 0xffb347,
+      transparent: true,
+      opacity: 0.75,
+    });
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.16, 0.8, 10),
+      flameMat,
+    );
+    flame.position.y = -1.55;
+    flame.rotation.z = Math.PI;
+    g.add(body, nose, flame);
+    g.userData.flame = flame;
+  } else if (kind === 'rbs_70') {
+    // RBS 70 NG: compact MANPADS-style laser beam-rider. Slender body with
+    // sharp pointed nose, 4 small canards near the front, 4 larger
+    // trapezoidal rear fins at the tail. Olive green.
+    const rbsColor = new THREE.Color('#4a8a3a');
+    bodyMat.color.copy(rbsColor);
+    bodyMat.emissive.copy(rbsColor);
+    darkMat.color.copy(rbsColor).multiplyScalar(0.55);
+    darkMat.emissive.copy(rbsColor).multiplyScalar(0.2);
+    c.copy(rbsColor);
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.09, 0.1, 1.6, 14),
+      bodyMat,
+    );
+    // Sharp pointed nose (no seeker dome — RBS 70 uses laser guidance)
+    const nose = new THREE.Mesh(
+      new THREE.ConeGeometry(0.09, 0.5, 14),
+      bodyMat,
+    );
+    nose.position.y = 1.05;
+    // One accent band near the front
+    const bandMat = new THREE.MeshStandardMaterial({
+      color: c.clone().multiplyScalar(0.6),
+      emissive: c.clone().multiplyScalar(0.25),
+      emissiveIntensity: 0.3,
+      roughness: 0.5,
+    });
+    const band = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.105, 0.105, 0.08, 14),
+      bandMat,
+    );
+    band.position.y = 0.3;
+    g.add(band);
+    // 4 small front canards
+    for (let i = 0; i < 4; i++) {
+      const canard = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.14, 0.03),
+        darkMat,
+      );
+      const a = (i * Math.PI) / 2;
+      canard.position.set(Math.cos(a) * 0.15, 0.55, Math.sin(a) * 0.15);
+      canard.rotation.y = -a;
+      g.add(canard);
+    }
+    // 4 larger rear fins at the tail
+    for (let i = 0; i < 4; i++) {
+      const fin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.35, 0.04),
+        darkMat,
+      );
+      const a = (i * Math.PI) / 2;
+      fin.position.set(Math.cos(a) * 0.24, -0.65, Math.sin(a) * 0.24);
+      fin.rotation.y = -a;
+      g.add(fin);
+    }
+    const flameMat = new THREE.MeshBasicMaterial({
+      color: 0xffb347,
+      transparent: true,
+      opacity: 0.75,
+    });
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.14, 0.7, 10),
+      flameMat,
+    );
+    flame.position.y = -1.15;
+    flame.rotation.z = Math.PI;
+    g.add(body, nose, flame);
     g.userData.flame = flame;
   } else {
     // Fallback: original single cone.
@@ -262,7 +560,7 @@ class EntityMesh {
     scene.add(this.trail);
   }
 
-  update(pos, vel) {
+  update(pos, vel, thrustActive) {
     const [x, y, z] = worldToScene(pos[0], pos[1], pos[2]);
     this.mesh.position.set(x, y, z);
 
@@ -281,13 +579,20 @@ class EntityMesh {
       this.mesh.quaternion.setFromUnitVectors(up, dir);
     }
 
-    // Flicker the SAM exhaust plume, if present.
+    // Flicker the SAM exhaust plume only while the motor is burning.
+    // thrustActive is sent by the backend and goes false once fuel_s has
+    // elapsed — interceptors coast silently on fins after that.
     const flame = this.mesh.userData?.flame;
     if (flame) {
-      const t = performance.now() / 1000;
-      flame.material.opacity = 0.55 + 0.25 * Math.sin(t * 22 + this.id);
-      const s = 0.9 + 0.2 * Math.sin(t * 18 + this.id * 1.3);
-      flame.scale.set(s, 1, s);
+      if (thrustActive) {
+        flame.visible = true;
+        const t = performance.now() / 1000;
+        flame.material.opacity = 0.55 + 0.25 * Math.sin(t * 22 + this.id);
+        const s = 0.9 + 0.2 * Math.sin(t * 18 + this.id * 1.3);
+        flame.scale.set(s, 1, s);
+      } else {
+        flame.visible = false;
+      }
     }
 
     // Spin the drone propeller around the flight axis (its local +Y, which
@@ -347,7 +652,7 @@ export class EntityRegistry {
         em = new EntityMesh(this.scene, e.id, e.team, e.kind, e.color);
         this.byId.set(e.id, em);
       }
-      if (e.alive) em.update(e.pos, e.vel);
+      if (e.alive) em.update(e.pos, e.vel, e.thrust_active);
     }
     // Dispose disappeared entities
     for (const [id, em] of this.byId) {

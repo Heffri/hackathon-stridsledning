@@ -5,7 +5,10 @@ All physics, arena, guidance, and rendering parameters live here.
 
 # --- Arena ---
 ARENA_X = 150_000.0  # east-west extent (m)
-ARENA_Y = 150_000.0  # north-south extent (m)
+ARENA_Y = 250_000.0  # north-south extent (m) — deep enough for HGV's
+                      # 180 km spawn border and ballistic's 120 km, so
+                      # Blue can see the interceptors run out of fuel
+                      # during the long head-on engagement.
 ARENA_Z = 40_000.0   # ceiling (m)
 GROUND_Z = 0.0
 
@@ -32,6 +35,15 @@ DEFAULT_KILL_RADIUS = 40.0   # m
 
 # --- Defended position (Blue base, south-center) ---
 BLUE_BASE_POS = (ARENA_X * 0.5, 5_000.0, 0.0)  # x, y, z
+# Base "footprint" used for leak detection. A threat that crosses this
+# horizontal radius around the base centre (at any altitude, in-air or on
+# ground impact) counts as a leak. Tuned to match the visual base marker
+# scale (~2.5 km cylinder) and a realistic "defended area" rather than a
+# pinpoint site — 250 m was too tight (HGV diving at 1700 m/s skipped the
+# 3D sphere cleanly and ground-impacts 300-800 m from centre were
+# silently classified as "ground_crash"). 1500 m models an airfield-
+# class defended area and matches user intuition of "hit the base".
+BASE_HIT_RADIUS = 1500.0  # metres
 
 # --- Red spawn band (north edge) ---
 RED_SPAWN_Y = ARENA_Y - 5_000.0

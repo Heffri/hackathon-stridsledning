@@ -170,4 +170,10 @@ if FRONTEND_DIR.exists():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    # Port 8000 is frequently reserved by Windows (Hyper-V/WSL2/Docker
+    # Desktop excluded port ranges include 8000/8080/8088), causing
+    # WinError 10013 on bind. 5147 lands outside the typical reserved
+    # ranges on both hackathon laptops. Override with the PORT env var
+    # if needed (`set PORT=xxxx` in cmd, `PORT=xxxx py ...` in bash).
+    port = int(os.environ.get("PORT", "5174"))
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

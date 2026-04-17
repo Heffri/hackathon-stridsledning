@@ -23,6 +23,7 @@ from .types import (
 # Interceptor kinds that perform a vertical VLS boost before PN takes over.
 _VLS_SAM_KINDS = (
     InterceptorType.SHORT_SAM,
+    InterceptorType.IRIS_T_SLS,
     InterceptorType.MED_SAM,
     InterceptorType.LONG_SAM,
     InterceptorType.HIT_TO_KILL,
@@ -31,11 +32,32 @@ _VLS_BOOST_DURATION = 1.5  # seconds
 
 # HGV scripted manoeuvre — two virtual waypoints laterally offset from the
 # spawn→base line. PN homes on each in turn, producing a wide S with the
-# HGV's full max_g (15 G) — the sharp mid-course weave that makes an HGV
+# HGV's full max_g (10 G) — the sharp mid-course weave that makes an HGV
 # visually distinct from a ballistic re-entry. Final leg is PN onto the
 # base for the terminal dive.
 _HGV_S_OFFSET_M = 15_000.0     # ±15 km lateral deviation per leg
 _HGV_WP_SWITCH_RADIUS = 8_000.0  # horizontal distance to advance to next wp
+
+# Level-5 evasive manoeuvre — HGV jinks when an interceptor closes inside
+# this radius. Gives a visible defensive reaction and couples with the
+# energy-bleed model (sharper jinks cost more speed, tactical tension).
+_HGV_DETECT_RADIUS = 12_000.0    # m
+_HGV_JINK_G = 8.0                # g's of lateral evasion accel
+
+# Hypersonic speed / energy model. A manoeuvring HGV bleeds kinetic
+# energy at roughly bleed_rate × (current_G / max_G)² per second. Below
+# _HGV_STALL_SPEED it can no longer generate lift and falls out of its
+# glide (we just mark it dead; ground-collision finishes the visual).
+_HGV_BLEED_RATE = 120.0         # m/s per second at max_g — higher than the
+                                 # WEAPON_SPECS 50 m/s/s because at Mach 17
+                                 # the quadratic drag + turn-induced drag
+                                 # realistically pulls the HGV down much
+                                 # faster during evasion, and the demo
+                                 # needs visible speed loss so the turn
+                                 # radius (R = v²/a) tightens as manoeuvres
+                                 # accumulate. 120 gives 5 s of max-G
+                                 # jinking = ~600 m/s loss (~10 % of peak).
+_HGV_STALL_SPEED = 500.0        # m/s floor below which the HGV crashes
 
 
 class Threat:
@@ -191,26 +213,24 @@ class Threat:
         # drone altitude-drift sine and any future time-of-flight effects.
         self._elapsed = 0.0
 
-    def step(self, dt: float) -> None:
+    def step(self, dt: float, world=None) -> None:
         if not self.state.alive:
             return
         self._elapsed += dt
         pos = self.state.pos
         vel = self.state.vel
 
-        # --- HGV: pursuit-steered virtual waypoints + sustain thrust ---
-        # Waypoint queue is [wp1, wp2, base]. Each leg uses pursuit
-        # steering (push velocity toward the waypoint, capped at max_g).
-        # We advance to the next waypoint when the HGV crosses the plane
-        # perpendicular to the waypoint→next direction — PN's "close
-        # enough" radius made the HGV spiral around tight virtual points
-        # instead of progressing. The final leg targets the base and
-        # releases altitude so the vehicle dives onto the target instead
-        # of overshooting it.
+        # --- HGV: unpowered glide with Level-5 evasion + kinetic bleed ---
+        # Real HGVs coast on re-entry kinetic energy; no main propulsion
+        # remains in the glide phase. Pursuit-steered virtual waypoints
+        # produce a wide S, terminal dive aims at the base in 3D. When
+        # an interceptor closes inside _HGV_DETECT_RADIUS we add a
+        # lateral jink — the defensive reaction costs energy via the
+        # same (current_G / max_G)² bleed that drives all manoeuvre
+        # losses, so sharp evasion trades future speed for momentary
+        # safety.
         if self.spec.kind == ThreatType.HGV:
             wp = self.waypoint
-            # Advance: if there's a next wp and we're on its side of the
-            # current one (dot of "pos-wp" with "next-wp" direction > 0).
             if self._wp_queue:
                 next_wp = self._wp_queue[0]
                 from_wp_to_next_h = np.array(
@@ -226,8 +246,6 @@ class Threat:
 
             terminal = not self._wp_queue  # current wp is the base
 
-            # Pursuit steer in XY: desired horiz velocity aligned with
-            # (wp − pos), magnitude = cruise_speed.
             to_wp_h = np.array([wp[0] - pos[0], wp[1] - pos[1], 0.0])
             dh = float(np.linalg.norm(to_wp_h))
             if dh > 1.0:
@@ -238,43 +256,84 @@ class Threat:
             cur_h_vel = np.array([vel[0], vel[1], 0.0])
             steer_h = (desired_h_vel - cur_h_vel) / max(dt, 1e-3)
 
-            if terminal and dh < 15_000.0:
-                # Terminal dive: point velocity at the base in 3D (no
-                # altitude hold). As the HGV passes the base-plane entry
-                # it pitches over and dives onto the target.
+            if terminal and dh < 30_000.0:
                 to_base_3d = wp - pos
                 n3 = float(np.linalg.norm(to_base_3d)) or 1.0
                 desired_vel = (to_base_3d / n3) * self.spec.cruise_speed
                 steer = (desired_vel - vel) / max(dt, 1e-3)
                 steer = physics.cap_accel(steer, self.spec.max_g)
-                # Gravity helps the dive; no lift term here.
                 accel = steer
                 accel = accel + physics.gravity_accel()
-                accel = accel + physics.drag_accel(vel, self.spec.drag_k)
+                accel = accel + physics.drag_accel_at(vel, self.spec.drag_k, float(pos[2]))
             else:
-                # Glide phase: hold glide altitude, weave via waypoints.
                 target_alt = self._base_alt
                 alt_err = target_alt - pos[2]
                 alt_accel = np.array([0.0, 0.0, alt_err * 0.3 - vel[2] * 0.5])
                 horiz_accel = physics.cap_accel(steer_h, self.spec.max_g)
-                # Lift cancels gravity during the glide.
+                # Lift cancels gravity during the glide (aerodynamic
+                # lift, not propulsion).
                 lift = np.array([0.0, 0.0, config.GRAVITY])
                 accel = horiz_accel + alt_accel + lift
                 accel = accel + physics.gravity_accel()
-                accel = accel + physics.drag_accel(vel, self.spec.drag_k)
+                accel = accel + physics.drag_accel_at(vel, self.spec.drag_k, float(pos[2]))
 
-                # Sustain thrust along velocity to counter drag — real
-                # HGVs lose speed but not from Mach 5 to Mach 1 in a
-                # single leg. This keeps them recognisably hypersonic.
-                speed = float(np.linalg.norm(vel))
-                if speed < self.spec.cruise_speed and speed > 1e-3:
-                    sustain_mag = min(120.0, (self.spec.cruise_speed - speed) / max(dt, 1e-3))
-                    accel = accel + (vel / speed) * sustain_mag
+            # Level-5 evasion: if an interceptor is within detect radius,
+            # add a lateral jink perpendicular to the threat line-of-sight.
+            # Direction alternates every 2 s so the HGV snakes rather than
+            # arcing steadily.
+            jink_added = False
+            if world is not None and getattr(world, "interceptors", None):
+                nearest_d2 = float("inf")
+                nearest = None
+                for inter in world.interceptors.values():
+                    if not inter.state.alive:
+                        continue
+                    dv = inter.state.pos - pos
+                    d2 = float(np.dot(dv, dv))
+                    if d2 < nearest_d2:
+                        nearest_d2 = d2
+                        nearest = inter
+                if nearest is not None and nearest_d2 < _HGV_DETECT_RADIUS * _HGV_DETECT_RADIUS:
+                    los = nearest.state.pos - pos
+                    los_h = np.array([los[0], los[1], 0.0])
+                    los_h_n = float(np.linalg.norm(los_h))
+                    if los_h_n > 1e-6:
+                        los_h_unit = los_h / los_h_n
+                        perp = np.array([-los_h_unit[1], los_h_unit[0], 0.0])
+                        side = 1.0 if (int(self._elapsed) % 4) < 2 else -1.0
+                        jink = perp * side * (_HGV_JINK_G * config.GRAVITY)
+                        accel = accel + jink
+                        jink_added = True
 
             new_pos, new_vel = physics.integrate(pos, vel, accel, dt)
             new_vel = physics.cap_speed(new_vel, self.spec.cruise_speed)
+
+            # Kinetic energy bleed from manoeuvring. Use the magnitude of
+            # the commanded horizontal + jink accel (exclude gravity &
+            # drag which aren't pilot inputs). Bleed rate is quadratic
+            # in G ratio — cruising straight loses almost nothing, max-G
+            # jinking bleeds the full _HGV_BLEED_RATE per second.
+            max_accel = self.spec.max_g * config.GRAVITY
+            # Approximate manoeuvre accel: horizontal steer + (jink if any).
+            # cap already applied, so magnitude <= max_accel for steer
+            # alone; jink can push it above. We measure actual command.
+            manoeuvre_accel_mag = float(np.linalg.norm(steer if (terminal and dh < 30_000.0) else horiz_accel))
+            if jink_added:
+                manoeuvre_accel_mag = min(max_accel * 1.5, manoeuvre_accel_mag + _HGV_JINK_G * config.GRAVITY)
+            g_ratio = manoeuvre_accel_mag / max(max_accel, 1e-6)
+            speed_loss = _HGV_BLEED_RATE * g_ratio * g_ratio * dt
+            nv_mag = float(np.linalg.norm(new_vel))
+            if nv_mag > speed_loss:
+                new_vel = new_vel * ((nv_mag - speed_loss) / nv_mag)
+
             self.state.pos = new_pos
             self.state.vel = new_vel
+
+            # Stall: below _HGV_STALL_SPEED, aerodynamic lift collapses
+            # and the HGV falls. Mark dead; ground-collision sweep
+            # elsewhere emits the explosion visual.
+            if float(np.linalg.norm(new_vel)) < _HGV_STALL_SPEED:
+                self.state.alive = False
             return
 
         # --- Ballistic: gravity-driven re-entry with weak horizontal pull ---
@@ -411,7 +470,22 @@ class Interceptor:
         "_prev_vel",
         "_boost_phase_end",
         "_horiz_launch_dir",
+        "_burnout_flagged",
     )
+
+    # Stall speed below which an unpowered interceptor loses aerodynamic
+    # control and self-destructs. Real SAMs transition from skin-lift
+    # aerodynamics to an uncontrolled tumble around 150-250 m/s; we use
+    # 200 m/s as the cutoff.
+    _STALL_SPEED = 200.0
+
+    # Coast-phase manoeuvre cap as a fraction of the powered spec.max_g.
+    # Real powered SAMs pull 20-60 G via thrust-vector control + fins;
+    # after burnout the main motor is gone but the aerodynamic fins +
+    # attitude control motors on PAC-3/ESSM class interceptors still
+    # give roughly half the powered authority. 0.5 also keeps the demo
+    # reachable — 1/3 tanked Blue win rate into the 20s.
+    _COAST_G_FRACTION = 0.5
 
     def __init__(
         self,
@@ -466,9 +540,11 @@ class Interceptor:
             target_id=target_id,
             spawn_t=t_now,
             color=self.spec.color,
+            thrust_active=True,  # motor is lit at launch
         )
         self.target_id = target_id
         self.launched_t = t_now
+        self._burnout_flagged = False
 
     def step(self, dt: float, target_state: Optional[EntityState], t_now: float) -> None:
         if not self.state.alive:
@@ -477,11 +553,14 @@ class Interceptor:
         pos = self.state.pos
         vel = self.state.vel
 
+        fuel_elapsed = t_now - self.launched_t
+        powered = fuel_elapsed < self.spec.fuel_s
+        self.state.thrust_active = powered
+
         # --- VLS boost phase: fly nearly vertical, ignore PN ---
+        # (Always powered — fuel_s is larger than _VLS_BOOST_DURATION for
+        # every interceptor type, so we don't need to gate boost on fuel.)
         if t_now < self._boost_phase_end:
-            # Target velocity: same lean-up unit vector scaled to 0.4*max.
-            # Push current velocity toward it with very strong thrust so the
-            # missile actually climbs before guidance engages.
             target_vec = np.array(
                 [
                     0.2 * self._horiz_launch_dir[0],
@@ -501,29 +580,28 @@ class Interceptor:
 
             new_pos, new_vel = physics.integrate(pos, vel, accel, dt)
             new_vel = physics.cap_speed(new_vel, self.spec.max_speed)
-            # Defensive Z-clamp; World.step handles ground-impact kills.
             if new_pos[2] < config.GROUND_Z:
                 new_pos[2] = config.GROUND_Z
             self.state.pos = new_pos
             self.state.vel = new_vel
             return
 
-        # --- Post-boost: PN guidance + thrust ---
+        # --- Post-boost: PN guidance, possibly in coast (unpowered) mode ---
         if target_state is not None and target_state.alive:
             a_guide = physics.pn_guidance_accel(
                 pos, vel, target_state.pos, target_state.vel
             )
-            a_guide = physics.cap_accel(a_guide, self.spec.max_g)
+            g_cap = self.spec.max_g if powered else self.spec.max_g * self._COAST_G_FRACTION
+            a_guide = physics.cap_accel(a_guide, g_cap)
         else:
-            # No target — coast + light drag, will self-destruct on timeout.
             a_guide = np.zeros(3)
 
         speed = float(np.linalg.norm(vel))
-        if speed < self.spec.max_speed and speed > 1e-3:
-            # After the VLS boost the velocity points nearly vertical; a
-            # pure "thrust along velocity" would fight PN for many seconds.
-            # Point the sustain thrust along line-of-sight to the target so
-            # the missile actually converges on the engagement geometry.
+        a_boost = np.zeros(3)
+        if powered and speed < self.spec.max_speed and speed > 1e-3:
+            # Sustain thrust along line-of-sight to the target so the
+            # missile actually converges on the engagement geometry
+            # rather than fighting PN for many seconds.
             if target_state is not None and target_state.alive:
                 to_target = target_state.pos - pos
                 tt_norm = float(np.linalg.norm(to_target))
@@ -535,18 +613,31 @@ class Interceptor:
                 along = vel / speed
             boost_mag = min(150.0, (self.spec.max_speed - speed) / max(dt, 1e-3))
             a_boost = along * boost_mag
-        else:
-            a_boost = np.zeros(3)
 
         accel = a_guide + a_boost
         accel = accel + physics.gravity_accel()
-        accel = accel + physics.drag_accel(vel, self.spec.drag_k)
+        # Powered flight uses sea-level-tuned drag_k. Coast applies the
+        # exponential atmosphere so a Patriot coasting at 25 km doesn't
+        # decelerate like it would at 2 km.
+        if powered:
+            accel = accel + physics.drag_accel(vel, self.spec.drag_k)
+        else:
+            accel = accel + physics.drag_accel_at(vel, self.spec.drag_k, float(pos[2]))
 
         new_pos, new_vel = physics.integrate(pos, vel, accel, dt)
-        new_vel = physics.cap_speed(new_vel, self.spec.max_speed)
+        # Cap speed: powered flight to max_speed; coast just can't gain.
+        if powered:
+            new_vel = physics.cap_speed(new_vel, self.spec.max_speed)
 
-        # Defensive Z-clamp; World.step handles ground-impact kills.
         if new_pos[2] < config.GROUND_Z:
             new_pos[2] = config.GROUND_Z
         self.state.pos = new_pos
         self.state.vel = new_vel
+
+        # Stall: coast speed below _STALL_SPEED → no more controllable
+        # aerodynamics. Kill the interceptor; World.step will emit the
+        # ground-impact flash on the next tick if it falls through the
+        # floor, otherwise it leaves an explosion marker via the kill
+        # branch of the CPA check (not our concern here).
+        if not powered and float(np.linalg.norm(new_vel)) < self._STALL_SPEED:
+            self.state.alive = False
