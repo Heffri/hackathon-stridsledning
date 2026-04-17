@@ -59,28 +59,47 @@ TRAIL_LENGTH = 60        # samples client may keep; server does not cap
 # Distributed launcher positions on the southern mainland. (x, y) in m,
 # world coords. Hard-coded for now — future work hooks a placement AI
 # here, but the rendering + fire path already treats this list as the
-# source of truth. y values are north-of-base distance (base_y=5000),
-# keeping all launchers in the southern-half territory (y < ~105 km).
-# Keys are the wire-format InterceptorType values (see types.py).
+# source of truth. Keys are the wire-format InterceptorType values
+# (see types.py).
+#
+# Positions are validated below via `terrain.point_on_south_land` against
+# the Saab CSV polygons, so every launcher sits on visible land. The
+# Milestone F layout had several launchers (RBS 70, SLS east, SLM west)
+# landing in coastal-pocket sea because the old `y < 105_000` gate was
+# far wider than the southern mainland's actual band (thin 0..~18 km
+# thick strip before the strait). Milestone G re-places them on land.
 BLUE_LAUNCHER_POSITIONS = {
     # kind: [ (x, y), ... ]  — one tuple per launcher instance
-    "ciws":       [(75_000,  5_000)],                         # point defence at base
-    "rbs_70":     [(60_000, 25_000), (90_000, 25_000)],       # forward, spread wide
-    "iris_t_sls": [(55_000, 20_000), (95_000, 20_000)],       # flanking SHORT_SAM
-    "iris_t_slm": [(65_000, 15_000), (85_000, 15_000)],       # mid-field coverage
-    "pac_2":      [(74_700,  8_000)],                         # near base (nudged 300 m west of centre)
-    "pac_3":      [(75_300,  8_000)],                         # near base (nudged 300 m east of centre to split from PAC-2)
+    "ciws":       [(75_000,  5_000)],                          # point defence at base
+    "rbs_70":     [(55_000, 14_000), (110_000, 14_000)],       # forward peninsulas, spread wide
+    "iris_t_sls": [(50_000, 10_000), (100_000, 10_000)],       # flanking SHORT_SAM
+    "iris_t_slm": [(60_000,  7_000), ( 85_000,  6_000)],       # mid-field coverage
+    "pac_2":      [(74_700,  8_000)],                          # near base (nudged 300 m west of centre)
+    "pac_3":      [(75_300,  8_000)],                          # near base (nudged 300 m east of centre to split from PAC-2)
 }
 
-# Validate every launcher sits on our side of the strait. Base is at
-# y=5000; southern-mainland band ends around y=105_000 in world coords
-# (maps to the Boreal Passage southern mainland + peninsula on the
-# rendered terrain). A future placement AI must respect these bounds.
-_BASE_Y = BLUE_BASE_POS[1]
+# Validate every launcher sits on visible south-side land per the Saab
+# CSV. Import is lazy/deferred to the bottom of the module to avoid
+# import-time circular-import concerns (terrain has no sim deps, but
+# keep the config import surface clean). A future placement AI must
+# re-run this check before publishing any layout.
+from . import terrain  # noqa: E402
 for _kind, _positions in BLUE_LAUNCHER_POSITIONS.items():
     for _x, _y in _positions:
-        assert _BASE_Y <= _y < 105_000, (
-            f"BLUE_LAUNCHER_POSITIONS[{_kind!r}]: y={_y} outside "
-            f"southern-mainland band [{_BASE_Y}, 105000)"
+        assert terrain.point_on_south_land(_x, _y), (
+            f"BLUE_LAUNCHER_POSITIONS[{_kind!r}]: ({_x}, {_y}) is not on "
+            f"south-side land in the Saab Boreal Passage map. Move it "
+            f"north-west or south-east by a few km until it lands on "
+            f"visible terrain."
         )
-del _BASE_Y, _kind, _positions, _x, _y
+del _kind, _positions, _x, _y
+
+# --- Strait / threat-origin geometry (Milestone G) ---
+# Threats spawn *north of the strait centerline*, not relative to the
+# base. Derivation: the southern mainland's north coast sits around
+# Saab Y ≈ 1020, the northern mainland's south coast around Saab Y ≈
+# 370. Centerline ≈ (1020 + 370) / 2 = 695 in Saab coords. Mapping
+# through saabToScene (y_norm = (695 - 280) / 800 = 0.519; scene_z =
+# -245 + 0.519 * 250 = -115) and then world Y = 5000 - scene_z * 1000:
+# world_y ≈ 120_000 m.
+STRAIT_CENTER_Y = 120_000.0  # metres, world coord. Threat spawn Y anchor.
