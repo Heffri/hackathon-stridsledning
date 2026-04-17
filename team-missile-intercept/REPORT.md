@@ -303,3 +303,23 @@ leaks by kind: {'ballistic': 23}
 3. **Red AI Level 5 for HGV**。探测附近 interceptor → 垂直+侧向规避 → 速度衰减反馈。Demo 视觉最震撼的地方。
 4. **基地 HP / 经济预算**。每漏一发 ballistic 扣基地 HP，Red/Blue 各自的 budget 决定能发多少弹。引入真正"谁先拼光资源"的胜负条件。
 5. **Per-entity 状态面板**。鼠标点实体显示 type/speed/G/HP/target/time-to-intercept；对 4 分钟 demo 的"透明度"评分最大。
+
+## Milestone C Patch
+
+主管 demo 后反馈 4 点，一次修补 pass：
+
+1. **高度分层**（`red_ai.py`, `entities.py`）：drone 500–4000 m，cruise 1000–6000 m（现比 drone 高），HGV 30–40 km。Cruise 末端 pop-up 150→300 m。Mid-flight 均高 drone=2085 m / cruise=3162 m / HGV=31 km，三层在 150×150 km 场上肉眼可分。
+2. **HGV 重构**（`types.py`, `entities.py`）：独立 90 km 边境线，max_g 8→10（原计划 15 但 PN 跟不住），S 机动从 ±5 km 正弦改成 ±15 km 两段虚拟航路点 + pursuit-steer + 维持推力。航路点切换条件改为"过平面"（穿过垂直下一点连线的面）而非"接近半径"——原逻辑在 Mach 5 会围绕紧半径打转。末端 15 km 内释放高度保持让 PN 拉成俯冲，不再飞过头。50 次无拦截试验：平均落点到基地 **206 m**（任务要求 <500 m，全 50/50 命中）。
+3. **统一地面碰撞**（`world.py`）：各 `step()` 只保留 Z-clamp 防御性代码，杀实体逻辑集中到 `World.step` 末尾扫描所有活着的 threat/interceptor——碰地即死 + 爆炸 + 基地脚印内计 leak。修复"HGV 在地面上下弹跳"bug（旧代码的 alive=False 块没复制到 HGV 分支）。
+4. **PAC-3 buff**（`types.py`）：`radius_direct` 25→40 m。单发 CPA 仍 70–200 m，但 Blue AI 对未死 HGV 自动补射，2–3 发 PAC-3 累积伤害能击毁。
+
+### 修改文件
+`backend/sim/{red_ai,entities,world,types}.py`
+
+### 新 test_balance 20 场
+```
+Blue win 12/20, draw 5/20, Red win 3/20
+avg spawned=20.0  avg intercepts=17.6  avg leaks=1.6  leak range=0..4
+leaks by kind: {'hgv': 25, 'ballistic': 6}
+```
+HGV 命中率 35/60 = **58%**（任务门限 40%）。平均漏网 1.6（之前 1.1），主要来自 wave-5 的 2 HGV 饱和 + ballistic 擦边。
