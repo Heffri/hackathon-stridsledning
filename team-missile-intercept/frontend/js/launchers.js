@@ -1,5 +1,5 @@
-// Per-launcher visual layer: one coloured box + one northern semi-circle
-// range arc per Launcher instance in snap.launchers. Replaces the base-
+// Per-launcher visual layer: one coloured box + one full-circle range
+// ring per Launcher instance in snap.launchers. Replaces the base-
 // centred range arcs from Milestone E.
 //
 // Each launcher is identified by `${kind}_${index}` where index is the
@@ -8,6 +8,14 @@
 //
 // Reloading launchers dim both the box (opacity 0.5) and the arc
 // (opacity 0.15) so the operator can see coverage gaps at a glance.
+//
+// Milestone H Part 4: each launcher is a THREE.Group positioned at the
+// launcher's world coord. The box and ring live as children in LOCAL
+// coords so a future deployment-UI move operation can reposition the
+// Group and the ring follows automatically.
+//
+// Red launchers (RedLauncherRegistry) render a red-tinted box only —
+// no range ring since they're offensive (no defensive coverage to show).
 import * as THREE from 'three';
 import { worldToSceneXY } from './scene.js';
 
@@ -46,10 +54,17 @@ class LauncherMesh {
     this.kind = kind;
     const color = LAUNCHER_COLORS[kind] ?? 0xffffff;
 
-    // Box body: 1.5 x 0.8 x 1.0 (X x Y x Z) scene units. Centre at
-    // (sx, 0.4, sz) so the bottom sits at y=0 — the extruded terrain
-    // (y=0..0.3) hides the lower half when the launcher is on land,
-    // which reads as "sitting on a pad".
+    // Milestone H Part 4: every launcher is a Group positioned at
+    // (sx, 0, sz). The box mesh and the range-ring Line live as
+    // children in LOCAL coordinates (ring centred on the origin,
+    // radius = max_range in scene units). If the Group later moves
+    // (Milestone I deployment UI), the ring follows automatically.
+    this.group = new THREE.Group();
+    this.group.position.set(sx, 0, sz);
+
+    // Box body: 1.5 x 0.8 x 1.0 (X x Y x Z) scene units. Bottom sits
+    // at local y=0 — the extruded terrain (y=0..0.3) hides the lower
+    // half when the launcher is on land, reading as "sitting on a pad".
     this.material = new THREE.MeshStandardMaterial({
       color,
       emissive: color,
@@ -63,13 +78,12 @@ class LauncherMesh {
       new THREE.BoxGeometry(1.5, 0.8, 1.0),
       this.material,
     );
-    this.box.position.set(sx, 0.4, sz);
-    scene.add(this.box);
+    this.box.position.set(0, 0.4, 0);
+    this.group.add(this.box);
 
-    // Full-circle range arc. Launchers now sit forward of the base and
-    // threats can approach from any bearing, so a northern semi-circle
-    // no longer matches reality. 192 segments keeps the full circle
-    // as smooth as the old half-circle at 96.
+    // Full-circle range ring in local coords (centered on group origin).
+    // 192 segments keeps the full circle as smooth as the old half-
+    // circle at 96.
     const rKm = RANGE_KM[kind] ?? 4;
     const segments = 192;
     const pts = [];
@@ -77,9 +91,9 @@ class LauncherMesh {
       const theta = (i / segments) * Math.PI * 2;
       pts.push(
         new THREE.Vector3(
-          sx + Math.cos(theta) * rKm,
+          Math.cos(theta) * rKm,
           0.35,
-          sz - Math.sin(theta) * rKm,
+          -Math.sin(theta) * rKm,
         ),
       );
     }
@@ -90,7 +104,9 @@ class LauncherMesh {
       opacity: ARC_OPACITY_READY,
     });
     this.arc = new THREE.Line(arcGeom, this.arcMaterial);
-    scene.add(this.arc);
+    this.group.add(this.arc);
+
+    scene.add(this.group);
   }
 
   setReloading(reloading) {
@@ -104,10 +120,9 @@ class LauncherMesh {
   }
 
   dispose(scene) {
-    scene.remove(this.box);
+    scene.remove(this.group);
     this.box.geometry.dispose();
     this.material.dispose();
-    scene.remove(this.arc);
     this.arc.geometry.dispose();
     this.arcMaterial.dispose();
   }
