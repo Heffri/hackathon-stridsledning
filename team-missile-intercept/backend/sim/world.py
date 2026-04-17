@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from . import config, physics
+from . import config, physics, sites
 from .entities import Interceptor, Threat
 from .types import (
     EntityState,
@@ -189,29 +189,39 @@ class World:
                     }
                 )
 
-        # 4) threats that crossed the base footprint (horizontal distance
-        #    within config.BASE_HIT_RADIUS, any altitude). Using horizontal
-        #    2D distance rather than 3D — an HGV diving at 1700 m/s over
-        #    the base would otherwise skim above the 3D sphere and miss.
-        base = np.array(config.BLUE_BASE_POS, dtype=np.float64)
-        base_hit_r_sq = config.BASE_HIT_RADIUS * config.BASE_HIT_RADIUS
+        # 4) threats that crossed any site footprint (horizontal distance
+        #    within config.BASE_HIT_RADIUS, any altitude). Milestone G:
+        #    the single-base block is gone — every Saab-named south-side
+        #    location plus the legacy base is a targetable site. The hit
+        #    radius stays 1500 m (matches visual marker + pre-G geometry).
+        #    Uses horizontal 2D distance so an HGV terminal-diving over
+        #    a site doesn't skim the 3D sphere.
+        hit_r_sq = config.BASE_HIT_RADIUS * config.BASE_HIT_RADIUS
         for tid, threat in list(self.threats.items()):
             if not threat.state.alive:
                 continue
-            dx = threat.state.pos[0] - base[0]
-            dy = threat.state.pos[1] - base[1]
-            if (dx * dx + dy * dy) < base_hit_r_sq:
-                threat.state.alive = False
-                self.leaked += 1
-                self.explosions.append(Explosion(pos=threat.state.pos.copy(), t=self.t))
-                self.events.append(
-                    {"type": "leak", "threat": tid, "kind": threat.state.kind}
-                )
+            for site in sites.SOUTH_SITES:
+                dx = threat.state.pos[0] - site.pos[0]
+                dy = threat.state.pos[1] - site.pos[1]
+                if (dx * dx + dy * dy) < hit_r_sq:
+                    threat.state.alive = False
+                    site.leaks += 1
+                    self.leaked += 1
+                    self.explosions.append(Explosion(pos=threat.state.pos.copy(), t=self.t))
+                    self.events.append(
+                        {
+                            "type": "leak",
+                            "threat": tid,
+                            "kind": threat.state.kind,
+                            "site": site.name,
+                        }
+                    )
+                    break
 
         # 4b) Unified ground collision — any live entity (threat or
         # interceptor) that touches the ground explodes. Ground impact
-        # inside the base footprint counts as a leak (same horizontal
-        # radius as the in-air check); outside, it's a ground_crash.
+        # inside any site footprint counts as a leak for that site;
+        # outside all sites, it's a ground_crash.
         for tid, threat in list(self.threats.items()):
             if not threat.state.alive:
                 continue
@@ -220,12 +230,23 @@ class World:
                 hit_pos = threat.state.pos.copy()
                 hit_pos[2] = config.GROUND_Z
                 self.explosions.append(Explosion(pos=hit_pos, t=self.t))
-                dx = hit_pos[0] - base[0]
-                dy = hit_pos[1] - base[1]
-                if (dx * dx + dy * dy) <= base_hit_r_sq:
+                hit_site = None
+                for site in sites.SOUTH_SITES:
+                    dx = hit_pos[0] - site.pos[0]
+                    dy = hit_pos[1] - site.pos[1]
+                    if (dx * dx + dy * dy) <= hit_r_sq:
+                        hit_site = site
+                        break
+                if hit_site is not None:
+                    hit_site.leaks += 1
                     self.leaked += 1
                     self.events.append(
-                        {"type": "leak", "threat": tid, "kind": threat.state.kind}
+                        {
+                            "type": "leak",
+                            "threat": tid,
+                            "kind": threat.state.kind,
+                            "site": hit_site.name,
+                        }
                     )
                 else:
                     self.events.append(

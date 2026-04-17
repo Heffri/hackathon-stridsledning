@@ -11,8 +11,37 @@ from typing import List
 
 import numpy as np
 
-from . import config
+from . import config, sites
 from .types import ThreatType, WaveSpec
+
+
+# --- Target selection weights (Milestone G) ---
+# Red AI picks a target site per threat via weighted random choice.
+# Capital > base > air_base > major_city, modelling Red's preference
+# for maximum strategic damage. A future "Smart Red AI" could pattern
+# weights per wave (wave 5 saturates the capital, wave 1 goes for an
+# airbase, etc.) — currently every threat rolls independently.
+_TARGET_WEIGHTS = {
+    "capital":    4.0,
+    "base":       3.0,
+    "air_base":   2.0,
+    "major_city": 1.0,
+}
+
+
+def _pick_target(rng: np.random.Generator) -> tuple:
+    """Return (x, y) in world metres for a weighted-random site. Falls
+    back to the legacy base if the site list is somehow empty."""
+    site_list = sites.SOUTH_SITES
+    if not site_list:
+        return (config.BLUE_BASE_POS[0], config.BLUE_BASE_POS[1])
+    w = np.array(
+        [_TARGET_WEIGHTS.get(s.subtype, 1.0) for s in site_list],
+        dtype=np.float64,
+    )
+    w /= w.sum()
+    idx = int(rng.choice(len(site_list), p=w))
+    return site_list[idx].pos
 
 
 # --- Border-line geometry (Milestone G: relative to STRAIT_CENTER_Y) ---
@@ -170,13 +199,14 @@ class RedAI:
     def step(self, t_now: float, world) -> None:
         """Spawn any waves whose time has come.
 
-        Each WaveSpec.threats is now a list of ThreatType (no coords). For
-        every threat we sample a fresh (x, y, z) on the border line, and for
-        cruise_sub we additionally generate intermediate waypoints.
+        Each WaveSpec.threats is a list of ThreatType (no coords). For
+        every threat we sample a fresh (x, y, z) north of the strait,
+        pick a weighted-random target site (Milestone G), and for
+        cruise_sub additionally generate intermediate waypoints toward
+        *that* site (not the base).
         """
         base_x = config.BLUE_BASE_POS[0]
         base_y = config.BLUE_BASE_POS[1]
-        target_xy = (base_x, base_y)
 
         while (
             self._next_wave < len(self.waves)
@@ -185,6 +215,7 @@ class RedAI:
             w = self.waves[self._next_wave]
             for kind in w.threats:
                 spawn = _sample_spawn(kind, self.rng, base_x, base_y)
+                target_xy = _pick_target(self.rng)
                 if kind == ThreatType.CRUISE_SUB:
                     wps = _build_cruise_waypoints(spawn, target_xy, self.rng)
                     world.spawn_threat(

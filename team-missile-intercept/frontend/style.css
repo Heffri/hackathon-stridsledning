@@ -241,6 +241,54 @@ html, body {
   to   { opacity: 1.0; }
 }
 
+/* --- Site damage panel (Milestone G) --- */
+.hud-block.site-damage {
+  min-width: 240px;
+  font-size: 12px;
+  padding: 8px 12px;
+  border-color: rgba(255, 140, 80, 0.25);
+}
+.site-damage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.site-damage-empty {
+  opacity: 0.55;
+  font-style: italic;
+  font-size: 11px;
+}
+.site-damage-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  color: #e8eef8;
+  font-variant-numeric: tabular-nums;
+}
+.site-damage-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 4px currentColor;
+}
+.site-damage-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.site-damage-sub {
+  font-size: 10px;
+  opacity: 0.65;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.site-damage-count {
+  color: #ff8060;
+  font-weight: 600;
+  padding-left: 4px;
+}
+
 /* --- Per-entity status panel (bottom-right, click to inspect) --- */
 #status-panel {
   position: fixed;

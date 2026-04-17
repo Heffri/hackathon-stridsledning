@@ -280,14 +280,11 @@ export function createScene(canvas) {
     scene.add(label);
   }
 
-  // Blue base marker (a cylinder at BASE_POS, transformed to scene coords)
-  const [bx, by] = worldToSceneXY(BASE_POS[0], BASE_POS[1]);
-  const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.0, 2.5, 1.2, 12),
-    new THREE.MeshStandardMaterial({ color: 0x3b82f6, emissive: 0x2255aa, emissiveIntensity: 0.5 }),
-  );
-  base.position.set(bx, 0.6, by);
-  scene.add(base);
+  // The old blue base cylinder (CylinderGeometry(2.0, 2.5, 1.2, 12) at
+  // BASE_POS) was removed in Milestone G: the base is now just one site
+  // among many, rendered by the SiteRegistry as a small coloured ring
+  // along with the Saab-named air bases, capital, and major cities.
+  // `BASE_POS` stays exported above for scene-origin math elsewhere.
 
   // Weapon range arcs are now rendered per-launcher by
   // frontend/js/launchers.js (LauncherRegistry), centred on each

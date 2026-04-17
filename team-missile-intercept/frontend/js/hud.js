@@ -68,6 +68,9 @@ export function updateHud(snap) {
     _seenEvents.clear();
   }
 
+  // Site-damage panel — list sites with leaks > 0, sorted by count desc.
+  renderSiteDamage(snap.sites || []);
+
   // Ammo rows (falls back to ∞ when server omits the field, e.g. legacy runs)
   const ammo = snap.ammo || {};
   for (const kind of ['ciws', 'rbs_70', 'iris_t_sls', 'iris_t_slm', 'pac_2', 'pac_3']) {
@@ -101,6 +104,50 @@ export function updateHud(snap) {
       }
     }
   }
+}
+
+// Site subtype → dot-colour + badge label. Keeps the HUD colour coding
+// consistent with the 3D scene rings (sites.js SITE_COLORS).
+const SITE_SUBTYPE_COLORS = {
+  capital: '#ff5050',
+  air_base: '#ff9944',
+  major_city: '#ffd24a',
+  base: '#5a9cff',
+};
+const SITE_SUBTYPE_LABEL = {
+  capital: 'Capital',
+  air_base: 'Airbase',
+  major_city: 'City',
+  base: 'Base',
+};
+
+function renderSiteDamage(sitesList) {
+  const el = document.getElementById('site-damage-list');
+  if (!el) return;
+  const damaged = sitesList
+    .filter((s) => (s.leaks || 0) > 0)
+    .slice()
+    .sort((a, b) => (b.leaks || 0) - (a.leaks || 0));
+  if (damaged.length === 0) {
+    el.innerHTML = '<div class="site-damage-empty">all sites intact</div>';
+    return;
+  }
+  el.innerHTML = damaged
+    .map((s) => {
+      const color = SITE_SUBTYPE_COLORS[s.subtype] || '#888';
+      const kind = SITE_SUBTYPE_LABEL[s.subtype] || s.subtype;
+      const leaks = s.leaks || 0;
+      const word = leaks === 1 ? 'leak' : 'leaks';
+      return (
+        `<div class="site-damage-row">` +
+        `<span class="site-damage-dot" style="background:${color}"></span>` +
+        `<span class="site-damage-name">${escapeHtml(s.name)}</span>` +
+        `<span class="site-damage-sub">${kind}</span>` +
+        `<span class="site-damage-count">${leaks} ${word}</span>` +
+        `</div>`
+      );
+    })
+    .join('');
 }
 
 function showLaunchBanner(interceptorKind, targetId) {

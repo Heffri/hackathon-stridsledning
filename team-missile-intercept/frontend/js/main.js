@@ -2,6 +2,7 @@
 import { createScene } from './scene.js';
 import { EntityRegistry } from './entities.js';
 import { LauncherRegistry } from './launchers.js';
+import { SiteRegistry } from './sites.js';
 import { wireHud, updateHud, setWsStatus } from './hud.js';
 import { initStatusPanel, updateStatusPanel } from './status_panel.js';
 
@@ -9,6 +10,7 @@ const canvas = document.getElementById('view');
 const { scene, camera, renderer, controls } = createScene(canvas);
 const registry = new EntityRegistry(scene);
 const launchers = new LauncherRegistry(scene);
+const sites = new SiteRegistry(scene);
 initStatusPanel(canvas, camera, registry);
 
 let latestSnap = null;
@@ -45,6 +47,7 @@ function animate() {
   if (latestSnap) {
     registry.updateFromSnapshot(latestSnap);
     launchers.updateFromSnapshot(latestSnap);
+    sites.updateFromSnapshot(latestSnap);
     updateHud(latestSnap);
     updateStatusPanel(latestSnap);
   }

@@ -1,5 +1,5 @@
 """Demo scenario wiring — combines Red AI waves, Blue AI, and World."""
-from . import config
+from . import config, sites
 from .blue_ai import BlueAI
 from .red_ai import RedAI, build_demo_waves
 from .world import World
@@ -7,6 +7,11 @@ from .world import World
 
 class Scenario:
     def __init__(self):
+        # Clear per-site leak counters from any previous scenario
+        # instance — SOUTH_SITES is a module-level singleton (the HUD
+        # and Red AI both need a single source of truth for targetable
+        # sites) so state leaks across runs unless we reset it here.
+        sites.reset_leaks()
         self.world = World()
         self.red = RedAI(build_demo_waves())
         self.blue = BlueAI()
@@ -44,6 +49,18 @@ class Scenario:
         fleet = self.blue.launchers.fleet_status(self.world.t)
         snap["ammo"] = fleet["by_kind"]
         snap["launchers"] = fleet["launchers"]
+        # Per-site state for the HUD's SITE DAMAGE panel + site markers.
+        # Position is a list-of-2 for trivial JSON round-trip.
+        snap["sites"] = [
+            {
+                "name": s.name,
+                "subtype": s.subtype,
+                "pos": [s.pos[0], s.pos[1]],
+                "hp": s.hp,
+                "leaks": s.leaks,
+            }
+            for s in sites.SOUTH_SITES
+        ]
         return snap
 
 
