@@ -1,8 +1,55 @@
 # Project Status
 
-> **Last updated:** 2026-04-17 (Milestone H session)
+> **Last updated:** 2026-04-17 (end-of-day, post-Milestone H)
 > **Branch:** `knowledge-base` (all work pushed here)
-> **Latest commit:** Milestone H Part 5 (rebalance after per-launcher range math)
+> **Latest commit:** `a560588` — Milestone H docs
+
+## Journey So Far — Milestone B → H at a Glance
+
+One intense working day took the demo from "flat physics textbook" to "Saab Boreal Passage tactical sandbox with realistic AI behaviour and live balance." Roughly 25 commits across eight milestones, half of them driven by autonomous Claude Code sessions running on bypass permissions.
+
+**Milestone B — Core loop** (established earlier, pre-today)
+Red AI waves + Blue AI rule-based intercept selection + True Proportional Navigation + Three.js scene. Drone, subsonic cruise, ballistic, HGV threats. CIWS through PAC-3 interceptor ladder. FastAPI + WebSocket at 15 fps.
+
+**Milestone C + C Patch — Depth features**
+HP + damage model, magazines + reload CDs, cost-exchange greedy AI, altitude tiering (drone 0.5-4 km / cruise 1-6 km / HGV 30-40 km), unified ground-collision sweep.
+
+**Milestone D — Realism + visual identity**
+Fuel + coast-phase physics (every interceptor burns through a real `fuel_s`, then coasts on fins with half authority, stalls below 200 m/s). HGV unpowered glide + Level-5 evasion + quadratic kinetic-energy bleed. 13 Mach ballistic, 17 Mach HGV. 6 distinct interceptor 3D meshes (CIWS cannon round, RBS 70 MANPADS, IRIS-T SLS with IR dome, IRIS-T SLM, PAC-2, PAC-3 ACM-ring). Saturation engagement + point-defense CIWS + last-resort tier. 250 km deep arena with 1 km/cell grid.
+
+**Milestone E — Visual packaging** (autonomous session)
+Click-any-entity status panel (kind / Mach / G / HP bar / fuel / target / range / cost / thrust_active). Scrolling enriched AI logs with colour-coded tags. Translucent seeker scanning cones on every interceptor. Boreal Passage 3D terrain extruded from Saab's CSV (2 mainlands + 5 islands + 1 peninsula). Dusk gradient skydome + additive explosion flashes.
+
+**Milestone F — Distributed launchers** (autonomous session)
+Saab's 12 named locations rendered as 3D structures with sprite labels (runways, capital skyscrapers, city clusters, side-tinted). `BLUE_LAUNCHER_POSITIONS` config — 9 launchers of 6 types spread across the southern mainland, each with its own colour-coded semi-circle range arc. Missiles now launch from their individual launcher's position instead of a single base point.
+
+**Milestone G — Map narrative + multi-site target model** (autonomous session)
+Full-circle range arcs replace the semi-circles (launchers cover all bearings now that they're distributed). Backend point-in-polygon validator rejects launcher positions that land in the sea. `STRAIT_CENTER_Y` derived from Saab geometry — all Red threats now spawn north of the strait, physically crossing the water to attack. Multi-site target model: Saab's Blue-side airbases, capital, and cities become individual Red targets, each with its own leak counter and a weighted-random target selection in Red AI. The old blue-cylinder base marker deleted.
+
+**Milestone H — Range math refactor + Red launcher visuals + rebalance** (autonomous session)
+Blue AI's range helpers refactored to reason per-`(kind, launcher)` instead of distance-from-base — fixes the geometry approximation that cratered balance after Milestone F. Out-of-arena Saab sites filtered out (4 sites whose `saab_y > 1080` were physically outside the 250 km arena). `RED_LAUNCHER_POSITIONS` adds 3 drone launchers on north-side islands + 2 cruise launchers on north mainland/islands — drones and cruise missiles now spawn from visible red-tinted boxes instead of abstract border lines. Range rings now live as children of each launcher's THREE.Group so future drag-to-deploy will move box and ring together. Three iterations of launcher-position rebalance brought Blue win rate from 0/20 back to 6-8/20 — inside the 30-55 / 30-50 / 10-30 target window.
+
+### Current playable state
+
+- **Visuals:** 6 distinct Blue interceptor mesh types, 1 CIWS cannon round mesh, 5 red-box Red launchers, Saab-authored 3D terrain (2 mainlands + 5 islands + 1 peninsula), 12 named landmark structures with sprite labels (airbases, capitals, cities), dusk sky, additive explosion flashes, per-launcher full-circle range rings.
+- **Physics:** real fuel_s burnout with flame-off visual, altitude-scaled atmosphere drag, HGV energy bleed + Level-5 evasion, Mach-13 ballistic, Mach-17 HGV, Euler 0.05 s PN guidance (known ceiling — leaks are ballistic-dominant).
+- **AI:** saturation engagement (up to 3 simultaneous interceptors per threat) + CIWS point-defense override + cost-exchange primary → fallback → last-resort ladder + per-launcher range checks.
+- **Map geometry:** 150 × 250 km rectangular arena, 1 km/cell grid. 9 Blue launchers distributed south. 5 Red launchers distributed north. 3 Blue-side target sites (Main Base, Firewatch Station, Spear Point Base) each tracking individual leak counts. Threats spawn north of the strait centerline and cross the water.
+- **Balance:** 20-match sweep gives ~30-40 % Blue wins, ~35-45 % draws, ~25 % Red wins, avg 2 leaks per match, ballistic-dominant leak kind.
+
+### Open items (priority-ordered for remaining week until Hack Day)
+
+1. **Milestone I — Deployment UI** (3-4 hours). Pre-game phase letting AI or a human player pick Blue launcher positions. Drag-drop on the map, land-only constraint, AI-auto button. Range rings already parented to launcher Groups in Milestone H, so they'll follow drags automatically.
+2. **Smarter Red AI target selection** — currently weighted-random across sites; wave-specific targeting (wave 5 prioritises capital) would feel more tactical.
+3. **Placement AI** (post-Milestone I) — once the deployment UI exists, let an AI pick positions based on incoming threat direction, wave composition, and coverage optimisation.
+4. **Route 3: PN precision upgrade** (2-4 hours) — RK4 + sub-tick guidance + ZEM feedback. Closes the ballistic leak rate without compromising realism.
+5. **Route 5: Radar / sensor model** (2-3 hours) — Blue AI omniscience removed; detection depends on radar state and RCS-dependent burn-through. Spec is already in `xingyi-rts/knowledge/sensors-c2.md`.
+6. **Route 7: Base HP + economy** (1-2 hours) — leaks do meaningful damage; budget caps how many expensive interceptors Blue can fire. Converts sim from watch-only to game-with-stakes.
+7. **Route 4: Overnight self-play tuning** — 20k-50k headless matches, randomize Red / Blue parameters, analyse what wins. Pitch material: "AI tuned via N self-play matches".
+
+Full per-milestone technical detail lives in [REPORT.md](../REPORT.md). Roadmap detail lives in [ROADMAP.md](./ROADMAP.md).
+
+---
 
 ## Where We Are: Milestone H — Complete
 
