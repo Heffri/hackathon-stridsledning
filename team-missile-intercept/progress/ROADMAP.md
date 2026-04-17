@@ -1,11 +1,35 @@
 # Roadmap — What's Next
 
-> Context: Milestone E is complete. Milestone D gave the sim realistic physics (fuel / coast / atmosphere), saturation AI, per-weapon 3D meshes, 250 km arena, and real-world threat speeds. Milestone E added visual packaging: per-entity status panel, enriched AI logs, seeker cones, Boreal Passage 3D terrain, and dusk sky + explosion flashes.
+> Context: Milestones E and F are complete. Milestone D gave the sim realistic physics (fuel / coast / atmosphere), saturation AI, per-weapon 3D meshes, 250 km arena, and real-world threat speeds. Milestone E added visual packaging: per-entity status panel, enriched AI logs, seeker cones, Boreal Passage 3D terrain, and dusk sky + explosion flashes. Milestone F added Saab landmark structures + labels and distributed launcher positions with per-launcher range arcs.
 > Time remaining until Hack Day: ~1 week (April 25, 2026).
+
+## What Milestone F Did to the Old Roadmap
+
+Items now **closed**:
+
+- ✅ Terrain stretch polish — `BOREAL_LOCATIONS` now renders as 3D
+  structures (runway + tower, capital skyline, major-city cluster)
+  with canvas-textured Sprite labels. Done as Milestone F Task 1.
+- ✅ Distributed launcher visualisation — 9 coloured boxes + per-
+  launcher range arcs replace the base-centred stack. Done as
+  Milestone F Task 2b.
+
+Items newly **surfaced** by Milestone F:
+
+- **Placement AI** — consume `BLUE_LAUNCHER_POSITIONS` at scenario
+  reset and pick positions based on threat direction / wave
+  composition / coverage optimisation. Currently hardcoded in
+  `config.py`.
+- **Per-launcher range math in engagement decisions** — currently
+  all weapon range checks in `blue_ai` (`_try_fire`,
+  `_time_to_enter_range`, `_primary_available_in_time`) use base
+  position. Refactor to use each launcher's actual `pos` for a more
+  accurate wait-for-primary logic and to stop SLS/SLM firing
+  fallback shots they can't physically reach.
 
 ## What Milestone E Did to the Old Roadmap
 
-Route 2 items now **closed**:
+Route 2 items closed:
 
 - ✅ Route 2 Task 1 — Per-entity status panel (click-to-inspect, 300 px glass panel with Mach/G/HP/fuel/target/range/cost)
 - ✅ Route 2 Task 2 — AI decision log enrichment (120-entry scrolling panels, coloured tags, weapon-colour dots)
@@ -21,13 +45,18 @@ Route 2 is **fully closed**. Remaining routes:
 - Route 5 — Radar / sensor model
 - Route 6 — Red AI Levels 3 / 4 / 5 (adaptive waves, stealth, real-time HGV)
 - Route 7 — Base HP + economy
-- Terrain **stretch polish**: render `BOREAL_LOCATIONS` city/base labels as Sprites (~30 min work, deferred in Milestone E for time).
 
 New items **surfaced by Milestone D**:
 
 - Radar / sensor model (blue_ai is still omniscient; `sensors-c2.md` has the formula)
 - Red AI Level 3/4/5 (wave scripts are dumb; HGV jink is pre-scripted not adaptive)
 - Base HP / economy (leaks need consequences; PAC-3 cost needs to matter)
+
+New items **surfaced by Milestone F** (repeated from above for
+visibility alongside the route list):
+
+- Placement AI on `BLUE_LAUNCHER_POSITIONS`.
+- Per-launcher range math refactor in `blue_ai`.
 
 ## The Four Routes (Updated)
 

@@ -718,3 +718,193 @@ python server.py
 4. Sensor/radar model (Route 5) — limits Blue AI omniscience.
 5. PN precision upgrade (Route 3) — closes the 50 % ballistic
    leak rate.
+
+---
+
+# Milestone F — Landmarks + Distributed Launchers
+
+Scope: stop the demo looking like a single glowing cylinder firing
+every weapon from the same spot. Two independent bumps — (1) render
+the 12 Saab-named locations as actual 3D structures with labels, and
+(2) let each launcher sit at its own world position with its own box
+mesh + per-launcher range arc. Both land this session.
+
+## Task 1 — Saab location landmarks
+
+`BOREAL_LOCATIONS` was already exported from Milestone E but unused.
+`scene.js` now iterates it after the terrain extrusion and builds one
+small structure Group per row + one canvas-textured Sprite label:
+
+- **air_base**: 1 km runway (Box 1.0 × 0.02 × 0.15 scene units) +
+  small control-tower box offset to one side. Concrete-grey material
+  (`0xb8b8b0`) on the runway; the tower gets a side-coloured emissive
+  (`0x442020` red for north, `0x202a44` blue for south).
+- **capital**: 5 skyline boxes, heights 0.18..0.35, widths 0.10..0.16,
+  packed inside a ~0.4 × 0.4 footprint. Dark-grey body, same
+  side-colour emissive accent.
+- **major_city**: 3 mid-rise boxes, heights 0.09..0.20, tighter
+  footprint.
+
+Labels:
+
+- `makeTextSprite(text, side)` draws the name onto a 256 × 64
+  offscreen canvas with `rgba(10,14,24,0.78)` fill, a side-coloured
+  border (red / blue), and white bold 22 px text. Returns a
+  `THREE.Sprite` with `CanvasTexture + SpriteMaterial({depthTest:
+  false, transparent: true})`.
+- Each label sits at world y = 1.0 (above the tallest 0.35-unit
+  capital building) and uses `scale.set(4, 1, 1)`. Depth-test off so
+  the label stays legible even when it passes behind closer land
+  shapes.
+
+Result: 12 labelled landmarks visible at the default camera — 3+3
+air bases, 1+1 capitals, 2+2 cities — red-tinted on the north coast,
+blue-tinted on the south. Existing range arcs and terrain untouched.
+
+Files: `frontend/js/scene.js` (landmark loop + `makeTextSprite`).
+
+## Task 2 — Distributed launcher positions
+
+### Task 2a — Backend
+
+- `config.py` — new `BLUE_LAUNCHER_POSITIONS` dict. 9 launchers total:
+  1× CIWS at base, 2× RBS 70 at 25 km north (spread ±15 km E/W of
+  centreline), 2× IRIS-T SLS at 20 km north (flanking), 2× IRIS-T SLM
+  at 15 km north (mid-field), 1× PAC-2 and 1× PAC-3 at 8 km north
+  (nudged ±300 m E/W so the frontend boxes don't z-fight). Module-
+  level `assert` keeps every launcher y inside [base_y, 105 km) so a
+  future placement AI can't accidentally put one in the sea.
+- `launcher.py` — `Launcher` gains `pos: Tuple[float, float]`.
+  `LauncherFleet.__init__` now reads `BLUE_LAUNCHER_POSITIONS` by
+  default; the legacy count-based `loadout=` path is preserved for
+  older unit tests that don't care about placement.
+  `fleet_status()` returns `{'by_kind': <aggregate>, 'launchers':
+  <per-instance list>}` — the per-kind half keeps the existing HUD
+  ammo panel working.
+- `scenarios.py` — `Scenario.snapshot()` hoists `by_kind` onto
+  `snap['ammo']` (backwards compatible shape) and `launchers` onto
+  `snap['launchers']` (new field).
+- `blue_ai.py` — `_fire` now builds `launch_pos = (lch.pos[0],
+  lch.pos[1], 0.0)` and passes it into `world.spawn_interceptor` + the
+  `initial_dir` calculation. `base` stays in the signature for the
+  threat-to-base range string in the log line.
+
+### Task 2b — Frontend
+
+- New `frontend/js/launchers.js` exports a `LauncherRegistry` modelled
+  on `EntityRegistry`. Each snapshot it diffs `snap.launchers` against
+  a client map keyed by `${kind}_${index}` and renders:
+    - A `BoxGeometry(1.5, 0.8, 1.0)` centred at `(scene_x, 0.4,
+      scene_z)`, coloured to the weapon's mesh colour
+      (`ciws 0xd9b36a`, `rbs_70 0x4a8a3a`, `iris_t_sls 0xff9944`,
+      `iris_t_slm 0xff8c1a`, `pac_2 0xff69b4`, `pac_3 0xa855f7`).
+      Opacity 1.0 when ready, 0.5 when reloading.
+    - A 96-segment northern semi-circle with radius = spec `max_range`
+      (km), same colour as the box. Opacity 0.4 ready, 0.15 reloading.
+- `main.js` imports the registry and calls
+  `launchers.updateFromSnapshot(latestSnap)` inside the render loop.
+- `scene.js` drops its old stack of base-centred range arcs — the
+  per-launcher arcs replace them cleanly; keeping both looked busy.
+
+## Known approximation: engagement-math still keyed on base
+
+`_try_fire` and `_time_to_enter_range` in `blue_ai.py` use
+threat-to-base distance to decide whether a weapon can engage,
+even though each weapon actually fires from up to 25 km forward /
+lateral of the base. That's the explicitly deferred approximation
+in the Milestone F spec: fixing it properly means re-plumbing
+through every primary / fallback / wait-for-primary branch, and
+is Route 5/6 territory. Two concrete consequences visible in this
+milestone:
+
+- IRIS-T SLS at (55/95 km east, 20 km north) can clear the base-
+  distance gate for a fallback shot on a ballistic threat whose
+  actual range from the SLS is 20+ km — well outside the SLS 12 km
+  envelope. The launcher burns the round for an intercept it can't
+  make.
+- IRIS-T SLM similarly loses terminal-phase geometry against
+  diving ballistic RVs because the SLM's forward launch point is
+  now 10 km off the re-entry line.
+
+Both failure modes were previously masked because every weapon
+fired from the base — same position the engagement decision was
+keyed on, so the decision and the flight agreed.
+
+## Balance comparison (test_balance.py, 20-match sweeps)
+
+Red AI randomises waves each run (unseeded RNG), so each 20-match
+sweep has a real ±3-win variance. Numbers below are the two runs
+taken of each version:
+
+|                    | Blue wins | Draws | Red wins | avg leaks | ballistic leaks (20 runs) |
+|--------------------|-----------|-------|----------|-----------|--------------------------|
+| pre-F run 1        |     6     |   9   |     5    |    1.9    |            39            |
+| pre-F run 2        |     2     |  10   |     8    |    2.3    |            46            |
+| post-F run 1       |     0     |   7   |    13    |    2.6    |            53            |
+| post-F run 2       |     0     |   9   |    11    |    2.5    |            51            |
+
+Observed drift ≈ -2 to -6 Blue wins, with the new leaks almost
+entirely on ballistic threats. Intercept count dropped by ~1 per
+match. Root cause is the engagement-math approximation documented
+above: the fallback SLS/SLM shots on ballistics stop being viable
+when the launcher moves 10-25 km off the direct base line.
+
+Task-spec tolerance was ±3 Blue wins; we land outside that on the
+low end. Documented as a legitimate structural consequence rather
+than a launch_pos bug — spec also flagged that fixing the range
+math is not part of this milestone.
+
+## TODOs for follow-up work
+
+- **Placement AI** — consume `BLUE_LAUNCHER_POSITIONS` at scenario
+  reset and pick positions from threat direction / wave composition /
+  coverage. The current layout is hand-tuned for "drones approach
+  from all compasses, ballistics come from due north"; a real IADS
+  would shuffle launchers between scenarios.
+- **Per-launcher engagement math** — refactor `_try_fire`,
+  `_time_to_enter_range`, `_primary_available_in_time`, and the
+  `_fire` log string to use per-launcher distances. Biggest win:
+  SLS/SLM fallback shots stop being wasted on intercepts they can't
+  physically make. Needs a simultaneous re-tune of the wait-for-
+  primary logic so we don't just burn rounds earlier.
+- **Landmark depth-test** — labels are currently `depthTest: false`,
+  which means they always draw on top even when the camera swings
+  around. Looks fine at the default camera; operator pans may show
+  labels floating through terrain. `CSS2DRenderer` would solve it at
+  the cost of another render pass.
+
+## Files touched (Milestone F)
+
+```
+backend/sim/config.py         — BLUE_LAUNCHER_POSITIONS + y-bounds assert
+backend/sim/launcher.py       — Launcher.pos, positions-driven __init__, fleet_status split
+backend/sim/scenarios.py      — snap['ammo'] / snap['launchers'] split
+backend/sim/blue_ai.py        — _fire launches from lch.pos
+frontend/js/scene.js          — landmark loop + makeTextSprite, range-arc stack removed
+frontend/js/launchers.js      — new LauncherRegistry
+frontend/js/main.js           — wire the registry
+```
+
+## How to test Milestone F
+
+```bash
+cd team-missile-intercept/backend
+python server.py
+# http://localhost:5174/  → click Start
+```
+
+1. 12 labelled Boreal Passage landmarks visible on the extruded
+   terrain (red border on the north coast, blue on the south).
+2. 9 distinct coloured launcher boxes on the southern mainland:
+   1 tan CIWS at base, 1 pink PAC-2 + 1 purple PAC-3 offset 300 m
+   east/west at base, 2 olive RBS 70 forward, 2 amber SLS flanking,
+   2 orange SLM mid-field.
+3. Each box has its own coloured semi-circle arcing north, radius =
+   weapon max_range.
+4. Fire a PAC-3 on a ballistic — the purple interceptor climbs from
+   the purple box, not the blue base cylinder.
+5. Watch PAC-2 drain its 4-round magazine — the pink box fades to
+   50 % opacity and its arc dims to 0.15 while reloading, both
+   restore when the magazine refills.
+6. `python test_balance.py` still runs; new baseline ≈ 0-2 Blue wins
+   / 7-9 draws / 11-13 Red wins per 20-match sweep.
