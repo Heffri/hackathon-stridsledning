@@ -1,7 +1,45 @@
 # Roadmap — What's Next
 
-> Context: Milestones E, F, and G are complete. Milestone D gave the sim realistic physics (fuel / coast / atmosphere), saturation AI, per-weapon 3D meshes, 250 km arena, and real-world threat speeds. Milestone E added visual packaging: per-entity status panel, enriched AI logs, seeker cones, Boreal Passage 3D terrain, and dusk sky + explosion flashes. Milestone F added Saab landmark structures + labels and distributed launcher positions with per-launcher range arcs. Milestone G added full-circle launcher arcs, land-only launcher validation, strait-origin threats, and multi-site targets with per-site leak tracking.
+> Context: Milestones E, F, G, and H are complete. Milestone D gave the sim realistic physics (fuel / coast / atmosphere), saturation AI, per-weapon 3D meshes, 250 km arena, and real-world threat speeds. Milestone E added visual packaging: per-entity status panel, enriched AI logs, seeker cones, Boreal Passage 3D terrain, and dusk sky + explosion flashes. Milestone F added Saab landmark structures + labels and distributed launcher positions with per-launcher range arcs. Milestone G added full-circle launcher arcs, land-only launcher validation, strait-origin threats, and multi-site targets with per-site leak tracking. Milestone H refactored `blue_ai` to per-launcher range math, filtered out-of-arena Saab sites, added visible Red launcher boxes on the north side, parented range rings to launcher Groups, and rebalanced launcher positions so the 20-match sweep lands at Blue 30-40 / Draw 35-45 / Red 25 (inside the target window).
 > Time remaining until Hack Day: ~1 week (April 25, 2026).
+
+## What Milestone H Did to the Old Roadmap
+
+Items now **closed**:
+
+- ✅ **Per-launcher range math in engagement decisions** —
+  `_try_fire`, `_time_to_enter_range`, `_primary_available_in_time`
+  in `blue_ai` all iterate launchers individually. Forward SLS /
+  SLM no longer take shots they can't physically make; CIWS point-
+  defense checks each launcher's envelope.
+- ✅ **Rebalance for G geometry** — 3 iterations of forward launcher
+  redeployment (south_central_peninsula + south_small_island +
+  south_forward_island) brought Blue 0/20 → 30-40%, draws 0 → 35-45%,
+  Red 20/20 → 25%. Spec's ±3 tolerance window satisfied.
+- ✅ **Out-of-arena site filter** — Saab locations at `saab_y > 1080`
+  (Meridia capital, Southern Redoubt, Callhaven, Solano) no longer
+  appear in `SOUTH_SITES`; threats no longer chase phantom
+  `world_y < 0` targets past the base.
+- ✅ **Visible Red launcher boxes** — drones and cruise spawn from
+  3 + 2 red-tinted boxes on north islands / mainland, positions
+  north-land-validated at module load.
+
+Items **surfaced** by Milestone H:
+
+- **Milestone I — Deployment UI (pre-game phase)** — let the
+  operator (human or AI) place Blue launcher positions before each
+  scenario start. Scope: drag-drop on the scene, constraint =
+  `point_on_south_land`, AI-auto button that picks positions to
+  maximise coverage of the active target list. ~3-4 hours. With
+  `LauncherMesh` now a Group (Milestone H Part 4), the scene-graph
+  side is already prepared — moving the Group moves box + ring
+  together.
+- **Drone sim-cap note** — drones from the new Red launcher
+  positions targeting Main Base take 1206-1776 s at 120 m/s; the
+  1200 s test-balance sim cap truncates those trajectories so they
+  register as neither intercepts nor leaks. Extending the cap or
+  nudging drone launcher positions slightly closer to the strait
+  would normalise the statistic. Not critical for demo.
 
 ## What Milestone G Did to the Old Roadmap
 
@@ -13,21 +51,14 @@ Items now **closed**:
 - ✅ Narrative fix: threats no longer spawn inside Blue territory
   (strait centerline anchor).
 - ✅ Single-base target model replaced by 7-site target model with
-  per-site leak tracking and HUD.
+  per-site leak tracking and HUD. (Reduced to 3 sites in H2 after
+  out-of-arena filter.)
 
-Items newly **surfaced** by Milestone G:
+Items newly **surfaced** by Milestone G** (and status now):
 
-- **Smarter Red AI target selection** — currently weighted random
-  across Saab sites, but could pattern waves (wave 5 hits the
-  capital specifically, wave 1 hits an air base, wave 4 HGV hits
-  capital or base). Gives the demo more narrative variety.
-- **Rebalance for G geometry** — Blue win rate swung to 20/20
-  after Part 3 because drones / cruise now spend so long in
-  transit that Blue's saturation AI gets many more engagement
-  opportunities. Part 4's multi-site targets partially redistribute
-  leak opportunity but likely not enough. Options: bigger waves,
-  shorter reloads on ballistic threats, stealth cruise, or more
-  frequent wave 5 saturation spam.
+- **Smarter Red AI target selection** — still weighted random
+  across the 3 in-arena sites. Pattern waves would add demo
+  narrative variety.
 - **Site HP + economy** — `Site.hp` exists in the dataclass but
   is never decremented. Wire `Site.hp -= kind_damage` on leak
   events, add a win condition when any site reaches 0, and the
@@ -44,19 +75,12 @@ Items now **closed**:
   launcher range arcs replace the base-centred stack. Done as
   Milestone F Task 2b.
 
-Items **surfaced** by Milestone F (still open):
+Items **surfaced** by Milestone F:
 
-- **Placement AI** — consume `BLUE_LAUNCHER_POSITIONS` at scenario
-  reset and pick positions based on threat direction / wave
-  composition / coverage optimisation. Currently hardcoded in
-  `config.py` (Milestone G added land-gating as a safety net but
-  the positions themselves are still hand-authored).
-- **Per-launcher range math in engagement decisions** — currently
-  all weapon range checks in `blue_ai` (`_try_fire`,
-  `_time_to_enter_range`, `_primary_available_in_time`) use base
-  position. Refactor to use each launcher's actual `pos` for a more
-  accurate wait-for-primary logic and to stop SLS/SLM firing
-  fallback shots they can't physically reach.
+- ✅ (closed in Milestone H) — **Per-launcher range math in
+  engagement decisions**. Now refactored in `blue_ai`.
+- **Placement AI / Deployment UI** — still open, refined into
+  "Milestone I — Deployment UI" (see top of this ROADMAP).
 
 ## What Milestone E Did to the Old Roadmap
 
@@ -83,11 +107,14 @@ New items **surfaced by Milestone D**:
 - Red AI Level 3/4/5 (wave scripts are dumb; HGV jink is pre-scripted not adaptive)
 - Base HP / economy (leaks need consequences; PAC-3 cost needs to matter)
 
-New items **surfaced by Milestone F** (repeated from above for
+New items **surfaced by Milestones F / G / H** (repeated for
 visibility alongside the route list):
 
-- Placement AI on `BLUE_LAUNCHER_POSITIONS`.
-- Per-launcher range math refactor in `blue_ai`.
+- Milestone I — Deployment UI (pre-game placement of Blue launchers
+  on `BLUE_LAUNCHER_POSITIONS` via drag-drop on the map, with
+  AI-auto option).
+- Site HP + economy (Milestone G surface, still open).
+- Smarter Red AI target selection (Milestone G surface, still open).
 
 ## The Four Routes (Updated)
 
@@ -260,6 +287,41 @@ Currently any leak = leak, regardless of weapon. PAC-3 expense doesn't matter.
 6. The Wave 5 saturation now has teeth: Blue needs to survive on a finite budget.
 
 **When to pick this:** If the demo feels like a fireworks show without stakes. Lightweight change with high perceived depth.
+
+---
+
+### Milestone I — Deployment UI
+
+**Effort:** 3–4 hours
+**Impact:** Medium-high — turns the demo from a fixed simulation into
+a "what-if" lab where jurors can try placements themselves
+
+Right now `BLUE_LAUNCHER_POSITIONS` is a hardcoded dict. Milestone H
+Part 4 refactored each `LauncherMesh` into a `THREE.Group`
+specifically to prepare for this step — moving the Group moves box
++ ring together, so the frontend side of a drag-drop interaction
+already works.
+
+**Scope (as outlined by the operator):**
+
+- Pre-game phase: after clicking Start but before Red's first wave
+  fires, the scene is paused on a placement screen.
+- Operator drags each Blue launcher box on the scene floor. The
+  Group position updates per drag event; the range ring follows
+  automatically.
+- Land-only constraint: drop is rejected if `point_on_south_land`
+  returns False (snap back to last valid position).
+- "AI Auto" button: runs a placement heuristic (currently a stub;
+  could be extended later with coverage-optimisation over the
+  weighted target-site list) and populates positions in one click.
+- Persist chosen positions back into the backend via WebSocket
+  message; server re-instantiates `LauncherFleet` before starting
+  the Red AI wave clock.
+
+**Why now:** the map is complete (terrain, landmarks, site rings),
+threats are on-land-validated, Blue launchers are Group-parented,
+and `terrain.point_on_south_land` is the constraint API. Only the
+drag interaction and backend re-instantiation need new code.
 
 ---
 

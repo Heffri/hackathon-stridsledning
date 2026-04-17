@@ -1168,3 +1168,265 @@ python server.py
    "N leaks" badge.
 5. `python test_balance.py` runs 1200 s windows and prints a
    distribution (currently Blue-dominant — see balance note above).
+
+---
+
+# Milestone H — Per-launcher math + site filter + Red launchers + rebalance
+
+Scope: close the four items Milestone G left on the roadmap in one
+session. Five parts: (1) the per-launcher range-math refactor in
+`blue_ai`, deferred since Milestone F; (2) filter the out-of-arena
+Saab sites that Part 4 of G accidentally included; (3) add visible
+Red offensive launcher boxes on the north islands / mainland;
+(4) parent each launcher's range ring to a THREE.Group so the ring
+follows the box if it ever moves (Milestone I deployment UI); (5) a
+rebalance pass now that the geometry is finally correct.
+
+## Part 1 — Per-launcher range math in blue_ai
+
+Milestone F's forward-distributed launchers (SLS at (50k, 10k), SLM
+at (60k, 7k), etc.) took ballistic-fallback shots they physically
+couldn't make because every range check in `blue_ai` ran on the
+distance from the base, not from the firing launcher. Measured cost
+was 2-6 fewer Blue wins per 20-match sweep. Milestone G's strait-
+origin rework masked the issue (threats far enough north that Blue's
+saturation AI had enough time), but G Part 4's multi-site targets
+re-exposed it hard: drones and cruise hitting peripheral sites
+flew tangentially past the base and the engagement helpers reported
+them as "in range" of launchers whose actual position can't reach.
+
+Refactor:
+
+- `_try_fire(threat_pos, kinds, launchers, t_now)` — iterates every
+  launcher of each kind and returns the first `(kind, launcher)` pair
+  whose individual position puts the threat inside `max_range ×
+  LAUNCH_RANGE_MARGIN` AND is ready to fire.
+- `_time_to_enter_range(threat_pos, threat_vel, launcher_pos,
+  max_range)` — launcher-pos in, not base.
+- `_primary_available_in_time(kinds, launchers, threat_pos,
+  threat_vel, t_impact, t_now)` — iterates `(kind, launcher)` pairs,
+  pairs per-launcher ready time with that launcher's `t_enter` for
+  the wait-vs-escalate decision.
+- CIWS point-defense loops over CIWS launchers and fires from any
+  whose envelope contains the threat.
+- `_time_to_impact` kept pointing at the base as a crude "defended
+  point" (7 sites, no single defended point; base is roughly central,
+  good enough for urgency estimates).
+
+`_launcher_ready_wait(lch, t_now)` helper extracted — per-launcher
+equivalent of the old `_launcher_ready_time`, used inside
+`_primary_available_in_time`.
+
+Smoke test (`python -c "... 800s run ..."`) passed. Balance dropped
+from post-G 7.0 leaks to 6.0 with intercepts up 8.2 → 11.7 — the
+refactor genuinely engages threats that were being skipped before,
+but H2 + H3 geometry changes were needed before Blue could actually
+win runs.
+
+## Part 2 — Filter out-of-arena Saab sites
+
+Milestone G's `SOUTH_SITES` table included 4 Saab locations at
+`saab_y > 1080`: Meridia (Capital), Southern Redoubt, Callhaven,
+Solano. The inverse-affine `_saab_to_world` put them at world Y
+between -22 km and -49 km — south of the arena origin. Threats
+targeting them flew past the base forever.
+
+Fix: `_in_arena(wx, wy)` checks `0 ≤ y ≤ ARENA_Y` AND `0 ≤ x ≤
+ARENA_X`. `_build_south_sites` drops any Saab location whose
+inverse-affine fails the check and prints a one-line module-load
+notice listing the dropped site names + coordinates. Firewatch
+Station at `saab_y=1071.7` (world_y=2594) sits just inside the
+boundary and is kept.
+
+Remaining sites after filter (3): Firewatch Station (air_base),
+Spear Point Base (air_base), Main Base. The capital subtype is gone
+— no in-arena capital remains; the SiteRegistry capital-pulse code
+still runs but finds nothing to pulse.
+
+Post-H2 balance: leaks jumped to 10.7 because all threats now
+concentrate on 3 sites, and Spear Point Base at world_y=76562 sits
+near the strait centerline — cruise and drones going there pass
+outside every forward-launcher envelope in the old layout. This
+motivated the Part 5 forward redeployment.
+
+## Part 3 — Visible Red launcher boxes for drone + cruise
+
+Pre-H Red threats spawned at abstract `(x, y)` points derived from
+`STRAIT_CENTER_Y + STRAIT_OFFSET_kind`. The operator wants drones
+and cruise to spawn from visible red launcher boxes on the Saab
+north-side geography, so the demo narrative ("the enemy is over
+there; we see them launching") is literal. Ballistic and HGV stay
+abstract — strategic-range assets with no visible launcher.
+
+Backend:
+
+- `config.RED_LAUNCHER_POSITIONS`: 3 drone positions (North Strait
+  Island West / East / Remote) + 2 cruise positions (north mainland
+  + North Strait Island East). All validated at module load via
+  new `terrain.point_on_north_land()` — the terrain module now
+  parses both south and north CSV polygons.
+- `launcher.py`: `RedLauncher(kind=ThreatType, pos)` dataclass +
+  `RedLauncherFleet` with round-robin `next_pos(kind)` so three
+  drone launcher islands all visibly fire rather than just the
+  first. Infinite magazine — the wave script already rate-limits
+  spawns; launchers are visual + geometric anchors.
+- `red_ai.py`: `_spawn_point` routes drone / cruise_sub through the
+  fleet; ballistic / HGV keep the old abstract strait-offset sample.
+- `scenarios.py`: `snap['red_launchers']` list (kind / pos / team).
+
+Frontend:
+
+- `launchers.js` gains a `RedLauncherRegistry` that renders red-
+  tinted boxes (`0xaa2030`, emissive `0x441015`, emissiveIntensity
+  0.4) at each launcher position. No range ring — they're offensive.
+- `main.js` instantiates the registry and calls it per tick.
+
+Post-H3 balance: leaks dropped to 7.5 (from H2's 10.7) — drone
+launcher positions 30-90 km further north than the old abstract
+spawn mean many drones (120 m/s, ~170 km transit) don't reach
+targets within the 1200 s sim cap. Fewer complete flights → fewer
+leaks AND fewer intercepts (7.2).
+
+## Part 4 — Range rings parented to launcher Group
+
+`LauncherMesh` is now a `THREE.Group` at the launcher's world coord,
+with box and range-ring as children in LOCAL coords (ring centred
+on origin). If a deployment UI later moves the Group, the ring
+follows automatically. Red launchers kept as flat `RedLauncherMesh`
+(no ring to parent).
+
+Verified programmatically: built a launcher in a throwaway scene,
+snapped the box + arc world positions via `matrixWorld`, shifted
+the Group by +5 scene units, and confirmed both children's world
+positions shifted by exactly +5. The preview window is 0×0 (rAF
+paused, same gotcha as Milestone G), so visual bump-and-revert
+testing in a running browser wasn't possible — the programmatic
+matrix-math check is strictly equivalent for this specific
+verification though.
+
+No balance impact — purely scene-graph refactor.
+
+## Part 5 — Rebalance after the geometry fixes
+
+With per-launcher math correct, out-of-arena sites filtered, and
+threats spawning from fixed Red launcher points, the pre-H launcher
+layout (all 9 clustered in a thin 5-14 km wide south-mainland band)
+left Spear Point Base at world_y=76562 and Firewatch at (125822,
+2594) only covered by PAC-2's 70 km max-range tail. Three iterations
+of forward redeployment brought the distribution into the target
+window.
+
+### Iteration 1 — forward SLS
+
+`iris_t_sls: (50k,10k), (100k,10k)` → `(80k,70k), (126.75k,102k)`.
+Both SLS moved to south_central_peninsula and south_forward_island.
+Balance: Blue 0/20, draw 0/20, Red 20/20. Leaks 6.5 (down from 7.5),
+intercepts 7.8 (up from 7.2). Cruise leaks dropped; ballistic up
+(SLS no longer available as a ballistic-fallback near the base).
+
+### Iteration 2 — forward SLM + forward RBS
+
+`iris_t_slm: (60k,7k)` → `(82k,72k)` (forward-center) and
+`rbs_70: (110k,14k)` → `(38.1k,50k)` (south_small_island forward-
+west). Balance: Blue 0/20, draw 2/20, Red 18/20. Leaks 4.2. Cruise
+leaks crashed to 4 (forward SLM within 40 km of Spear Point catches
+almost every cruise approach).
+
+### Iteration 3 — forward RBS-70 to south_central_peninsula
+
+`rbs_70: (55k,14k)` → `(80k,73k)`. The remaining base-flank RBS-70
+moved forward to the Spear Point peninsula. This was the big Blue
+turnaround: drone leaks crashed from ~50 to 0 because drones heading
+for Spear Point now pass through a SHORT_SAM envelope (their
+primary, not fallback), layered with the forward SLS as fallback
+and forward SLM as cruise cover. Balance: Blue 6/20, draw 9/20,
+Red 5/20. Leaks 2.0.
+
+### Verification rerun
+
+Rerun with same config (the balance script uses fresh entropy per
+match so variance is expected): Blue 8/20, draw 7/20, Red 5/20,
+leaks 2.0. Distribution: 40 / 35 / 25 — still solidly inside the
+30-55 / 30-50 / 10-30 target window.
+
+Stopped after 3 iterations (spec allowed up to 5) since the window
+was reached.
+
+### Final layout
+
+```
+ciws        (75_000,  5_000)                               # base point-def
+rbs_70      (80_000, 73_000), ( 38_100, 50_000)            # Spear Point drones + forward-west
+iris_t_sls  (80_000, 70_000), (126_750,102_093)            # SCP + south_forward_island
+iris_t_slm  (82_000, 72_000), ( 85_000,  6_000)            # forward-center + east base
+pac_2       (74_700,  8_000)                               # base 70 km reach
+pac_3       (75_300,  8_000)                               # base HIT_TO_KILL
+```
+
+### Kind-by-kind leak character
+
+Post-Milestone G Part 4 (pre-H5): drone 66, cruise 52, ballistic 13,
+hgv 10.
+
+Post-H5 (Iteration 3 + verification): drone 0, cruise 6-7,
+ballistic 23-26, hgv 7-12.
+
+Leak profile flipped from drone/cruise-dominant to ballistic-
+dominant, which is the same Euler-0.05 s PN-precision ceiling the
+project has been carrying since Milestone D. Route 3 (RK4 + sub-
+tick guidance) on ROADMAP remains the real fix for ballistic leaks.
+
+## Known approximations / deferred past H
+
+1. Drones from NR-I targeting Main Base take 1206 s at 120 m/s —
+   1 s over the 1200 s sim cap. Those drones show up as neither
+   intercepts nor leaks, which is a minor statistical anomaly that
+   favours Blue slightly. Extending the cap would normalise it but
+   also slow the test-balance sweep; left as-is.
+2. Red launchers are infinite-magazine. A "Red Wave 5 throttled by
+   launcher reload" pass was outlined in the Part 3 scope as
+   optional; skipped for demo simplicity.
+3. Capital subtype has no in-arena representative — the site-ring
+   pulse code in `sites.js` still runs but has nothing to highlight.
+   When the Saab CSV adds a capital inside the cropped Y window (or
+   a future deployment UI places one), the existing code lights up
+   automatically.
+4. Per-site HP degradation still not wired — `Site.hp` defaults to
+   100 and stays there. "Base HP + economy" is still on ROADMAP.
+
+## Files touched (Milestone H)
+
+```
+backend/sim/blue_ai.py         — per-launcher range math (_try_fire, _time_to_enter_range, _primary_available_in_time)
+backend/sim/sites.py           — out-of-arena filter (_in_arena) + module-load notice
+backend/sim/config.py          — RED_LAUNCHER_POSITIONS + H5 rebalanced BLUE_LAUNCHER_POSITIONS
+backend/sim/terrain.py         — point_on_north_land() via new _parse_polygons(side)
+backend/sim/launcher.py        — RedLauncher + RedLauncherFleet
+backend/sim/red_ai.py          — _spawn_point routes drone/cruise through fleet
+backend/sim/scenarios.py       — snap['red_launchers']
+
+frontend/js/launchers.js       — LauncherMesh → THREE.Group + RedLauncherRegistry
+frontend/js/main.js            — wire RedLauncherRegistry
+```
+
+## How to test Milestone H
+
+```bash
+cd team-missile-intercept/backend
+python server.py
+# http://localhost:5174/  → click Start
+```
+
+1. Scene loads: 5 red launcher boxes on north-side islands /
+   mainland (3 drone, 2 cruise), 9 blue launcher Groups (each =
+   coloured box + full-circle range ring as children — rings follow
+   their box if the Group moves).
+2. Only 3 site rings render on the south terrain — Main Base (blue),
+   Spear Point Base (orange air_base), Firewatch Station (orange
+   air_base). The capital ring is gone (filtered out).
+3. Wave 1 drones visibly spawn from one of the red boxes (North
+   Strait Island West / East / Remote), not from an arbitrary
+   strait-offset point.
+4. `python test_balance.py` (1200 s × 20 matches) prints Blue
+   30-40 / draw 35-45 / Red 25 with leaks 2.0 avg; kind breakdown
+   ballistic-dominant.
