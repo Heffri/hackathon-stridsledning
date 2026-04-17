@@ -1,6 +1,7 @@
 // Three.js scene setup: camera, lighting, ground grid, base marker.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { BOREAL_TERRAIN } from './terrain_data.js';
 
 // World units: meters. Arena ~150km. We scale the whole world by 0.001 for
 // rendering so Three.js works in km (avoids z-fighting and huge numbers).
@@ -69,9 +70,12 @@ export function createScene(canvas) {
   grid.position.set(0, 0, arenaCentreZ);
   scene.add(grid);
 
+  // "Sea" plane — slightly deeper blue so the landmasses read as
+  // "land above water". Sits a hair below y=0 so extruded terrain
+  // (from y=0 up to y=+0.3) doesn't z-fight.
   const groundGeom = new THREE.PlaneGeometry(widthUnits, depthUnits);
   const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x0e1a2c,
+    color: 0x0c182a,
     roughness: 0.95,
     metalness: 0.0,
   });
@@ -79,6 +83,71 @@ export function createScene(canvas) {
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, -0.01, arenaCentreZ);
   scene.add(ground);
+
+  // Boreal Passage terrain — Saab's hand-authored scenario geometry.
+  // Saab coords: X east (0..1667 km), Y SOUTH-positive (0..1300 km).
+  // Scene:       X east,              Z = -north (so +Z is south).
+  // We crop a 1667 × 800 km window (Y 280..1080) which contains the
+  // mainland/strait/mainland band + relevant islands, then stretch
+  // that window to fit the 150 × 250 km arena. Non-uniform scale is
+  // accepted — the demo jury reads "two lands across a strait", not
+  // a 1:1 overlay of the Saab reference.
+  const SAAB_X_WINDOW = [0, 1667];
+  const SAAB_Y_WINDOW = [280, 1080];
+  // Map window → arena. Saab Y is SOUTH-positive: low Y is the north
+  // edge of Saab's map, high Y is the south edge. Our scene Z is
+  // inverted: -Z is north, +Z is south (base at scene Z=0). So the
+  // correct mapping sends y_norm=0 (Saab north, top of the CSV) to
+  // scene_z = -245 (scene far-north edge), and y_norm=1 (Saab south)
+  // to scene_z = +5 (scene south edge, where the base sits). This is
+  // the OPPOSITE direction of the task-spec pseudocode — following the
+  // pseudocode literally would put the southern mainland in our scene
+  // north and vice versa, contradicting the acceptance criteria.
+  const SCENE_X = [-75, 75];
+  const SCENE_Z_NORTH = -245;   // scene-north edge (y_norm = 0)
+  const SCENE_Z_SOUTH = 5;      // scene-south edge (y_norm = 1)
+  function saabToScene(x_km, y_km) {
+    const xn = (x_km - SAAB_X_WINDOW[0]) / (SAAB_X_WINDOW[1] - SAAB_X_WINDOW[0]);
+    const yn = (y_km - SAAB_Y_WINDOW[0]) / (SAAB_Y_WINDOW[1] - SAAB_Y_WINDOW[0]);
+    const sx = SCENE_X[0] + xn * (SCENE_X[1] - SCENE_X[0]);
+    const sz = SCENE_Z_NORTH + yn * (SCENE_Z_SOUTH - SCENE_Z_NORTH);
+    return [sx, sz];
+  }
+  const MAINLAND_COLOR = 0x2f3a2a;  // dark olive
+  const ISLAND_COLOR   = 0x2b382c;  // slightly different tint
+  const EXTRUDE_DEPTH  = 0.3;       // scene units = 300 m above sea level
+  for (const poly of BOREAL_TERRAIN) {
+    const shape = new THREE.Shape();
+    for (let i = 0; i < poly.coords.length; i++) {
+      const [sx, sz] = saabToScene(poly.coords[i][0], poly.coords[i][1]);
+      // Shape lives in local (X, Y); we'll rotate the mesh -π/2 around X
+      // so local +Y maps to world -Z. To place the vertex at world Z=sz
+      // we therefore pass -sz as the shape's local Y coordinate.
+      if (i === 0) shape.moveTo(sx, -sz);
+      else shape.lineTo(sx, -sz);
+    }
+    const geom = new THREE.ExtrudeGeometry(shape, {
+      depth: EXTRUDE_DEPTH,
+      bevelEnabled: false,
+    });
+    const isIsland = poly.subtype !== 'mainland';
+    const mat = new THREE.MeshStandardMaterial({
+      color: isIsland ? ISLAND_COLOR : MAINLAND_COLOR,
+      roughness: 0.92,
+      metalness: 0.0,
+      // DoubleSide: shape is built with a Y-flip (see shape.moveTo above)
+      // which inverts winding, so the top cap's normal would otherwise
+      // point down and back-face cull against the overhead camera.
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geom, mat);
+    // Shape lives in the XY plane; ExtrudeGeometry grows along +Z. Rotate
+    // -90° around X so the shape ends up on the ground plane (XZ) and
+    // the extrusion grows upward (+Y).
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = 0;
+    scene.add(mesh);
+  }
 
   // Blue base marker (a cylinder at BASE_POS, transformed to scene coords)
   const [bx, by] = worldToSceneXY(BASE_POS[0], BASE_POS[1]);
@@ -111,7 +180,9 @@ export function createScene(canvas) {
       pts.push(
         new THREE.Vector3(
           Math.cos(theta) * weapon.rangeKm,
-          0.05, // a hair above ground to avoid z-fighting with the plane
+          // Sit just above the extruded terrain (0.3 scene units = 300 m)
+          // so arcs remain visible even when they overlap land shapes.
+          0.35,
           -Math.sin(theta) * weapon.rangeKm,
         ),
       );
