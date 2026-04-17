@@ -308,9 +308,9 @@ class Threat:
         if self.spec.kind == ThreatType.CRUISE_SUB:
             if not self._wp_queue:
                 if horiz_to_wp < 1_500.0:
-                    self._cruise_alt_override = 150.0
+                    self._cruise_alt_override = 300.0
                 elif horiz_to_wp < 5_000.0:
-                    self._cruise_alt_override = 600.0
+                    self._cruise_alt_override = 800.0
                 else:
                     self._cruise_alt_override = self._base_alt
             else:

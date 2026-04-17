@@ -16,14 +16,21 @@ from .types import ThreatType, WaveSpec
 
 
 # --- Border-line geometry (relative to BLUE_BASE_POS) ---
-BORDER_DY = 60_000.0        # 60 km north of base
+BORDER_DY = 60_000.0        # 60 km north of base (normal threats)
+BORDER_DY_HGV = 90_000.0    # 90 km north of base (HGV — visually distinct tier)
 BORDER_HALF_WIDTH = 30_000.0  # X spans ±30 km around base axis
 
 # --- Per-kind spawn altitude envelopes (m AGL) ---
-DRONE_ALT_RANGE = (200.0, 2_000.0)
-CRUISE_ALT_RANGE = (50.0, 500.0)
+# Three visual tiers on the 150 km × 150 km arena:
+#   - high  (25–40 km): ballistic re-entry, HGV cruise
+#   - mid   ( 1– 6 km): subsonic cruise with pop-up at terminal
+#   - low   (0.5–4 km): drones
+# Cruise is deliberately set above drones so operators can tell the "mid"
+# band from the "low" band at a glance during the demo.
+DRONE_ALT_RANGE = (500.0, 4_000.0)
+CRUISE_ALT_RANGE = (1_000.0, 6_000.0)
 BALLISTIC_ALT_RANGE = (30_000.0, 40_000.0)
-HGV_ALT_RANGE = (22_000.0, 28_000.0)
+HGV_ALT_RANGE = (30_000.0, 40_000.0)
 
 
 def build_demo_waves() -> List[WaveSpec]:
@@ -73,7 +80,10 @@ def _sample_spawn(kind: ThreatType, rng: np.random.Generator, base_x: float, bas
     hugs the deck, and ballistic re-enters from the upper atmosphere.
     """
     x = base_x + float(rng.uniform(-BORDER_HALF_WIDTH, BORDER_HALF_WIDTH))
-    y = base_y + BORDER_DY
+    # HGV spawns further north than other threats so it reads as its own
+    # "deep-strike" tier in the demo rather than sharing a border with the
+    # ballistic / cruise classes.
+    y = base_y + (BORDER_DY_HGV if kind == ThreatType.HGV else BORDER_DY)
     if kind == ThreatType.DRONE:
         z = float(rng.uniform(*DRONE_ALT_RANGE))
     elif kind == ThreatType.CRUISE_SUB:
