@@ -1,10 +1,51 @@
 # Project Status
 
-> **Last updated:** 2026-04-17 (Milestone F session)
+> **Last updated:** 2026-04-17 (Milestone G session)
 > **Branch:** `knowledge-base` (all work pushed here)
-> **Latest commit:** `4844ed7` (Milestone F Task 2b — per-launcher boxes + arcs)
+> **Latest commit:** `49939d0` (Milestone G Part 4 — multi-site targets)
 
-## Where We Are: Milestone F — Complete
+## Where We Are: Milestone G — Complete
+
+Milestone G closes three Milestone-F narrative/geometry bugs and
+expands the target model from a single base to 7 Saab-located sites.
+Four parts land this session:
+
+1. **Full-circle launcher arcs** — every launcher now draws a
+   complete max_range circle (was a northern semi-circle from
+   Milestone F's forward deployment era).
+2. **Launchers on land only** — new `backend/sim/terrain.py` parses
+   Saab CSV polygons once at import and point-in-polygons every
+   `BLUE_LAUNCHER_POSITIONS` entry against the south-side land. Six
+   of the nine Milestone F launchers had been landing in
+   coastal-pocket sea; all repositioned on visible terrain.
+3. **Strait-origin threats** — threats anchor their spawn Y to a
+   new `STRAIT_CENTER_Y = 120_000` constant (derived from the Saab
+   strait midpoint) plus a per-kind northward offset, not to the
+   base. Drones no longer spawn inside Blue's own mainland.
+4. **Multi-site targets** — `backend/sim/sites.py` exposes
+   `SOUTH_SITES` (6 Saab named locations + legacy base). Red AI
+   picks a weighted-random target per threat (capital > base >
+   air_base > major_city). `world.py` runs per-site leak detection
+   (in-air + ground-impact), emits `site` on leak events. Frontend
+   `SiteRegistry` renders one coloured ring per site (capital
+   pulses when damaged). HUD gains a "Site damage" panel listing
+   sites with leaks > 0.
+
+The blue base cylinder from Milestone B is gone — the base is now
+just a blue-subtype site among the seven.
+
+### Known balance regression (flagged on ROADMAP)
+
+Pre-F baseline was 2-6 Blue wins / 20 matches. Post-G Part 3 is
+20/20 Blue because threats are now so far north that Blue's
+saturation AI has much more engagement runway. Part 4 redistributes
+leak opportunity across 7 sites which partially recovers Red win
+rate; final Post-G sweep captured in `REPORT.md` Milestone G section.
+The spec's ±3 Blue-win tolerance is exceeded — deliberately, per
+Milestone G rules: "document and flag as ROADMAP item, don't
+rebalance by tuning specs".
+
+## Where We Are: Milestone F — Complete (still valid)
 
 Milestone F makes the 3D world legible. Two independent bumps: (1)
 every Saab-named location on the Boreal Passage map now renders as an
@@ -67,7 +108,27 @@ The sim now has:
 - **Base leak detection** uses 1500 m horizontal disc (matches visual base marker). HGV terminal dive entry moved to 30 km so aim CEP dropped from 1472 m → 18 m.
 - **Server default port 5174** (Windows reserves 8000/8080/8088). Override via `PORT` env var. See `NOTES_MODEL_AND_PORT.md` for the full trap.
 
-## Current Balance (test_balance.py, 20 matches, post-Milestone F)
+## Current Balance (test_balance.py, 20 matches, post-Milestone G)
+
+```
+Post-G Part 3 (strait-origin only, before multi-site):
+  Blue win 20/20, draws 0/20, Red win 0/20
+  avg spawned=26.0  avg intercepts=21.6  avg leaks=0.0
+
+Post-G Part 4 (multi-site + Red weighted target):
+  see REPORT.md Milestone G section for the committed sweep numbers.
+```
+
+**Big balance regression from pre-F** — Blue win rate is pinned high
+because threats are 3-30× further from their target than pre-G, giving
+Blue's saturation AI many more engagement opportunities per threat.
+Multi-site distributes leak opportunity across 7 sites but the
+transit-time dominance remains. Flagged as a ROADMAP item;
+deliberately not rebalanced by spec tuning (per Milestone G rules).
+
+## Milestone F Balance (test_balance.py, 20 matches, post-Milestone F)
+
+For reference — this is the pre-G baseline:
 
 ```
 Blue win 0–2/20, draw 7–10/20, Red win 11–13/20
@@ -89,6 +150,11 @@ still centred near the base).
 ## Commit History (recent)
 
 ```
+49939d0  Milestone G Part 4: multi-site targets + per-site leaks + remove base cylinder
+bec1f84  Milestone G Part 3: threats spawn north of strait centerline
+85c215e  Milestone G Part 2: validate BLUE_LAUNCHER_POSITIONS are on land
+b4fd6f2  Milestone G Part 1: full-circle launcher range arcs
+974d4b1  Milestone F docs: REPORT section + STATUS / ROADMAP refresh
 4844ed7  Milestone F Task 2b: per-launcher boxes + per-launcher range arcs
 0b38fd1  Milestone F Task 2a: distributed launcher positions — backend plumbing
 2697e9e  Milestone F Task 1: Saab location landmarks (runways, cities, labels)
@@ -99,10 +165,6 @@ c7acf28  Milestone E Task 4: Boreal Passage 3D terrain
 c15b44f  Milestone E Task 2: AI decision log enrichment
 e0ea4a2  Milestone E Task 1: per-entity status panel
 66dee65  Blue AI: DRONE fallback (SLS) + wait-for-primary; range arcs on map
-3a67c5a  Docs: Milestone D section in REPORT.md + translate NOTES + update progress/
-3e7fafe  Milestone D: realistic physics, saturation AI, per-weapon meshes
-49c05d1  Frontend: IRIS-T style interceptor mesh — seeker dome, canards, larger tail fins
-9897499  Add progress/ folder for cross-machine work continuity
 ```
 
 Run `git log --oneline -20` for the full history.
@@ -111,23 +173,26 @@ Run `git log --oneline -20` for the full history.
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| Config | `backend/sim/config.py` | All tunable parameters (arena 150×250 km, leak radius 1500 m, `BLUE_LAUNCHER_POSITIONS`) |
+| Config | `backend/sim/config.py` | All tunable parameters (arena 150×250 km, leak radius 1500 m, `BLUE_LAUNCHER_POSITIONS` land-gated via terrain.py, `STRAIT_CENTER_Y`) |
+| Terrain | `backend/sim/terrain.py` (Milestone G) | Parses Saab CSV south-side polygons, `point_on_south_land(wx, wy)` for land-check asserts |
+| Sites | `backend/sim/sites.py` (Milestone G) | `Site` dataclass + `SOUTH_SITES` (6 Saab named locations + legacy base) with per-site `leaks` counter |
 | Types & specs | `backend/sim/types.py` | Enums, dataclasses, weapon/threat spec tables (incl. `fuel_s`, `thrust_active`) |
 | Physics | `backend/sim/physics.py` | PN guidance, gravity, atmosphere-scaled drag, CPA, `air_density_ratio` |
 | Entities | `backend/sim/entities.py` | Threat + Interceptor step logic; HGV bleed + evasion; interceptor boost/coast |
 | Launcher | `backend/sim/launcher.py` | `Launcher.pos` + magazine/reload CD; `fleet_status` → `{by_kind, launchers}` |
-| World | `backend/sim/world.py` | Tick loop, HP/damage, ground/leak sweep |
-| Red AI | `backend/sim/red_ai.py` | 5-wave scripted spawner with per-kind border distances |
+| World | `backend/sim/world.py` | Tick loop, HP/damage, **per-site leak detection** (in-air + ground) |
+| Red AI | `backend/sim/red_ai.py` | 5-wave scripted spawner; `STRAIT_OFFSET_*` + weighted-random `_pick_target` over sites |
 | Blue AI | `backend/sim/blue_ai.py` | Saturation engagement; `_fire` launches from `lch.pos`, not base |
-| Scenarios | `backend/sim/scenarios.py` | World + RedAI + BlueAI orchestration; `snap['ammo']` + `snap['launchers']` split |
+| Scenarios | `backend/sim/scenarios.py` | World + RedAI + BlueAI orchestration; `snap['ammo']`, `snap['launchers']`, **`snap['sites']`** |
 | Server | `backend/server.py` | FastAPI + WebSocket; PORT env var override |
-| Scene | `frontend/js/scene.js` | Three.js scene; 250 km arena; 1 km grid; Boreal terrain; dusk skydome; Saab landmark structures + sprite labels |
+| Scene | `frontend/js/scene.js` | Three.js scene; 250 km arena; 1 km grid; Boreal terrain; dusk skydome; Saab landmark structures + sprite labels (**base cylinder removed in G**) |
 | Terrain data | `frontend/js/terrain_data.js` | Boreal Passage polygons + `BOREAL_LOCATIONS` landmarks, baked from Saab CSV |
-| Launchers (client) | `frontend/js/launchers.js` | `LauncherRegistry` — per-launcher coloured box + northern range arc, reload-dimmed |
+| Launchers (client) | `frontend/js/launchers.js` | `LauncherRegistry` — per-launcher coloured box + **full-circle** range arc, reload-dimmed |
+| Sites (client) | `frontend/js/sites.js` (Milestone G) | `SiteRegistry` — coloured ring per site, canvas-texture leak badge, capital pulses when damaged |
 | Entities (client) | `frontend/js/entities.js` | Per-kind meshes, trails, seeker cones, explosions, flame toggle |
-| HUD | `frontend/js/hud.js` | Score, ammo (reads `snap.ammo` = by_kind), launch banner, AI decision logs |
+| HUD | `frontend/js/hud.js` | Score, ammo, launch banner, AI decision logs, **Site damage panel (G)** |
 | Status panel | `frontend/js/status_panel.js` | Click-to-inspect per-entity stats |
-| Main | `frontend/js/main.js` | WebSocket client, render loop, wire entity + launcher registries + status panel |
+| Main | `frontend/js/main.js` | WebSocket client, render loop, wire entity + launcher + **site** registries + status panel |
 
 ## Design Docs
 

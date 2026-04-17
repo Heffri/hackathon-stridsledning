@@ -1,7 +1,37 @@
 # Roadmap — What's Next
 
-> Context: Milestones E and F are complete. Milestone D gave the sim realistic physics (fuel / coast / atmosphere), saturation AI, per-weapon 3D meshes, 250 km arena, and real-world threat speeds. Milestone E added visual packaging: per-entity status panel, enriched AI logs, seeker cones, Boreal Passage 3D terrain, and dusk sky + explosion flashes. Milestone F added Saab landmark structures + labels and distributed launcher positions with per-launcher range arcs.
+> Context: Milestones E, F, and G are complete. Milestone D gave the sim realistic physics (fuel / coast / atmosphere), saturation AI, per-weapon 3D meshes, 250 km arena, and real-world threat speeds. Milestone E added visual packaging: per-entity status panel, enriched AI logs, seeker cones, Boreal Passage 3D terrain, and dusk sky + explosion flashes. Milestone F added Saab landmark structures + labels and distributed launcher positions with per-launcher range arcs. Milestone G added full-circle launcher arcs, land-only launcher validation, strait-origin threats, and multi-site targets with per-site leak tracking.
 > Time remaining until Hack Day: ~1 week (April 25, 2026).
+
+## What Milestone G Did to the Old Roadmap
+
+Items now **closed**:
+
+- ✅ Launchers-on-land validation — every
+  `BLUE_LAUNCHER_POSITIONS` entry is now ray-cast point-in-polygon'd
+  against the Saab south-side polygons at config.py import.
+- ✅ Narrative fix: threats no longer spawn inside Blue territory
+  (strait centerline anchor).
+- ✅ Single-base target model replaced by 7-site target model with
+  per-site leak tracking and HUD.
+
+Items newly **surfaced** by Milestone G:
+
+- **Smarter Red AI target selection** — currently weighted random
+  across Saab sites, but could pattern waves (wave 5 hits the
+  capital specifically, wave 1 hits an air base, wave 4 HGV hits
+  capital or base). Gives the demo more narrative variety.
+- **Rebalance for G geometry** — Blue win rate swung to 20/20
+  after Part 3 because drones / cruise now spend so long in
+  transit that Blue's saturation AI gets many more engagement
+  opportunities. Part 4's multi-site targets partially redistribute
+  leak opportunity but likely not enough. Options: bigger waves,
+  shorter reloads on ballistic threats, stealth cruise, or more
+  frequent wave 5 saturation spam.
+- **Site HP + economy** — `Site.hp` exists in the dataclass but
+  is never decremented. Wire `Site.hp -= kind_damage` on leak
+  events, add a win condition when any site reaches 0, and the
+  demo has real stakes instead of a leak counter.
 
 ## What Milestone F Did to the Old Roadmap
 
@@ -14,12 +44,13 @@ Items now **closed**:
   launcher range arcs replace the base-centred stack. Done as
   Milestone F Task 2b.
 
-Items newly **surfaced** by Milestone F:
+Items **surfaced** by Milestone F (still open):
 
 - **Placement AI** — consume `BLUE_LAUNCHER_POSITIONS` at scenario
   reset and pick positions based on threat direction / wave
   composition / coverage optimisation. Currently hardcoded in
-  `config.py`.
+  `config.py` (Milestone G added land-gating as a safety net but
+  the positions themselves are still hand-authored).
 - **Per-launcher range math in engagement decisions** — currently
   all weapon range checks in `blue_ai` (`_try_fire`,
   `_time_to_enter_range`, `_primary_available_in_time`) use base

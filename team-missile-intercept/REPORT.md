@@ -908,3 +908,237 @@ python server.py
    restore when the magazine refills.
 6. `python test_balance.py` still runs; new baseline ≈ 0-2 Blue wins
    / 7-9 draws / 11-13 Red wins per 20-match sweep.
+
+---
+
+# Milestone G — Site targets + strait-origin threats + land-only launchers
+
+Scope: close three lingering narrative / geometric absurdities left by
+Milestone F, and expand the target list from a single base to every
+Saab-named south-side location. Four parts land this session.
+
+## Part 1 — Full-circle launcher range arcs
+
+Launchers no longer fire from the base; forward-deployed RBS 70 /
+SLS / SLM sit 10-25 km north and flank the centerline. The
+Milestone F northern semi-circle arc implied a weapon envelope that
+only reached north — wrong as soon as any launcher could be
+engaged by threats on its side or rear.
+
+Change: `frontend/js/launchers.js` sweeps `theta` `0..2π` (was `0..π`)
+and doubles the segment count to 192 (was 96) so perceived smoothness
+is unchanged. Reload-opacity rules (`0.4` ready / `0.15` reloading)
+kept.
+
+## Part 2 — Land-only launcher validation
+
+Milestone F's `y < 105_000` gate was two orders of magnitude too
+generous — the southern mainland in world coords is only a thin
+0-18 km band before the strait opens up. Six of the nine launcher
+boxes rendered in coastal-pocket sea.
+
+Fix: new `backend/sim/terrain.py` parses Saab CSV south-side terrain
+polygons once at module load, exposes `point_on_south_land(wx, wy)`
+via ray-casting point-in-polygon. `config.py` replaces the old numeric
+band assert with a hard per-launcher call into it.
+
+The inverse transform is derived from the forward `saabToScene`
+composition in `scene.js`:
+
+    saab_x = 1667 * ((wx - 75_000) / 150_000 + 0.5)
+    saab_y = 1064 - 0.0032 * (wy - 5_000)
+
+Acceptance: `python -c "from sim.scenarios import build_default_scenario;
+build_default_scenario()"` import-time assertion catches any future
+placement regression. Current Milestone G layout (all on visible
+land):
+
+    ciws        (75_000,  5_000)
+    rbs_70      (55_000, 14_000)  (110_000, 14_000)
+    iris_t_sls  (50_000, 10_000)  (100_000, 10_000)
+    iris_t_slm  (60_000,  7_000)  ( 85_000,  6_000)
+    pac_2       (74_700,  8_000)
+    pac_3       (75_300,  8_000)
+
+Also added `STRAIT_CENTER_Y = 120_000` to `config.py` for Part 3.
+
+## Part 3 — Threats spawn north of the strait centerline
+
+Pre-G spawn Y was `base_y + offset` (base at 5 km south). Drones at
+`base_y + 30_000 = 35_000` actually originated INSIDE Blue's own
+southern mainland — physically absurd. Ballistic at 125 km was
+already over the northern land but not by much.
+
+Rewrite: `red_ai.py`'s `BORDER_DY_*` constants replaced with
+`STRAIT_OFFSET_*` (distance north of strait centerline, positive deeper
+into Red). `_sample_spawn` now computes `y = config.STRAIT_CENTER_Y +
+offset`. Strait centerline Y=120 km was derived from the Saab polygons
+(south-coast ~ saab_y 1020, north-coast ~ 370, midline ≈ 695) mapped
+through `saabToScene`.
+
+Resulting spawn Y's: drone 130 km, cruise 145 km, ballistic 170 km,
+HGV 190 km. All over the northern mainland / strait. HGV keeps 60 km
+buffer from the arena wall.
+
+`test_balance.py` sim cap extended 400s → 1200s to accommodate
+drone transit (125 km at 120 m/s ≈ 1040 s).
+
+### Balance drift — documented, not fixed
+
+Blue wins swung from pre-F baseline 2-6/20 to **20/20 post-G Part 3**,
+with avg leaks crashing from ~2.5 to 0. Root cause: threats now spend
+3-30× longer in flight before entering any weapon envelope, giving
+Blue's saturation AI many more engagement opportunities per threat,
+and nothing reached the single 1.5 km base footprint. This exceeds
+the spec's ±3 Blue-wins tolerance, so it's documented here and queued
+as a ROADMAP follow-up ("re-balance for Milestone G geometry") rather
+than fixed by spec tuning. Part 4 redistributes leak opportunity
+across 7 sites which should recover some of the pre-G leak rate.
+
+## Part 4 — Multi-site targets + per-site leaks + remove base cylinder
+
+Pre-G the only targetable point was `BLUE_BASE_POS`; every threat
+converged on the same 1.5 km disc. Milestone G expands target list
+to all six south-side Saab locations plus the legacy base (now
+subtype `base`).
+
+### Part 4a — Backend
+
+- `backend/sim/sites.py` (new): `Site` dataclass with
+  `name / subtype / pos / hp / leaks`. `SOUTH_SITES` populated at
+  module load from a hand-authored table of south-side Saab CSV
+  rows via the `_saab_to_world` affine (mirrors scene.js
+  `saabToScene` + `worldToSceneXY` composition). `reset_leaks()`
+  zeroes counters on scenario reset.
+- `backend/sim/world.py`: in-air and ground-impact leak blocks
+  rewritten as per-site loops. `self.leaked` stays as the sum
+  (test_balance compat). Leak events now include a `site: str`
+  field for the HUD.
+- `backend/sim/scenarios.py`: `snap['sites']` list added
+  (name/subtype/pos/hp/leaks per site). `sites.reset_leaks()` in
+  `Scenario.__init__`.
+
+### Part 4b — Red AI target selection
+
+`red_ai.py` `_pick_target` picks one site per threat via weighted-
+random (`capital 4, base 3, air_base 2, major_city 1`). Cruise
+waypoint generation now weaves toward the chosen target, not the
+base. `Threat.__init__` already accepted `target_xy` — wiring the
+per-threat pick through `world.spawn_threat` was a one-line change.
+
+### Part 4c — Frontend
+
+- `frontend/js/scene.js`: blue base cylinder mesh deleted. `BASE_POS`
+  constant stays as scene-origin reference.
+- `frontend/js/sites.js` (new): `SiteRegistry` renders one flat
+  RingGeometry(0.55, 0.8, 48) per site, colour-coded by subtype:
+  capital `0xff2a2a` (pulses when damaged), air_base `0xff8800`,
+  major_city `0xffd24a`, base `0x3b82f6`. Canvas-texture leak-count
+  badge Sprite appears above the ring once `leaks > 0`.
+- `frontend/js/main.js` wires the registry into the render loop.
+- `frontend/index.html` + `frontend/style.css` + `frontend/js/hud.js`:
+  adds "Site damage" HUD block (top-right, below Magazine) that
+  lists sites with leaks > 0 sorted by leak count desc, with colour
+  dot + subtype badge + count. Empty state reads "all sites intact".
+
+## Acceptance
+
+- `python -c "from sim.scenarios import build_default_scenario;
+  build_default_scenario()"` imports cleanly (terrain assertion
+  green).
+- Full-WS probe at t=240 s live-run confirmed `snap.sites` present
+  with 7 entries and multi-site leak tracking working (Spear Point
+  Base accumulating 2 leaks from a drone wave).
+- HUD `Site damage` panel rendered correctly when fed a synthetic
+  snapshot via `hud.updateHud()` manual invocation (two damaged
+  sites, subtype badge, leak word singular/plural).
+- Full-circle arcs verified by inspection of `launchers.js` diff
+  (`segments = 192`, `theta * Math.PI * 2`).
+- All launcher positions verified via `terrain.point_on_south_land`
+  at module import — every write is hard-gated.
+
+## Balance
+
+Post-Part 4 sample probe (single 1200 s headless run, multi-site
+targeting enabled): 26 spawned / 9 intercepts / **10 leaks** — a
+dramatic swing BACK toward Red from the Part 3 Blue-20/20 regime.
+Leaks are now distributed across sites (Spear Point Base 6, Callhaven
+3, Meridia 1, Main Base 0) rather than pooled at the base.
+
+20-match sweep at 1200 s is captured by `python test_balance.py`
+and will be appended to this section's commit body once complete
+(the run takes ~5-7 min per sweep and the stdout is buffered by the
+`tail` pipe so intermediate progress doesn't show in the background
+task log).
+
+## Known approximations / deferred
+
+1. **Blue win rate**: skyrocketed from ~2/20 pre-F to 20/20 post-
+   Part 3 and is expected to stay high post-Part 4 because most
+   targets now sit 40-70 km south of the base (negative world_y)
+   and threats need to cover much longer transit distances while
+   Blue engages them multiple times. Listed as a ROADMAP item:
+   "Rebalance Red for Milestone G geometry" — likely wants bigger
+   waves, stealth cruise threats, or shorter-reload ballistic.
+2. **Some sites at negative world_y**: Southern Redoubt / Meridia /
+   Callhaven / Solano sit at saab_y > 1080 (off the arena Y crop)
+   and therefore land at world_y between -21 km and -49 km. The
+   scene still renders them fine (landmark Sprites from
+   Milestone F), and physics treat negative world_y as a valid
+   (x, y) point. Threats aimed at those sites traverse up to
+   ~240 km — inside the 250 km deep arena ceiling but close to
+   the south margin.
+3. **No site HP degradation**: each `Site.hp` defaults to 100 and
+   stays there. Leaks only tick the counter. A future "Base HP" pass
+   can wire `Site.hp -= kind_damage` on leak events and end the
+   scenario when any site reaches 0.
+4. **Target selection is weighted random**: Red picks one site per
+   threat independently. Queued on ROADMAP as "Smarter Red AI target
+   selection" — pattern waves (wave 5 saturates the capital, wave
+   1 goes for an airbase, ...).
+5. **Preview rAF throttling**: the Claude Preview env runs the page
+   in a 0×0 window which pauses `requestAnimationFrame`, so the
+   animate loop never ticks and we couldn't capture a screenshot of
+   the live HUD. Backend correctness + DOM writes were verified via
+   direct `updateHud()` invocation on a synthetic snapshot; a real
+   browser renders identically.
+
+## Files touched (Milestone G)
+
+```
+backend/sim/config.py          — land-on-check assert + STRAIT_CENTER_Y
+backend/sim/terrain.py (new)   — CSV parse + point_on_south_land
+backend/sim/sites.py   (new)   — SOUTH_SITES + Site dataclass
+backend/sim/red_ai.py          — STRAIT_OFFSET_* + _pick_target
+backend/sim/world.py           — per-site leak loops (in-air + ground)
+backend/sim/scenarios.py       — snap['sites'] + reset_leaks()
+backend/test_balance.py        — 400s → 1200s sim cap
+
+frontend/js/launchers.js       — full-circle arcs (192 segments)
+frontend/js/scene.js           — base cylinder removed
+frontend/js/sites.js   (new)   — SiteRegistry: rings + leak badge
+frontend/js/main.js            — wire SiteRegistry
+frontend/js/hud.js             — renderSiteDamage panel
+frontend/index.html            — site-damage HUD block
+frontend/style.css             — site-damage styles (~48 lines)
+```
+
+## How to test Milestone G
+
+```bash
+cd team-missile-intercept/backend
+python server.py
+# http://localhost:5174/  → click Start
+```
+
+1. Landing page: no blue base cylinder. Instead 7 small coloured
+   rings on the south terrain — 1 red (Meridia capital), 3 orange
+   (air bases), 2 yellow (cities), 1 blue (base).
+2. Each launcher renders a full-circle arc, not a half-circle.
+3. Wave 1 drones spawn visibly over the northern mainland / strait
+   (world_y ≈ 130 km, not inside Blue territory).
+4. Watch a few leaks: the Site damage HUD top-right fills in with
+   colour-coded rows; capitals pulse; the ring grows a canvas-texture
+   "N leaks" badge.
+5. `python test_balance.py` runs 1200 s windows and prints a
+   distribution (currently Blue-dominant — see balance note above).
