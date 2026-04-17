@@ -138,28 +138,70 @@ function buildModel(kind, team, color) {
     kind === 'long_sam' ||
     kind === 'hit_to_kill'
   ) {
-    // Blue interceptor SAM. Slender rocket + nose cone + 4 tail fins + exhaust plume.
+    // IRIS-T style interceptor: slender body, ogive nose with IR seeker dome,
+    // 4 mid-body canards, 4 large trapezoidal tail fins, 2 accent bands.
     const size = kind === 'long_sam' ? 1.15 : kind === 'ciws' ? 0.65 : 1.0;
     const body = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.13 * size, 0.16 * size, 1.8 * size, 12),
+      new THREE.CylinderGeometry(0.11 * size, 0.13 * size, 2.0 * size, 14),
       bodyMat,
     );
     const nose = new THREE.Mesh(
-      new THREE.ConeGeometry(0.13 * size, 0.5 * size, 12),
+      new THREE.ConeGeometry(0.11 * size, 0.55 * size, 14),
       bodyMat,
     );
-    nose.position.y = 1.15 * size;
-    // 4 tail fins
+    nose.position.y = 1.275 * size;
+    // IR seeker dome at nose tip (dark glassy sphere)
+    const seekerMat = new THREE.MeshStandardMaterial({
+      color: 0x1a1a22,
+      roughness: 0.25,
+      metalness: 0.7,
+    });
+    const seeker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06 * size, 12, 10),
+      seekerMat,
+    );
+    seeker.position.y = 1.55 * size;
+    // 2 accent bands around body (slightly wider & darker than body)
+    const bandMat = new THREE.MeshStandardMaterial({
+      color: c.clone().multiplyScalar(0.6),
+      emissive: c.clone().multiplyScalar(0.25),
+      emissiveIntensity: 0.3,
+      roughness: 0.5,
+    });
+    for (const yPos of [0.7, -0.2]) {
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.135 * size, 0.135 * size, 0.08 * size, 14),
+        bandMat,
+      );
+      band.position.y = yPos * size;
+      g.add(band);
+    }
+    // 4 mid-body canards (small forward control fins)
+    for (let i = 0; i < 4; i++) {
+      const canard = new THREE.Mesh(
+        new THREE.BoxGeometry(0.035 * size, 0.18 * size, 0.28 * size),
+        darkMat,
+      );
+      const a = (i * Math.PI) / 2;
+      canard.position.set(
+        Math.cos(a) * 0.22 * size,
+        0.4 * size,
+        Math.sin(a) * 0.22 * size,
+      );
+      canard.rotation.y = -a;
+      g.add(canard);
+    }
+    // 4 large tail fins
     for (let i = 0; i < 4; i++) {
       const fin = new THREE.Mesh(
-        new THREE.BoxGeometry(0.05 * size, 0.45 * size, 0.35 * size),
+        new THREE.BoxGeometry(0.04 * size, 0.7 * size, 0.55 * size),
         darkMat,
       );
       const a = (i * Math.PI) / 2;
       fin.position.set(
-        Math.cos(a) * 0.22 * size,
-        -0.85 * size,
-        Math.sin(a) * 0.22 * size,
+        Math.cos(a) * 0.28 * size,
+        -0.95 * size,
+        Math.sin(a) * 0.28 * size,
       );
       fin.rotation.y = -a;
       g.add(fin);
@@ -171,12 +213,12 @@ function buildModel(kind, team, color) {
       opacity: 0.75,
     });
     const flame = new THREE.Mesh(
-      new THREE.ConeGeometry(0.22 * size, 0.9 * size, 10),
+      new THREE.ConeGeometry(0.18 * size, 0.9 * size, 10),
       flameMat,
     );
-    flame.position.y = -1.45 * size;
+    flame.position.y = -1.55 * size;
     flame.rotation.z = Math.PI; // tip points -Y
-    g.add(body, nose, flame);
+    g.add(body, nose, seeker, flame);
     // tag the flame for pulsing animation
     g.userData.flame = flame;
   } else {
