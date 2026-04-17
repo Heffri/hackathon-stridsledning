@@ -538,6 +538,11 @@ class EntityMesh {
     this.kind = kind;
 
     this.mesh = buildModel(kind, team, color);
+    // Tag the root Group so Raycaster intersections can resolve back to
+    // this entity id by walking up .parent from the child Mesh hit.
+    this.mesh.userData.entityId = id;
+    this.mesh.userData.entityKind = kind;
+    this.mesh.userData.entityTeam = team;
     scene.add(this.mesh);
 
     // Trail: Line with dynamic geometry

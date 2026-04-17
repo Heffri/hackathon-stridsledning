@@ -2,10 +2,12 @@
 import { createScene } from './scene.js';
 import { EntityRegistry } from './entities.js';
 import { wireHud, updateHud, setWsStatus } from './hud.js';
+import { initStatusPanel, updateStatusPanel } from './status_panel.js';
 
 const canvas = document.getElementById('view');
 const { scene, camera, renderer, controls } = createScene(canvas);
 const registry = new EntityRegistry(scene);
+initStatusPanel(canvas, camera, registry);
 
 let latestSnap = null;
 
@@ -41,6 +43,7 @@ function animate() {
   if (latestSnap) {
     registry.updateFromSnapshot(latestSnap);
     updateHud(latestSnap);
+    updateStatusPanel(latestSnap);
   }
   renderer.render(scene, camera);
 }
