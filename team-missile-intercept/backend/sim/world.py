@@ -200,6 +200,49 @@ class World:
                     {"type": "leak", "threat": tid, "kind": threat.state.kind}
                 )
 
+        # 4b) Unified ground collision — any live entity (threat or
+        # interceptor) that touches the ground explodes. Previously each
+        # entity's step() set alive=False on ground impact, but some
+        # paths (HGV, deep-diving cruise) slipped through the cracks and
+        # produced the "bouncing on the ground" glitch the reviewer saw.
+        # Centralising the check here also guarantees an explosion flash
+        # for every crash, no matter who crashed.
+        BASE_HIT_R_SQ = 250.0 * 250.0
+        for tid, threat in list(self.threats.items()):
+            if not threat.state.alive:
+                continue
+            if threat.state.pos[2] <= config.GROUND_Z:
+                threat.state.alive = False
+                hit_pos = threat.state.pos.copy()
+                hit_pos[2] = config.GROUND_Z
+                self.explosions.append(Explosion(pos=hit_pos, t=self.t))
+                dxy = hit_pos - base
+                dxy[2] = 0.0
+                if float(dxy[0] * dxy[0] + dxy[1] * dxy[1]) <= BASE_HIT_R_SQ:
+                    # Ground impact inside base footprint — count as a leak
+                    # so Wave 5 doesn't under-report when a threat lands
+                    # on the last tick a few metres short of the 250 m
+                    # base sphere but still on top of the base plate.
+                    self.leaked += 1
+                    self.events.append(
+                        {"type": "leak", "threat": tid, "kind": threat.state.kind}
+                    )
+                else:
+                    self.events.append(
+                        {"type": "ground_crash", "threat": tid, "kind": threat.state.kind}
+                    )
+        for iid, inter in list(self.interceptors.items()):
+            if not inter.state.alive:
+                continue
+            if inter.state.pos[2] <= config.GROUND_Z:
+                inter.state.alive = False
+                hit_pos = inter.state.pos.copy()
+                hit_pos[2] = config.GROUND_Z
+                self.explosions.append(Explosion(pos=hit_pos, t=self.t))
+                self.events.append(
+                    {"type": "ground_crash", "interceptor": iid, "kind": inter.state.kind}
+                )
+
         # 5) sweep dead entities (keep for 1 tick so client can render final pose)
         for tid in list(self.threats.keys()):
             if not self.threats[tid].state.alive:

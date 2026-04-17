@@ -305,9 +305,11 @@ class Threat:
 
             new_pos, new_vel = physics.integrate(pos, vel, accel, dt)
             # No speed cap — terminal re-entry is allowed to fly fast.
+            # Defensive Z-clamp; actual ground-impact handling is
+            # centralised in World.step so every entity dies the same
+            # way (explosion + leak bookkeeping).
             if new_pos[2] < config.GROUND_Z:
                 new_pos[2] = config.GROUND_Z
-                self.state.alive = False
             self.state.pos = new_pos
             self.state.vel = new_vel
             return
@@ -392,9 +394,9 @@ class Threat:
 
         new_pos, new_vel = physics.integrate(pos, vel, accel, dt)
         new_vel = physics.cap_speed(new_vel, self.spec.cruise_speed)
+        # Defensive Z-clamp; World.step handles ground-impact kills.
         if new_pos[2] < config.GROUND_Z:
             new_pos[2] = config.GROUND_Z
-            self.state.alive = False
         self.state.pos = new_pos
         self.state.vel = new_vel
 
@@ -499,9 +501,9 @@ class Interceptor:
 
             new_pos, new_vel = physics.integrate(pos, vel, accel, dt)
             new_vel = physics.cap_speed(new_vel, self.spec.max_speed)
+            # Defensive Z-clamp; World.step handles ground-impact kills.
             if new_pos[2] < config.GROUND_Z:
                 new_pos[2] = config.GROUND_Z
-                self.state.alive = False
             self.state.pos = new_pos
             self.state.vel = new_vel
             return
@@ -543,8 +545,8 @@ class Interceptor:
         new_pos, new_vel = physics.integrate(pos, vel, accel, dt)
         new_vel = physics.cap_speed(new_vel, self.spec.max_speed)
 
+        # Defensive Z-clamp; World.step handles ground-impact kills.
         if new_pos[2] < config.GROUND_Z:
             new_pos[2] = config.GROUND_Z
-            self.state.alive = False
         self.state.pos = new_pos
         self.state.vel = new_vel
