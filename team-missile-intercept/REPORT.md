@@ -323,3 +323,179 @@ avg spawned=20.0  avg intercepts=17.6  avg leaks=1.6  leak range=0..4
 leaks by kind: {'hgv': 25, 'ballistic': 6}
 ```
 HGV kill rate 35/60 = **58%** (task threshold 40%). Avg leaks 1.6 (up from 1.1), mostly from wave 5's 2 HGV saturation + ballistic grazes.
+
+---
+
+# Milestone D — Realistic Physics, Saturation AI, Per-Weapon Meshes
+
+Large multi-session pass focused on making the fight feel physically real instead of mathematically tidy: interceptors run out of fuel and coast on fins; hypersonic threats bleed kinetic energy when they manoeuvre; every interceptor type has its own distinct 3D mesh and colour; arena depth was doubled so the long-range engagements actually have room to play out.
+
+## Part A — IRIS-T SLS added, PAC-2-on-cruise fixed, HGV fallback
+
+Operator brief flagged three bugs:
+
+1. **No IRIS-T SLS (RBS 98) in the arsenal at all.** Enum, spec, launcher, VLS list, HUD row and name mapping were all missing.
+2. **Blue AI wasting PAC-2 on cruise missiles.** At 60 km spawn only PAC-2 was in range (SHORT-SAM 9 km and MED-SAM 40 km both too short), so the range filter left PAC-2 as the only option and the AI fired it.
+3. **HGV leaks when PAC-3/PAC-2 are empty or reloading.** `RULES[HGV]` only listed `[HIT_TO_KILL, LONG_SAM]`; when both were unavailable the AI just stood there.
+
+Changes (`backend/sim/` + `frontend/`):
+
+- `types.py`: new `InterceptorType.IRIS_T_SLS` + spec (400 m/s / 60 G / 12 km / $500K / 50 dmg direct / 25 prox / 11.4 kg HE-frag). Matches the `ground-defense.md` real data for the Saab / Diehl ground-launched IRIS-T.
+- `launcher.py`: SLS launcher template (mag 4, inter-shot 3 s, reload 60 s) + 2 SLS launchers in default loadout.
+- `entities.py`: SLS added to `_VLS_SAM_KINDS` so it does the standard vertical boost on launch.
+- `blue_ai.py` rewritten:
+  - `PRIMARY_RULES` + `FALLBACK_RULES` split. `LONG_SAM` removed from `CRUISE_SUB` primary; SLS added. `FALLBACK_RULES[HGV] = [MED_SAM, IRIS_T_SLS, SHORT_SAM, CIWS]` — doctrine-correct "throw whatever's left" when the hit-to-kill tier runs dry.
+  - Wait-for-cheaper-in-range logic with a 50 % `time-to-impact` wait budget. Stops the PAC-2-on-cruise misuse without starving out fast threats.
+- `frontend/index.html` + `hud.js` + `entities.js`: SLS row, name mapping, mesh branch.
+
+Side fix: `Scenario.step` used to call `red.step` → `blue.step` → `world.step`, and the first line of `world.step` was `self.events = []`, wiping out launch events that `blue_ai` had just appended via `spawn_interceptor`. Moved the reset to the top of `Scenario.step` so the launch banner on the HUD actually fires.
+
+## Part B — Leak radius, HGV terminal-dive geometry
+
+Operator reported HGVs visually hitting the base but `Leaked: 0` staying stuck. Root cause was two layered:
+
+1. In-air leak check used 3D distance against a 250 m sphere. An HGV diving at 1700 m/s covers 85 m per tick, so the sweep often skipped the sphere cleanly.
+2. Ground-impact leak check used a 250 m horizontal footprint, but the visual base cylinder in `scene.js` had a 2.5 km radius — HGVs landing 1 km from base centre looked like direct hits but were scored as `ground_crash` rather than `leak`.
+
+CEP measurement (50 HGVs, no interceptors, before any fix) showed mean **1472 m** — HGVs systematically overshot by 1.5 km because the terminal dive started at `dh < 15 km` and there simply wasn't enough horizontal distance to pitch the 1700 m/s cruise velocity into a base-aimed vector under the 10 G cap.
+
+Fixes:
+
+- `config.py`: new `BASE_HIT_RADIUS = 1500` m. Realistic airfield-scale defended footprint; matches the visual base marker.
+- `world.py`: in-air leak check switched from 3D sphere to 2D horizontal disc using `BASE_HIT_RADIUS`. Ground-impact leak uses the same radius. No more HGVs silently reclassifying as ground_crashes.
+- `entities.py`: HGV terminal dive entry distance `dh < 15 km` → `dh < 30 km` so it gets the ~17 s of pitch time needed at max_g = 10.
+
+After the dive-geometry fix HGV ground-impact CEP dropped from 1472 m to **18 m mean / 38 m max** — plenty tight enough to pass a 500 m or even 250 m leak gate. The wider `BASE_HIT_RADIUS = 1500` was kept for visual consistency, not to mask aim error.
+
+## Part C — Fuel, coast phase, atmosphere drag, HGV energy bleed
+
+Operator pushed back on the "interceptors are permanent motors" simplification. Real SAMs burn their sustainer for 5–40 s and then coast on fins; real HGVs can't maintain peak G indefinitely without bleeding kinetic energy.
+
+- `types.py`: `InterceptorSpec.fuel_s` added, populated from `WEAPON_SPECS.md` real data (CIWS 4 s, RBS 70 13 s, SLS 30 s, SLM 39 s, PAC-2 41 s, PAC-3 35 s). `EntityState.thrust_active` new bool, included in snapshot `to_dict` so the frontend can gate the exhaust plume.
+- `physics.py`: `air_density_ratio(altitude)` (exponential atmosphere, H = 8500 m) + `drag_accel_at(vel, drag_k, altitude)` for post-burnout interceptor glide. Threats unchanged — their `drag_k` was already hand-tuned at their flight altitudes.
+- `entities.py` — Interceptor:
+  - Tracks `fuel_elapsed = t_now - launched_t`; sets `thrust_active = (fuel_elapsed < fuel_s)`.
+  - Post-burnout: sustain thrust off, `max_g` capped at 0.5× spec (fins + ACM only, no thrust vectoring), drag uses altitude-scaled model, and speed < 200 m/s self-destructs (stall).
+  - Boost phase (< 1.5 s VLS) unchanged — fuel gate doesn't matter because `fuel_s > 1.5` for every type.
+- `entities.py` — HGV:
+  - Removed the "sustain thrust" hack that kept HGVs at Mach 5 indefinitely. They now glide unpowered.
+  - `_HGV_JINK_G = 8` (was 4): max-commit lateral evasion when an interceptor is inside 12 km detect radius. Direction flips every 2 s so the track snakes instead of arcing.
+  - Kinetic energy bleed: `speed_loss = 120 × (commanded_G / max_G)² × dt` per tick. At max-G jinks the HGV loses ~120 m/s per second — visible speed drop after 2–3 hard turns.
+  - Stall at 500 m/s: lift collapses, HGV dies mid-flight. Drives the R = v²/a tactical trade — fast HGV has huge turn radius, slow HGV can turn tight but is close to stall.
+- `world.py`: `threat.step(dt, self)` — HGVs need world access to scan for nearby interceptors (Level-5 evasion trigger). Non-HGV branches ignore the arg.
+- `frontend/js/entities.js`: `EntityMesh.update(pos, vel, thrustActive)` — flame mesh hidden when `thrust_active = false`. Interceptors visibly stop their exhaust after burnout and coast on fins.
+
+## Part D — Saturation engagement, point-defense CIWS, last resort
+
+Even after Part A, the operator noted IRIS-T SLS rarely fired: the wait-budget logic committed to MED-SAM at first opportunity and SLS never got a look at closer ranges. Fix was a full rewrite of the engagement loop from "one weapon per threat at a time" to layered saturation:
+
+- `blue_ai.py`:
+  - `self.assignments: Dict[int, List[int]]` — threats can have multiple interceptors in flight.
+  - Saturation gate: fire while `expected_in_flight_damage < threat.hp` and `len(non_ciws_assigned) < MAX_SIMULTANEOUS_PER_THREAT = 3`.
+  - Wait-budget logic removed entirely. As threats close in, cheaper / shorter-range weapons naturally come into range and layer on.
+  - **Point-defense CIWS**: if any threat is inside the 4 km CIWS envelope, CIWS rounds fire regardless of saturation gate and regardless of threat kind. Real Lvkv 90 doctrine — inner ring sprays everything. Also gives the demo visible CIWS fire against HGV / ballistic terminal passes.
+  - **Last-resort tier**: if primary and fallback both return nothing AND `t_impact < 15 s`, try every interceptor type in the arsenal. Operator brief: "if only PAC-2 is left and a drone is about to hit, use the PAC-2 — don't be too rigid about cost-exchange."
+  - `PRIMARY_RULES[DRONE] = [CIWS, SHORT_SAM]` (MED-SAM moved to fallback only). Forces the AI to wait for drones to enter SHORT_SAM range instead of wasting MED-SAM from 30 km.
+
+## Part E — Realistic threat speeds, deeper arena
+
+Operator preference: real-world data over game-tuned numbers. "Ballistics are fast, modern air defence struggling to intercept them is a real fact, don't dial it down for difficulty."
+
+- `types.py`:
+  - `ThreatSpec[BALLISTIC].cruise_speed = 4459 m/s` (13 Mach) — modern MaRV terminal velocity.
+  - `ThreatSpec[HGV].cruise_speed = 5831 m/s` (17 Mach) — DF-ZF / Kinzhal-class glide velocity. At this speed the formula `R = v² / a` gives a turn radius of ~347 km under max_g = 10, so HGVs effectively fly straight through the arena until they bleed speed from evasion. Realistic physics.
+  - PAC-3 `radius_direct = 60 m` (was 40 m), `radius_prox = 80 m`: at Mach 13 closing, per-tick displacement is ~300 m, so the 40 m radius was borderline for direct hits. 60 m keeps PAC-3's "hit-to-kill" identity on realistic fast ballistics.
+- `red_ai.py`:
+  - `BORDER_DY_DRONE = 30 km` (drones spawn closer so SHORT_SAM / CIWS engage them, not MED-SAM overkilling from 60 km).
+  - `BORDER_DY_BALLISTIC = 120 km` (2× old).
+  - `BORDER_DY_HGV = 180 km` (2× old).
+  - Wave counts: cruise doubled (4 → 8 per scenario), ballistic doubled (2 → 4).
+- `config.py`: `ARENA_Y = 250_000` m (was 150 km) — has to fit HGV's 180 km spawn border.
+- `frontend/js/scene.js`:
+  - Ground + grid rectangular, centred on arena midpoint instead of base (base is at the south edge of a 250 km-deep map).
+  - `gridDivisions = gridSize` so **1 grid cell = 1 km**. Lets the operator eyeball weapon ranges from the HUD: CIWS 4 cells, RBS 70 9, SLS 12, SLM 40, PAC-3 60, PAC-2 70.
+  - Camera pulled back to (30, 50, 110) looking at (0, 12, -70) so HGV's 180 km spawn line is in-frame by default.
+  - Fog end 300 → 500 so the far edge doesn't clip.
+
+## Part F — Real-weapon kind strings, per-type meshes
+
+Before this pass every mid/long-range SAM rendered with the same generic "IRIS-T style" mesh and the wire format used role names (`med_sam`, `long_sam`, `hit_to_kill`) — so operationally and visually the fleet was five lookalikes on the screen. Switched to real product names end-to-end so each weapon type has a distinct silhouette.
+
+- `backend/sim/types.py` — `InterceptorType` enum **values** (Python code keeps using member names so no import changes):
+  - `SHORT_SAM = "rbs_70"`
+  - `MED_SAM = "iris_t_slm"`
+  - `LONG_SAM = "pac_2"`
+  - `HIT_TO_KILL = "pac_3"`
+  - `IRIS_T_SLS = "iris_t_sls"` (unchanged), `CIWS = "ciws"` (unchanged).
+- `types.py` spec colours synced to each mesh: RBS 70 olive `#4a8a3a`, SLM orange `#ff8c1a`, PAC-2 pink `#ff69b4`, PAC-3 purple `#a855f7`.
+- `frontend/js/entities.js`: one branch per kind.
+  - `ciws` — short tan 40 mm round, fuze cap, driving band, **no exhaust flame** (unguided ballistic cannon round).
+  - `rbs_70` — olive MANPADS Bolide: slender body, pointed nose (no IR seeker — laser beam-riding), 4 small front canards + 4 trapezoidal rear fins, single accent band. Smallest interceptor.
+  - `iris_t_sls` — the original IRIS-T design: body + ogive nose + dark IR seeker dome + 2 accent bands + 4 mid-body canards + 4 large tail fins.
+  - `iris_t_slm` — longer SLM body, sharp pointed nose (no dome), orange, mid-body wings.
+  - `pac_2` — pink long slender missile, pointed nose, tail fins only.
+  - `pac_3` — purple compact hit-to-kill: thin ogive, ACM (attitude control motor) ring near the nose, short tail skirt + 4 stubby fins.
+- `frontend/index.html`, `hud.js`, `style.css` — ammo rows and colour rules keyed on new kind strings.
+
+## Default server port
+
+Hackathon laptop 2 hit WinError 10013 on the default port 8000 — Windows reserves large TCP blocks for Hyper-V / WSL2 / Docker. 8088 was also reserved. 5174 bound successfully.
+
+`backend/server.py`: default port now 5174, override via `PORT` env var. `NOTES_MODEL_AND_PORT.md` in the repo root documents the full Windows port-reservation trap and the PATH / `python` command alias workarounds.
+
+## Balance
+
+20-run `test_balance.py` sweeps after each major pass:
+
+| Snapshot | Blue win | Draw | Red win | Avg leaks | Notes |
+|---|---|---|---|---|---|
+| Milestone C Patch (baseline) | 12 | 5 | 3 | 1.6 | HGV 25 leaks, ballistic 6 |
+| After Part A (SLS + fallback + wait logic) | 14 | 6 | 0 | 1.3 | HGV 5 leaks, ballistic 21 |
+| After Part A list-order ranking (pre-Part C) | 18 | 2 | 0 | 0.4 | PAC-3 one-shots ballistics via list order |
+| After Part C-D (fuel + coast + HGV evasion + saturation) | 10 | 9 | 1 | 1.6 | all 6 weapons firing |
+| After Part E (13 Mach ballistic + 17 Mach HGV + 180 km spawn) | 3–6 | 9–12 | 2–8 | 1.8–2.2 | ballistic leak rate 45–55 % — realism vs. game balance tradeoff |
+| Final (with PAC-3 radius_direct 60 m) | 4–6 | 9–12 | 4–8 | 1.9–2.2 | 26 spawned / ~21 intercepts / all 6 weapons see action |
+
+Key facts:
+
+- All 6 interceptor types fire every scenario (CIWS 4–8, RBS 70 11–13, SLS 2–6, SLM 20–22, PAC-2 4, PAC-3 4).
+- HGV leak rate ≈ 0 % after fallback + saturation + evasion-aware physics. Previously 40–50 %.
+- Ballistic leak rate ~50 %. Operator accepted this under "real data over game tuning" — Mach 13 terminal ballistics are genuinely hard for real air defence too.
+
+## Known gaps / open items
+
+1. **Ballistic interception is the weakest link.** ~50 % leak rate on Mach 13 RVs. Mitigations possible without dropping speed: tighter PN (RK4 + sub-tick integration), or shoot-look-shoot with multiple PAC-3 per target without burning the 4-round magazine. Might be worth the PN upgrade path.
+2. **HGV terminal aim under evasion is not corrected.** During a jink the HGV can end up slightly off the base-aim vector; with Mach 17 it doesn't have time to recover. Operator note: this is fine for now because the long-term plan has Red AI taking over manual HGV control. Revisit when Red AI levels 4/5 land.
+3. **CIWS still under-fires against drones.** Because a single SHORT_SAM / RBS 70 round prox-kills a 10-HP drone at 10 km, drones basically never reach the 4 km CIWS envelope. Point-defense override catches the occasional survivor plus any hypersonic crossing the inner ring. If we want CIWS firing on every demo wave, bump drone HP to ~25 or add a close-spawn drone harassment wave.
+4. **Radar / sensor model not wired.** Detection is currently omniscient. `xingyi-rts/knowledge/sensors-c2.md` has the burn-through formula ready; it's the cleanest next physics layer to add.
+5. **No Red AI intelligence yet.** Waves are pre-scripted, cruise uses fixed S-pattern waypoints, HGV uses pre-programmed jink. Levels 3 / 4 / 5 (waypoint adjust → terminal takeover → full realtime HGV AI) are still the biggest single bang-for-buck visual upgrade.
+6. **No base HP or economy.** Any leak = leak, regardless of weapon. Running out of $48M of PAC-3 doesn't count against Blue the way it would in a real engagement. `GAME_DESIGN.md` has the budget model specced; plumbing it into the win condition is straightforward.
+7. **Per-entity status panel not built.** Clicking on a missile still does nothing. For the 4-minute demo judges' "transparency" score this is the single biggest missing piece.
+
+## Suggested next session priorities
+
+1. **Per-entity status panel.** Raycaster click → show type / speed / G / HP / fuel remaining / target / time-to-intercept. High visual impact for low code cost, and makes the physics work actually visible in the demo.
+2. **Red AI Level 3/4 — cruise terminal walk + stealth detection.** Breaks the "Red just follows a schedule" feel. Populates the Red AI log panel with actual decisions.
+3. **Base HP + economy budget.** Converts the sim from a watch-only demo into a game with win/lose stakes. Leaks now do something. Running out of PAC-3 is a real loss condition.
+4. **PN accuracy upgrade.** RK4 + 0.01 s guidance update. Closes the ballistic-leak gap without cheapening the threat speeds. Biggest physics win for the remaining hackathon time.
+5. **Sensor model.** Plug `sensors-c2.md`'s detection rules into Blue AI so launches depend on radar state, not omniscient world snapshots. Adds tactical depth and sets up SEAD / jamming scenarios later.
+
+## How to run (updated)
+
+```bash
+cd team-missile-intercept/backend
+pip install -r requirements.txt   # only the first time
+python server.py                  # Windows: see NOTES_MODEL_AND_PORT.md if port 5174 is also reserved
+# open http://localhost:5174/
+```
+
+Override port with `PORT=6969 python server.py` (bash) or `set PORT=6969 && python server.py` (Windows cmd).
+
+Offline smoke tests:
+
+```bash
+python test_balance.py          # 20-run balance sweep
+python test_full_scenario.py    # single scenario, prints final stats
+python test_pn.py               # PN guidance unit test (MED-SAM vs. cruise)
+python test_ballistic.py        # ballistic + LONG-SAM offline test
+```
