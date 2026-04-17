@@ -68,14 +68,22 @@ TRAIL_LENGTH = 60        # samples client may keep; server does not cap
 # landing in coastal-pocket sea because the old `y < 105_000` gate was
 # far wider than the southern mainland's actual band (thin 0..~18 km
 # thick strip before the strait). Milestone G re-places them on land.
+#
+# Milestone H Part 5 rebalance: after the out-of-arena site filter (H2)
+# left 3 live targets (Main Base, Spear Point Base, Firewatch Station),
+# forward launchers were moved onto the south_central_peninsula
+# (Spear Point area) and south_small_island / south_forward_island to
+# give area coverage against cruise + drone paths that previously flew
+# past all forward envelopes. Resulting 20-match balance:
+# Blue 6/20, draw 9/20, Red 5/20 (see REPORT Milestone H section).
 BLUE_LAUNCHER_POSITIONS = {
     # kind: [ (x, y), ... ]  — one tuple per launcher instance
     "ciws":       [(75_000,  5_000)],                          # point defence at base
-    "rbs_70":     [(55_000, 14_000), (110_000, 14_000)],       # forward peninsulas, spread wide
-    "iris_t_sls": [(50_000, 10_000), (100_000, 10_000)],       # flanking SHORT_SAM
-    "iris_t_slm": [(60_000,  7_000), ( 85_000,  6_000)],       # mid-field coverage
-    "pac_2":      [(74_700,  8_000)],                          # near base (nudged 300 m west of centre)
-    "pac_3":      [(75_300,  8_000)],                          # near base (nudged 300 m east of centre to split from PAC-2)
+    "rbs_70":     [(80_000, 73_000), ( 38_100, 50_000)],       # forward-center (Spear Point drones) + south_small_island forward-west
+    "iris_t_sls": [(80_000, 70_000), (126_750, 102_093)],      # south_central_peninsula + south_forward_island
+    "iris_t_slm": [(82_000, 72_000), ( 85_000,  6_000)],       # forward-center (Spear Point area) + eastern base-side
+    "pac_2":      [(74_700,  8_000)],                          # near base (300 m west of centre); 70 km reach covers all 3 sites
+    "pac_3":      [(75_300,  8_000)],                          # near base (300 m east of centre); primary HGV / ballistic HIT-TO-KILL
 }
 
 # Validate every launcher sits on visible south-side land per the Saab
