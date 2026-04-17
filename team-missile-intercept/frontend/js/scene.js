@@ -17,6 +17,49 @@ export function createScene(canvas) {
   scene.background = new THREE.Color(0x0a1424);
   scene.fog = new THREE.Fog(0x0a1424, 100, 500);
 
+  // Dusk/dawn gradient skydome. A large inverted sphere with a shader
+  // that lerps from a dark-blue zenith (high world Y) to a warm amber
+  // horizon (Y ≈ 0). Rendered before everything else via renderOrder
+  // = -1 and depthWrite: false so fog and geometry still composite on
+  // top. Placed inside the fog so distant arena edges continue to
+  // fade out; the sky itself is beyond the fog far plane.
+  const skyGeom = new THREE.SphereGeometry(1000, 32, 16);
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      zenithColor: { value: new THREE.Color(0x0a1524) },
+      horizonColor: { value: new THREE.Color(0x2a1a10) },
+      glowColor: { value: new THREE.Color(0xffa64a) },
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vWorldPos;
+      void main() {
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorldPos = wp.xyz;
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 zenithColor;
+      uniform vec3 horizonColor;
+      uniform vec3 glowColor;
+      varying vec3 vWorldPos;
+      void main() {
+        // Normalised height factor: 0 at horizon, 1 at zenith.
+        float h = clamp(vWorldPos.y / 600.0, -0.2, 1.0);
+        float topMix = smoothstep(0.0, 0.6, h);
+        float glow = smoothstep(0.15, -0.05, h);     // brightest at horizon
+        vec3 col = mix(horizonColor, zenithColor, topMix);
+        col += glowColor * glow * 0.35;
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `,
+  });
+  const sky = new THREE.Mesh(skyGeom, skyMat);
+  sky.renderOrder = -1;
+  scene.add(sky);
+
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);

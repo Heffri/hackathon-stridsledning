@@ -789,12 +789,18 @@ export class EntityRegistry {
 
   _spawnExplosion(pos) {
     const [x, y, z] = worldToScene(pos[0], pos[1], pos[2]);
+    // Hot-white core; depthWrite false so it reads as an additive flash
+    // rather than a solid sphere. Slightly larger geometry + brighter
+    // initial opacity approximates a bloom halo without needing an
+    // EffectComposer (which the importmap-only setup can't easily load).
     const mat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+      color: 0xffffee,
       transparent: true,
-      opacity: 0.95,
+      opacity: 1.0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
     });
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), mat);
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.8, 14, 12), mat);
     mesh.position.set(x, y, z);
     this.scene.add(mesh);
     this.explosions.push({
