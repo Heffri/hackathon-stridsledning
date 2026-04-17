@@ -66,15 +66,15 @@ class LauncherMesh {
     this.box.position.set(sx, 0.4, sz);
     scene.add(this.box);
 
-    // Northern semi-circle range arc. Same 96-segment construction as
-    // the old base-centred arcs in scene.js; centred on the launcher
-    // instead of the base.
+    // Full-circle range arc. Launchers now sit forward of the base and
+    // threats can approach from any bearing, so a northern semi-circle
+    // no longer matches reality. 192 segments keeps the full circle
+    // as smooth as the old half-circle at 96.
     const rKm = RANGE_KM[kind] ?? 4;
-    const segments = 96;
+    const segments = 192;
     const pts = [];
     for (let i = 0; i <= segments; i++) {
-      // θ sweeps 0 (east, +X) through π/2 (north, -Z) to π (west, -X).
-      const theta = (i / segments) * Math.PI;
+      const theta = (i / segments) * Math.PI * 2;
       pts.push(
         new THREE.Vector3(
           sx + Math.cos(theta) * rKm,
