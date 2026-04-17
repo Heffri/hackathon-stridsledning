@@ -104,7 +104,7 @@ THREAT_SPECS = {
         kind=ThreatType.HGV,
         cruise_speed=1700.0,
         cruise_alt=35_000.0,
-        max_g=15.0,
+        max_g=10.0,
         drag_k=1.5e-6,
         kill_radius=70.0,
         color="#ff4080",
@@ -191,9 +191,11 @@ INTERCEPTOR_SPECS = {
     # Hit-to-kill (PAC-3 MSE). Pure kinetic kill mechanism — 200 dmg on
     # a direct hit, one-shots ballistic / HGV. Our grid-stepped PN only
     # achieves sub-metre CPA rarely, so the direct radius is widened to
-    # 25 m (within the fleet average miss). Proximity damage is intention-
-    # ally mild (kinetic body, no frag), so a fringe hit (30-60 m miss)
-    # still fails — the "sniper" feel survives.
+    # 40 m — was 25, but the new 15 G HGV slaloms right through a 25 m
+    # gate, CPA sits at 30-80 m and the one-shot almost never triggers.
+    # Proximity damage is intentionally mild (kinetic body, no frag), so
+    # a fringe hit (50-60 m miss) still fails — the "sniper" feel
+    # survives, the demo just stops being a coin flip against HGVs.
     InterceptorType.HIT_TO_KILL: InterceptorSpec(
         kind=InterceptorType.HIT_TO_KILL,
         max_speed=1700.0,
@@ -204,7 +206,7 @@ INTERCEPTOR_SPECS = {
         color="#ff7a7a",
         damage_direct=200,
         damage_prox=25,
-        radius_direct=25.0,
+        radius_direct=40.0,
         radius_prox=60.0,
         usd_cost=4_000_000,
     ),
