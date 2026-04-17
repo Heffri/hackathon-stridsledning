@@ -89,6 +89,45 @@ export function createScene(canvas) {
   base.position.set(bx, 0.6, by);
   scene.add(base);
 
+  // Weapon-range arcs — northern semi-circles around the base coloured
+  // by weapon type. Threats always approach from the north, so only the
+  // north half of the envelope is relevant. Radii = spec max_range
+  // (unscaled by the 1.1 launch margin; this shows the hard kinematic
+  // limit). Colours match each weapon's mesh in entities.js.
+  const rangeArcs = [
+    { name: 'CIWS (Lvkv 90)',        rangeKm:  4, color: 0xd9b36a },
+    { name: 'RBS 70 NG',             rangeKm:  9, color: 0x4a8a3a },
+    { name: 'IRIS-T SLS (RBS 98)',   rangeKm: 12, color: 0xff9944 },
+    { name: 'IRIS-T SLM',            rangeKm: 40, color: 0xff8c1a },
+    { name: 'Patriot PAC-3 MSE',     rangeKm: 60, color: 0xa855f7 },
+    { name: 'Patriot PAC-2 GEM+',    rangeKm: 70, color: 0xff69b4 },
+  ];
+  const arcSegments = 96;
+  for (const weapon of rangeArcs) {
+    const pts = [];
+    for (let i = 0; i <= arcSegments; i++) {
+      // θ sweeps from 0 (east, +X) through π/2 (north, -Z) to π (west, -X).
+      const theta = (i / arcSegments) * Math.PI;
+      pts.push(
+        new THREE.Vector3(
+          Math.cos(theta) * weapon.rangeKm,
+          0.05, // a hair above ground to avoid z-fighting with the plane
+          -Math.sin(theta) * weapon.rangeKm,
+        ),
+      );
+    }
+    const geom = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({
+      color: weapon.color,
+      transparent: true,
+      opacity: 0.55,
+    });
+    const arc = new THREE.Line(geom, mat);
+    // Arcs are centred on the base (which sits at scene origin after the
+    // world-to-scene transform, because BASE_POS is the reference point).
+    scene.add(arc);
+  }
+
   // Compass (simple N marker)
   const nLabel = new THREE.Mesh(
     new THREE.SphereGeometry(0.8, 8, 6),

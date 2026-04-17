@@ -58,13 +58,25 @@ PRIMARY_RULES: Dict[ThreatType, List[InterceptorType]] = {
 
 # Fallback rules — tried only when no primary option can engage right now.
 # Same list-order semantics; no cost ranking.
-# Drones deliberately have NO fallback: spawn at 30 km means they're
-# inside MED-SAM envelope immediately, and listing MED-SAM as fallback
-# made the AI 25-dmg-overkill a 10-HP drone from 30 km while SHORT_SAM
-# and CIWS idled. With no fallback, the AI patiently waits until the
-# drone crosses the 10 km SHORT_SAM gate (drone flight takes ~250 s, so
-# we have plenty of time to hold fire).
+# Fallback fires when the preferred primary weapons are all busy or out
+# of range. Operator principle: "cost-exchange is the FIRST consideration
+# but not the only one — if a threat is at the door and only an
+# expensive weapon is available, fire the expensive weapon." Fallback is
+# how the AI honours that principle without abandoning cost discipline:
+# primary is tried first every tick, fallback only kicks in when primary
+# returns nothing. For DRONE specifically, wave 5's three simultaneous
+# drones used to saturate the 2× RBS 70 launchers and then get ignored
+# by the idle IRIS-T SLS — now SLS / SLM step in as fallback.
 FALLBACK_RULES: Dict[ThreatType, List[InterceptorType]] = {
+    # DRONE fallback is intentionally just SLS. MED-SAM at $1 M firing
+    # on a $30 K drone is 33× exchange — that's the kind of rigidity the
+    # operator explicitly didn't want ("cost matters but don't paralyse
+    # yourself"). SLS at 16× is also bad but the point-defense override
+    # (CIWS bypasses saturation) + the LAST_RESORT_T_IMPACT_S tier cover
+    # the genuinely urgent cases.
+    ThreatType.DRONE: [
+        InterceptorType.IRIS_T_SLS,
+    ],
     ThreatType.HGV: [
         InterceptorType.MED_SAM,
         InterceptorType.IRIS_T_SLS,
@@ -113,6 +125,72 @@ def _time_to_impact(threat_pos: np.ndarray, threat_vel: np.ndarray, base: np.nda
     if closing <= 1.0:
         return float("inf")
     return dist / closing
+
+
+def _time_to_enter_range(
+    threat_pos: np.ndarray,
+    threat_vel: np.ndarray,
+    base: np.ndarray,
+    max_range: float,
+) -> float:
+    """Seconds until the threat crosses inside `max_range × LAUNCH_RANGE_MARGIN`
+    of the base. 0 if already inside, +inf if it never will (not closing)."""
+    gate = max_range * config.LAUNCH_RANGE_MARGIN
+    to_base = base - threat_pos
+    dist = float(np.linalg.norm(to_base))
+    if dist <= gate:
+        return 0.0
+    closing = float(np.dot(threat_vel, to_base / max(dist, 1e-6)))
+    if closing <= 1.0:
+        return float("inf")
+    return (dist - gate) / closing
+
+
+def _launcher_ready_time(
+    launchers: LauncherFleet, kind: InterceptorType, t_now: float
+) -> float:
+    """Min seconds until any launcher of this kind can fire. 0 if one is
+    ready now, +inf if none exist."""
+    best = float("inf")
+    for lch in launchers.launchers:
+        if lch.kind != kind:
+            continue
+        if lch.can_fire(t_now):
+            return 0.0
+        rt = lch.reload_remaining(t_now) if lch.reloading else 0.0
+        cd = max(0.0, lch.inter_shot_cd - (t_now - lch.last_shot_t))
+        wait = max(rt, cd)
+        if wait < best:
+            best = wait
+    return best
+
+
+def _primary_available_in_time(
+    kinds: List[InterceptorType],
+    launchers: LauncherFleet,
+    threat_pos: np.ndarray,
+    threat_vel: np.ndarray,
+    base: np.ndarray,
+    t_impact: float,
+    t_now: float,
+    margin: float = 3.0,
+) -> bool:
+    """True iff at least one of the primary `kinds` will be both in range
+    and have a ready launcher at some point before impact minus `margin`.
+    Used to decide whether to wait (primary will engage in time) or
+    escalate to fallback (primary can't engage, fire an expensive round
+    instead of letting the threat through)."""
+    if t_impact == float("inf"):
+        return True  # not closing, no pressure — keep waiting for primary
+    deadline = t_impact - margin
+    for kind in kinds:
+        spec = INTERCEPTOR_SPECS[kind]
+        t_enter = _time_to_enter_range(threat_pos, threat_vel, base, spec.max_range)
+        t_ready = _launcher_ready_time(launchers, kind, t_now)
+        t_need = max(t_enter, t_ready)
+        if t_need < deadline:
+            return True
+    return False
 
 
 def _expected_damage(
@@ -224,13 +302,24 @@ class BlueAI:
 
             # Primary pass: first in-range + ready weapon in preference
             # order.
+            primary_kinds = PRIMARY_RULES.get(threat_kind, [])
             kind, lch = _try_fire(
-                dist, PRIMARY_RULES.get(threat_kind, []), self.launchers, t_now
+                dist, primary_kinds, self.launchers, t_now
             )
             tag = ""
 
             if kind is None:
-                # No primary option; try fallback.
+                # Primary returned nothing this tick. Before escalating
+                # to fallback (expensive), check whether a primary option
+                # will become available in time. If yes, hold fire and
+                # wait — this is the "cost-exchange first" principle.
+                # Only escalate when primary genuinely can't engage.
+                t_impact = _time_to_impact(threat_pos, threat_vel, base)
+                if _primary_available_in_time(
+                    primary_kinds, self.launchers,
+                    threat_pos, threat_vel, base, t_impact, t_now,
+                ):
+                    continue  # wait for primary
                 fb_kinds = FALLBACK_RULES.get(threat_kind, [])
                 kind, lch = _try_fire(dist, fb_kinds, self.launchers, t_now)
                 if kind is not None:
