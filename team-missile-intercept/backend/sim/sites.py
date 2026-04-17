@@ -25,9 +25,9 @@ Solving for (wx, wy):
 The base at (75_000, 5_000) maps to Saab (833.5, 1064) — the Milestone
 E acceptance anchor. Some southern locations (Southern Redoubt,
 Meridia, Callhaven, Solano) sit at Saab Y > 1080 and therefore land at
-world_y < 0 — south of the nominal arena origin but well inside the
-scene-rendered terrain. Threats that choose them as targets just fly
-a bit further; no physics or rendering code treats y < 0 specially.
+world_y < 0 — south of the nominal arena. Milestone H Part 2 filters
+those out at module load so threats don't chase phantom targets past
+the base. A one-line notice is printed listing the dropped sites.
 """
 from __future__ import annotations
 
@@ -68,16 +68,41 @@ _SAAB_SOUTH_LOCATIONS: List[Tuple[str, str, float, float]] = [
 ]
 
 
+def _in_arena(wx: float, wy: float) -> bool:
+    """True iff world-coord `(wx, wy)` is physically inside the rendered
+    arena (0 ≤ y ≤ ARENA_Y AND 0 ≤ x ≤ ARENA_X). Milestone H Part 2:
+    the Saab CSV south-side named locations include several at
+    `saab_y > 1080` which fall outside the 280..1080 Y-crop window the
+    scene renders; their inverse-affine produces `world_y < 0`. Threats
+    targeting those phantom sites fly past the base southward forever.
+    """
+    return 0.0 <= wy <= config.ARENA_Y and 0.0 <= wx <= config.ARENA_X
+
+
 def _build_south_sites() -> List[Site]:
     sites: List[Site] = []
+    dropped: List[str] = []
     for name, subtype, sx, sy in _SAAB_SOUTH_LOCATIONS:
         wx, wy = _saab_to_world(sx, sy)
+        if not _in_arena(wx, wy):
+            dropped.append(
+                f"{name} (saab=({sx:.1f},{sy:.1f}) world=({wx:.0f},{wy:.0f}))"
+            )
+            continue
         sites.append(Site(name=name, subtype=subtype, pos=(wx, wy)))
     # Legacy base — retained as a site (subtype 'base') so the previous
     # leak geometry still has a named target in the list and weighted-
     # random target selection can still pick it.
     bx, by = config.BLUE_BASE_POS[0], config.BLUE_BASE_POS[1]
     sites.append(Site(name="Main Base", subtype="base", pos=(bx, by)))
+    if dropped:
+        # One-line module-load notice so future placements or CSV
+        # additions are visibly filtered. Not a warning — the filter is
+        # the intended behaviour for the 150×250 km arena crop.
+        print(
+            f"[sites] dropped {len(dropped)} out-of-arena Saab site(s): "
+            + "; ".join(dropped)
+        )
     return sites
 
 
