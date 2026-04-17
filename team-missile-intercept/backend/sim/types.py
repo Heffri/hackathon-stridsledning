@@ -97,13 +97,14 @@ THREAT_SPECS = {
         usd_cost=3_000_000,
     ),
     # Hypersonic glide vehicle (Kinzhal/DF-ZF class). Simplified:
-    # pre-programmed S-curve in the mid-phase, terminal dive on the base.
+    # PN-guided virtual waypoints produce a wide S-curve in the mid-phase,
+    # then PN onto the base for the terminal dive.
     # "cruise_alt" is the initial glide altitude.
     ThreatType.HGV: ThreatSpec(
         kind=ThreatType.HGV,
         cruise_speed=1700.0,
-        cruise_alt=25_000.0,
-        max_g=8.0,
+        cruise_alt=35_000.0,
+        max_g=15.0,
         drag_k=1.5e-6,
         kill_radius=70.0,
         color="#ff4080",
