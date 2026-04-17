@@ -9,7 +9,7 @@ Reload times are the /10-scaled values from WEAPON_SPECS.md so a Blue run
 doesn't stall waiting several real minutes for a PAC-2 refill.
 """
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from .types import InterceptorType
 
@@ -20,6 +20,10 @@ class Launcher:
     magazine_capacity: int
     inter_shot_cd: float       # seconds between consecutive shots
     reload_time: float         # seconds from empty → full
+    # World-space (x, y) in metres. Defaults to origin for back-compat
+    # with callers that pre-date Milestone F; LauncherFleet always sets
+    # this from config.BLUE_LAUNCHER_POSITIONS.
+    pos: Tuple[float, float] = (0.0, 0.0)
     current_ammo: int = 0
     last_shot_t: float = -999.0
     reload_start_t: float = -999.0
@@ -95,10 +99,36 @@ class LauncherFleet:
     launcher of kind K" API for Blue AI to call when it decides to fire.
     """
 
-    def __init__(self, loadout: Dict[InterceptorType, int] = None):
-        if loadout is None:
-            loadout = DEFAULT_LOADOUT
+    def __init__(
+        self,
+        loadout: Dict[InterceptorType, int] = None,
+        positions: Dict[str, List[Tuple[float, float]]] = None,
+    ):
         self.launchers: List[Launcher] = []
+
+        if positions is None and loadout is None:
+            # Default Milestone F path: fleet composition + positions
+            # come from config. Tests that want explicit counts pass
+            # `loadout=` and skip the positions dict.
+            from . import config
+            positions = config.BLUE_LAUNCHER_POSITIONS
+
+        if positions is not None:
+            for kind_str, pos_list in positions.items():
+                kind = InterceptorType(kind_str)
+                tmpl = LAUNCHER_TEMPLATES.get(kind)
+                if tmpl is None:
+                    continue
+                for (x, y) in pos_list:
+                    self.launchers.append(
+                        Launcher(kind=kind, pos=(float(x), float(y)), **tmpl)
+                    )
+            return
+
+        # Legacy count-based loadout path (unit tests that don't care
+        # about positions). Every launcher gets (0, 0) — they're fine
+        # for the engagement-decision tests because the AI still checks
+        # distance vs base.
         for kind, n in loadout.items():
             tmpl = LAUNCHER_TEMPLATES.get(kind)
             if tmpl is None:
@@ -116,11 +146,16 @@ class LauncherFleet:
                 return lch
         return None
 
-    def fleet_status(self, t_now: float) -> Dict[str, dict]:
-        """Snapshot-friendly per-kind aggregate: total current ammo,
-        total capacity, whether ALL launchers of that kind are reloading,
-        and the max remaining reload time across them."""
+    def fleet_status(self, t_now: float) -> Dict[str, object]:
+        """Snapshot-friendly status. Returns:
+          * 'by_kind' — aggregated per-type view (kept for the HUD ammo
+             panel's existing shape).
+          * 'launchers' — one record per launcher instance including
+             world-space position, for the frontend to place a box +
+             per-launcher range arc.
+        """
         agg: Dict[str, dict] = {}
+        per_launcher: List[dict] = []
         for lch in self.launchers:
             key = lch.kind.value
             slot = agg.setdefault(
@@ -141,13 +176,21 @@ class LauncherFleet:
                 slot["reload_remaining"] = max(
                     slot["reload_remaining"], lch.reload_remaining(t_now)
                 )
+            per_launcher.append({
+                "kind": lch.kind.value,
+                "pos": [float(lch.pos[0]), float(lch.pos[1])],
+                "current": lch.current_ammo,
+                "capacity": lch.magazine_capacity,
+                "reloading": lch.reloading,
+                "reload_remaining": lch.reload_remaining(t_now),
+            })
 
-        out: Dict[str, dict] = {}
+        by_kind: Dict[str, dict] = {}
         for k, slot in agg.items():
-            out[k] = {
+            by_kind[k] = {
                 "current": slot["current"],
                 "capacity": slot["capacity"],
                 "reloading": slot["reloading_count"] == slot["count"],
                 "reload_remaining": slot["reload_remaining"],
             }
-        return out
+        return {"by_kind": by_kind, "launchers": per_launcher}

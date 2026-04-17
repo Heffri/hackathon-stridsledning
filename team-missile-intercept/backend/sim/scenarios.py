@@ -37,7 +37,13 @@ class Scenario:
         snap["total_waves"] = len(self.red.waves)
         snap["red_log"] = self.red.log[-6:]
         snap["blue_log"] = self.blue.log[-6:]
-        snap["ammo"] = self.blue.launchers.fleet_status(self.world.t)
+        # fleet_status is now a two-field dict: {'by_kind': ..., 'launchers': ...}.
+        # The HUD ammo panel consumes `snap['ammo']` as by_kind; the per-
+        # launcher list is hoisted to `snap['launchers']` so the scene
+        # code can render a box + arc per instance.
+        fleet = self.blue.launchers.fleet_status(self.world.t)
+        snap["ammo"] = fleet["by_kind"]
+        snap["launchers"] = fleet["launchers"]
         return snap
 
 

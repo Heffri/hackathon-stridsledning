@@ -356,10 +356,21 @@ class BlueAI:
         dist: float,
         tag: str,
     ) -> None:
-        initial_dir = threat.state.pos - base
+        # Milestone F: interceptors launch from the firing launcher's own
+        # position, not the base. `base` stays in the signature because
+        # the log line still reports threat-to-base range (that's the
+        # "distance from the thing we're defending" quantity the operator
+        # cares about). TODO: the engagement-decision math in _try_fire /
+        # _time_to_enter_range still ranks weapons by threat-to-base
+        # distance, even though each weapon actually fires from up to
+        # 25 km forward. Refactoring that properly touches every
+        # fallback / wait-for-primary path; deferred past Milestone F.
+        launch_pos = (lch.pos[0], lch.pos[1], 0.0)
+        launch_np = np.array(launch_pos, dtype=np.float64)
+        initial_dir = threat.state.pos - launch_np
         initial_dir[2] = max(initial_dir[2], 1000.0)
         iid = world.spawn_interceptor(
-            kind, tuple(base), tuple(initial_dir), tid
+            kind, launch_pos, tuple(initial_dir), tid
         )
         lch.fire(t_now)
         self.assignments.setdefault(tid, []).append(iid)
