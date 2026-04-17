@@ -1059,17 +1059,43 @@ per-threat pick through `world.spawn_threat` was a one-line change.
 
 ## Balance
 
-Post-Part 4 sample probe (single 1200 s headless run, multi-site
-targeting enabled): 26 spawned / 9 intercepts / **10 leaks** — a
-dramatic swing BACK toward Red from the Part 3 Blue-20/20 regime.
-Leaks are now distributed across sites (Spear Point Base 6, Callhaven
-3, Meridia 1, Main Base 0) rather than pooled at the base.
+20-match sweep at 1200 s (`python test_balance.py`):
 
-20-match sweep at 1200 s is captured by `python test_balance.py`
-and will be appended to this section's commit body once complete
-(the run takes ~5-7 min per sweep and the stdout is buffered by the
-`tail` pipe so intermediate progress doesn't show in the background
-task log).
+```
+Post-G Part 4 (multi-site + weighted-random target):
+  Blue win 0/20, draw 0/20, Red win 20/20
+  avg spawned=26.0  avg intercepts=8.2  avg leaks=7.0  leak range=3..11
+  leaks by kind: {'ballistic': 13, 'drone': 66, 'cruise_sub': 52, 'hgv': 10}
+```
+
+Compared to Part 3 (Blue 20/20, leaks 0): multi-site targeting swings
+Red hard the other way. Three structural reasons:
+
+1. **No per-site HP gate** — `self.leaked` is the sum of all site
+   leaks. A run with 3 sites × 2 leaks each trips the Red-win
+   threshold (≥3) even though no single site would be "destroyed".
+2. **Four sites sit outside the nominal arena** (Southern Redoubt /
+   Meridia / Callhaven / Solano at world_y < 0). Cruise targeting
+   them traverses up to ~240 km and avoids the forward launcher
+   envelopes almost entirely — cruise leaks exploded from near zero
+   in Part 3 to 52 of 100 spawn-count.
+3. **Drone flight path no longer ends at the base** — a drone aimed
+   at a peripheral city passes the PAC-3/PAC-2 range arcs tangentially
+   rather than head-on, and the base-centred engagement math in
+   `blue_ai` (Milestone F-documented limitation) doesn't catch it.
+   Drones jumped from negligible leaks to 66.
+
+Spec's ±3 Blue-win tolerance is exceeded by a lot in BOTH the
+Part 3 (+18 Blue) and Part 4 (-20 Blue) regimes. This is the
+Milestone G structural pattern: geometry changed underneath the
+engagement AI, which still runs on Milestone F assumptions. A
+rebalance pass (ROADMAP: "Rebalance for G geometry" + "Per-launcher
+engagement math") is the real fix. **Not attempted this session** —
+rules forbade spec tuning.
+
+Pre-G leak character was ballistic-dominant (~52/run → ~2.6 avg);
+Post-G leak character is drone/cruise-dominant, which matches the
+intuition that slow threats benefit most from long transits.
 
 ## Known approximations / deferred
 

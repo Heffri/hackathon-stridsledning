@@ -116,15 +116,20 @@ Post-G Part 3 (strait-origin only, before multi-site):
   avg spawned=26.0  avg intercepts=21.6  avg leaks=0.0
 
 Post-G Part 4 (multi-site + Red weighted target):
-  see REPORT.md Milestone G section for the committed sweep numbers.
+  Blue win 0/20, draws 0/20, Red win 20/20
+  avg spawned=26.0  avg intercepts=8.2  avg leaks=7.0
+  leaks by kind: drone 66, cruise_sub 52, ballistic 13, hgv 10
 ```
 
-**Big balance regression from pre-F** — Blue win rate is pinned high
-because threats are 3-30× further from their target than pre-G, giving
-Blue's saturation AI many more engagement opportunities per threat.
-Multi-site distributes leak opportunity across 7 sites but the
-transit-time dominance remains. Flagged as a ROADMAP item;
-deliberately not rebalanced by spec tuning (per Milestone G rules).
+**Sim ping-pongs hard** — Blue won 20/20 after Part 3 (threats too
+far, AI has too much engagement time), Red wins 20/20 after Part 4
+(multi-site spreads threats across 7 points, many of which sit
+outside the forward launcher envelopes; cruise/drone leaks explode
+from near-zero to ~5/run each). Neither regime matches the ±3 Blue-
+wins tolerance from the spec. Root cause: engagement AI still runs
+on Milestone F base-centered assumptions. Flagged as ROADMAP items
+"Rebalance for G geometry" + "Per-launcher engagement math"; not
+rebalanced this session per the milestone rules.
 
 ## Milestone F Balance (test_balance.py, 20 matches, post-Milestone F)
 
