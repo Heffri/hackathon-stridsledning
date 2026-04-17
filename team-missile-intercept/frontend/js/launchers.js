@@ -151,3 +151,67 @@ export class LauncherRegistry {
     }
   }
 }
+
+// --- Red offensive launcher boxes (Milestone H Part 3) ---
+//
+// Same geometry as Blue boxes but a red emissive material and no range
+// ring. Visible anchors for where drones / cruise missiles spawn from.
+// Infinite ammo, so no opacity rule — always fully lit.
+const RED_LAUNCHER_COLOR = 0xaa2030;
+const RED_LAUNCHER_EMISSIVE = 0x441015;
+
+class RedLauncherMesh {
+  constructor(scene, sx, sz) {
+    this.material = new THREE.MeshStandardMaterial({
+      color: RED_LAUNCHER_COLOR,
+      emissive: RED_LAUNCHER_EMISSIVE,
+      emissiveIntensity: 0.4,
+      roughness: 0.55,
+      metalness: 0.2,
+    });
+    this.box = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5, 0.8, 1.0),
+      this.material,
+    );
+    this.box.position.set(sx, 0.4, sz);
+    scene.add(this.box);
+  }
+
+  dispose(scene) {
+    scene.remove(this.box);
+    this.box.geometry.dispose();
+    this.material.dispose();
+  }
+}
+
+export class RedLauncherRegistry {
+  constructor(scene) {
+    this.scene = scene;
+    // id (`${kind}_${index}`) → RedLauncherMesh. Backend emits Red
+    // launchers in the same deterministic order every tick.
+    this.byId = new Map();
+  }
+
+  updateFromSnapshot(snap) {
+    const list = snap.red_launchers || [];
+    const perKindCount = {};
+    const seen = new Set();
+    for (const lch of list) {
+      const idx = perKindCount[lch.kind] ?? 0;
+      perKindCount[lch.kind] = idx + 1;
+      const id = `${lch.kind}_${idx}`;
+      seen.add(id);
+
+      if (!this.byId.has(id)) {
+        const [sx, sz] = worldToSceneXY(lch.pos[0], lch.pos[1]);
+        this.byId.set(id, new RedLauncherMesh(this.scene, sx, sz));
+      }
+    }
+    for (const [id, mesh] of this.byId) {
+      if (!seen.has(id)) {
+        mesh.dispose(this.scene);
+        this.byId.delete(id);
+      }
+    }
+  }
+}

@@ -49,6 +49,11 @@ class Scenario:
         fleet = self.blue.launchers.fleet_status(self.world.t)
         snap["ammo"] = fleet["by_kind"]
         snap["launchers"] = fleet["launchers"]
+        # Visible Red offensive launchers (Milestone H Part 3). One
+        # record per drone / cruise box on the north side; ballistic +
+        # HGV don't have visible launchers. Infinite-magazine, so no
+        # ammo / reload fields.
+        snap["red_launchers"] = self.red.launchers.fleet_status()
         # Per-site state for the HUD's SITE DAMAGE panel + site markers.
         # Position is a list-of-2 for trivial JSON round-trip.
         snap["sites"] = [

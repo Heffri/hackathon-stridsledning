@@ -43,10 +43,11 @@ _CSV_PATH = os.path.join(
 )
 
 
-def _parse_polygons() -> List[Tuple[str, List[Tuple[float, float]]]]:
+def _parse_polygons(side: str) -> List[Tuple[str, List[Tuple[float, float]]]]:
     """Parse the Saab CSV, return [(subtype, [(x, y), ...]), ...] for
-    every south-side terrain polygon. `ast.literal_eval` handles the
-    `[[x, y], [x, y], ...]` coordinate-list encoding safely.
+    every terrain polygon on the given `side` ('south' or 'north').
+    `ast.literal_eval` handles the `[[x, y], [x, y], ...]` coordinate-
+    list encoding safely.
     """
     polys: List[Tuple[str, List[Tuple[float, float]]]] = []
     with open(_CSV_PATH, "r", encoding="utf-8") as f:
@@ -54,7 +55,7 @@ def _parse_polygons() -> List[Tuple[str, List[Tuple[float, float]]]]:
         for row in reader:
             if row["record_type"] != "terrain":
                 continue
-            if row["side"] != "south":
+            if row["side"] != side:
                 continue
             raw = row["coordinates_km"].strip()
             if not raw:
@@ -64,7 +65,8 @@ def _parse_polygons() -> List[Tuple[str, List[Tuple[float, float]]]]:
     return polys
 
 
-_SOUTH_POLYGONS: List[Tuple[str, List[Tuple[float, float]]]] = _parse_polygons()
+_SOUTH_POLYGONS: List[Tuple[str, List[Tuple[float, float]]]] = _parse_polygons("south")
+_NORTH_POLYGONS: List[Tuple[str, List[Tuple[float, float]]]] = _parse_polygons("north")
 
 
 def _world_to_saab(wx: float, wy: float) -> Tuple[float, float]:
@@ -100,6 +102,19 @@ def point_on_south_land(wx: float, wy: float) -> bool:
     """
     sx, sy = _world_to_saab(wx, wy)
     for _subtype, poly in _SOUTH_POLYGONS:
+        if _point_in_polygon(sx, sy, poly):
+            return True
+    return False
+
+
+def point_on_north_land(wx: float, wy: float) -> bool:
+    """True if world-coord (wx, wy) falls inside any north-side land
+    polygon from the Saab CSV. Milestone H Part 3: used to validate
+    `RED_LAUNCHER_POSITIONS` so visible Red drone / cruise launcher
+    boxes sit on north mainland / islands, not in the strait.
+    """
+    sx, sy = _world_to_saab(wx, wy)
+    for _subtype, poly in _NORTH_POLYGONS:
         if _point_in_polygon(sx, sy, poly):
             return True
     return False

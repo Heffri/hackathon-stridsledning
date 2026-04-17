@@ -12,6 +12,7 @@ from typing import List
 import numpy as np
 
 from . import config, sites
+from .launcher import RedLauncherFleet
 from .types import ThreatType, WaveSpec
 
 
@@ -195,15 +196,23 @@ class RedAI:
         self.log: List[str] = []
         # Fresh entropy per RedAI instance — every Reset / restart reshuffles.
         self.rng = np.random.default_rng()
+        # Visible Red launcher boxes (Milestone H Part 3). Drones and
+        # cruise missiles spawn FROM a launcher position instead of a
+        # randomised strait-offset point. Ballistic + HGV keep the
+        # abstract border-line spawn (strategic assets, no visible
+        # launcher for the demo).
+        self.launchers = RedLauncherFleet()
 
     def step(self, t_now: float, world) -> None:
         """Spawn any waves whose time has come.
 
         Each WaveSpec.threats is a list of ThreatType (no coords). For
-        every threat we sample a fresh (x, y, z) north of the strait,
-        pick a weighted-random target site (Milestone G), and for
-        cruise_sub additionally generate intermediate waypoints toward
-        *that* site (not the base).
+        drone / cruise we pick a Red launcher position (round-robin
+        across the configured islands / mainland). For ballistic / HGV
+        we keep the abstract strait-origin sample since those are
+        strategic-range assets with no visible launcher. Cruise_sub
+        additionally generates intermediate waypoints toward its chosen
+        target site.
         """
         base_x = config.BLUE_BASE_POS[0]
         base_y = config.BLUE_BASE_POS[1]
@@ -214,7 +223,7 @@ class RedAI:
         ):
             w = self.waves[self._next_wave]
             for kind in w.threats:
-                spawn = _sample_spawn(kind, self.rng, base_x, base_y)
+                spawn = self._spawn_point(kind, base_x, base_y)
                 target_xy = _pick_target(self.rng)
                 if kind == ThreatType.CRUISE_SUB:
                     wps = _build_cruise_waypoints(spawn, target_xy, self.rng)
@@ -227,6 +236,25 @@ class RedAI:
                 f"[{t_now:6.1f}s] {w.label} launched ({len(w.threats)} threats)"
             )
             self._next_wave += 1
+
+    def _spawn_point(
+        self, kind: ThreatType, base_x: float, base_y: float
+    ) -> tuple:
+        """Pick the (x, y, z) spawn point for a new threat. Drones /
+        cruise use the next Red launcher position for their kind (so
+        the user sees threats emerge from visible red boxes). Ballistic
+        / HGV fall back to the strait-offset random sample.
+        """
+        if kind in (ThreatType.DRONE, ThreatType.CRUISE_SUB):
+            pos = self.launchers.next_pos(kind)
+            if pos is not None:
+                x, y = pos
+                if kind == ThreatType.DRONE:
+                    z = float(self.rng.uniform(*DRONE_ALT_RANGE))
+                else:
+                    z = float(self.rng.uniform(*CRUISE_ALT_RANGE))
+                return (x, y, z)
+        return _sample_spawn(kind, self.rng, base_x, base_y)
 
     @property
     def done(self) -> bool:

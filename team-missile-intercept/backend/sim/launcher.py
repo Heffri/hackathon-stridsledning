@@ -7,11 +7,17 @@ which it refills to full capacity. Between shots there's also a shorter
 
 Reload times are the /10-scaled values from WEAPON_SPECS.md so a Blue run
 doesn't stall waiting several real minutes for a PAC-2 refill.
+
+Milestone H Part 3 adds a `RedLauncherFleet` for the offensive side —
+visible drone / cruise launcher boxes on the north islands + mainland.
+Red launchers are visual-only (infinite ammo, no CD), so the Red AI
+still spawns exactly as many threats per wave as `build_demo_waves`
+dictates.
 """
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
-from .types import InterceptorType
+from .types import InterceptorType, ThreatType
 
 
 @dataclass
@@ -194,3 +200,68 @@ class LauncherFleet:
                 "reload_remaining": slot["reload_remaining"],
             }
         return {"by_kind": by_kind, "launchers": per_launcher}
+
+
+@dataclass
+class RedLauncher:
+    """Visible Red offensive launcher. Modelled as infinite ammo / no
+    reload — Red AI already rate-limits spawns via its wave script, so
+    the launcher is a visual + geometric anchor only. `kind` is a
+    `ThreatType` (DRONE / CRUISE_SUB) since Red fires *threats*, not
+    interceptors."""
+
+    kind: ThreatType
+    pos: Tuple[float, float] = (0.0, 0.0)
+
+
+class RedLauncherFleet:
+    """Holds every visible Red launcher on the north side. Read via
+    `positions_for(kind)` from Red AI to spawn a threat from a rotating
+    launcher position; iterated in scenarios.snapshot() to publish
+    `snap['red_launchers']` for the frontend."""
+
+    def __init__(self, positions: Dict[str, List[Tuple[float, float]]] = None):
+        self.launchers: List[RedLauncher] = []
+        # Running index per kind for round-robin spawning so the three
+        # drone launcher islands all get visible firing activity rather
+        # than only the first.
+        self._next_idx: Dict[str, int] = {}
+
+        if positions is None:
+            from . import config
+            positions = config.RED_LAUNCHER_POSITIONS
+
+        for kind_str, pos_list in positions.items():
+            kind = ThreatType(kind_str)
+            for (x, y) in pos_list:
+                self.launchers.append(
+                    RedLauncher(kind=kind, pos=(float(x), float(y)))
+                )
+
+    def positions_for(self, kind: ThreatType) -> List[Tuple[float, float]]:
+        return [lch.pos for lch in self.launchers if lch.kind == kind]
+
+    def next_pos(self, kind: ThreatType) -> Tuple[float, float] | None:
+        """Round-robin pick the next launcher position for this kind.
+        Returns None if no launcher is registered for that kind
+        (caller should fall back to the old abstract-spawn path)."""
+        positions = self.positions_for(kind)
+        if not positions:
+            return None
+        idx = self._next_idx.get(kind.value, 0)
+        pos = positions[idx % len(positions)]
+        self._next_idx[kind.value] = idx + 1
+        return pos
+
+    def fleet_status(self) -> List[dict]:
+        """Snapshot-friendly view: one record per Red launcher, JSON-
+        ready, tagged with team='red' so the frontend can mount a red-
+        tinted box."""
+        return [
+            {
+                "kind": lch.kind.value,
+                "pos": [float(lch.pos[0]), float(lch.pos[1])],
+                "team": "red",
+            }
+            for lch in self.launchers
+        ]

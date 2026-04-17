@@ -94,6 +94,45 @@ for _kind, _positions in BLUE_LAUNCHER_POSITIONS.items():
         )
 del _kind, _positions, _x, _y
 
+# --- Red launcher layout (Milestone H Part 3) ---
+# Visible Red offensive launcher positions on the north side of the
+# strait. Same dict schema as `BLUE_LAUNCHER_POSITIONS`: key is a
+# ThreatType value string ('drone' / 'cruise_sub'), value is a list of
+# (world_x, world_y) tuples in metres. Ballistic + HGV keep their
+# abstract strait-origin spawns (strategic-range assets, no visible
+# launcher for the demo).
+#
+# Drone launchers sit on 3 north-side islands (North Strait Island
+# West, North Strait Island East, North Remote Island). Cruise
+# launchers sit on the north mainland and North Strait Island East
+# (shared with a drone launcher; a single island can host both).
+#
+# All positions must pass `terrain.point_on_north_land()` — validated
+# at module load below. A future placement UI can re-run this check.
+RED_LAUNCHER_POSITIONS = {
+    # kind (ThreatType value string): [ (x, y), ... ]
+    "drone": [
+        ( 59_091, 183_344),   # North Strait Island West
+        (104_082, 216_156),   # North Strait Island East
+        ( 27_291, 141_656),   # North Remote Island
+    ],
+    "cruise_sub": [
+        ( 53_989, 243_750),   # North mainland (saab ~600, 300)
+        (105_279, 212_500),   # North Strait Island East (2nd position)
+    ],
+}
+
+# Validate every red launcher sits on north-side land. Same safety net
+# as the BLUE validation above; uses the shared `terrain` module.
+for _kind, _positions in RED_LAUNCHER_POSITIONS.items():
+    for _x, _y in _positions:
+        assert terrain.point_on_north_land(_x, _y), (
+            f"RED_LAUNCHER_POSITIONS[{_kind!r}]: ({_x}, {_y}) is not on "
+            f"north-side land in the Saab Boreal Passage map. Move it "
+            f"inland until it lands on a visible mainland or island."
+        )
+del _kind, _positions, _x, _y
+
 # --- Strait / threat-origin geometry (Milestone G) ---
 # Threats spawn *north of the strait centerline*, not relative to the
 # base. Derivation: the southern mainland's north coast sits around
