@@ -15,11 +15,20 @@ from . import config
 from .types import ThreatType, WaveSpec
 
 
-# --- Border-line geometry (relative to BLUE_BASE_POS) ---
-BORDER_DY = 60_000.0            # 60 km north of base (cruise)
-BORDER_DY_DRONE = 30_000.0      # 30 km — closer so SHORT_SAM / CIWS engage
-BORDER_DY_BALLISTIC = 120_000.0 # 120 km — long-range ballistic launch
-BORDER_DY_HGV = 180_000.0       # 180 km — deep-strike hypersonic tier
+# --- Border-line geometry (Milestone G: relative to STRAIT_CENTER_Y) ---
+# Pre-G these were offsets from the base (5 km south), which put drones
+# at y = 35_000 — visibly INSIDE Blue's own southern mainland — and
+# made every spawn look narratively absurd. Milestone G anchors spawn
+# Y to the strait centerline instead, so every threat starts physically
+# north of the water. Offsets below are "distance NORTH of strait
+# centre" (positive = deeper into Red territory).
+STRAIT_OFFSET_DRONE     = 10_000   # just over the strait, close-in attack
+STRAIT_OFFSET_CRUISE    = 25_000   # further back — cruise is faster
+STRAIT_OFFSET_BALLISTIC = 50_000   # deep Red territory
+STRAIT_OFFSET_HGV       = 70_000   # deepest — 70 km buffer back from HGV line
+# Resulting spawn Y values with STRAIT_CENTER_Y = 120_000:
+#   drone 130 km, cruise 145 km, ballistic 170 km, HGV 190 km
+# All still inside the 250 km arena (HGV keeps ~60 km buffer).
 BORDER_HALF_WIDTH = 30_000.0    # X spans ±30 km around base axis
 
 # --- Per-kind spawn altitude envelopes (m AGL) ---
@@ -78,22 +87,28 @@ def build_demo_waves() -> List[WaveSpec]:
 
 
 def _sample_spawn(kind: ThreatType, rng: np.random.Generator, base_x: float, base_y: float):
-    """Pick (x, y, z) on the north border for one threat.
+    """Pick (x, y, z) north of the strait centerline for one threat.
 
-    All threats share the same Y (border line) and X is sampled across the
-    full ±30 km width. Z range is per-kind so drones cluster low, cruise
-    hugs the deck, and ballistic re-enters from the upper atmosphere.
+    All threats' Y is anchored to `config.STRAIT_CENTER_Y` plus a per-
+    kind offset (positive = deeper into Red territory). X is sampled
+    ±30 km around the base X axis. Z is per-kind so drones cluster low
+    over the northern land / strait, cruise hugs the deck, and
+    ballistic / HGV re-enter from the upper atmosphere.
+
+    `base_y` is retained in the signature for API compatibility but is
+    no longer used for the Y anchor (kept to avoid cascading scenario
+    changes).
     """
     x = base_x + float(rng.uniform(-BORDER_HALF_WIDTH, BORDER_HALF_WIDTH))
-    # Per-kind border distance (see constants at top of file).
+    # Per-kind distance NORTH of the strait centerline (see constants).
     if kind == ThreatType.HGV:
-        y = base_y + BORDER_DY_HGV          # 180 km
+        y = config.STRAIT_CENTER_Y + STRAIT_OFFSET_HGV       # 190 km
     elif kind == ThreatType.BALLISTIC:
-        y = base_y + BORDER_DY_BALLISTIC    # 120 km
+        y = config.STRAIT_CENTER_Y + STRAIT_OFFSET_BALLISTIC # 170 km
     elif kind == ThreatType.DRONE:
-        y = base_y + BORDER_DY_DRONE        # 30 km
+        y = config.STRAIT_CENTER_Y + STRAIT_OFFSET_DRONE     # 130 km
     else:
-        y = base_y + BORDER_DY              # 60 km (cruise)
+        y = config.STRAIT_CENTER_Y + STRAIT_OFFSET_CRUISE    # 145 km (cruise)
     if kind == ThreatType.DRONE:
         z = float(rng.uniform(*DRONE_ALT_RANGE))
     elif kind == ThreatType.CRUISE_SUB:

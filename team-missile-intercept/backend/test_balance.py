@@ -13,8 +13,11 @@ from sim.scenarios import build_default_scenario
 def run_once() -> str:
     scn = build_default_scenario()
     dt = 0.05
-    # 400 s covers all 5 waves + trailing drones from wave 5.
-    total_ticks = int(400.0 / dt)
+    # 1200 s covers all 5 waves PLUS the long drone flight now that
+    # drones spawn 125 km north of the base (Milestone G strait-origin
+    # rework). At 120 m/s a drone takes ~1040 s to reach the base, so
+    # the old 400 s window left most drones still in flight at sim end.
+    total_ticks = int(1200.0 / dt)
     for _ in range(total_ticks):
         scn.step(dt)
 
@@ -33,7 +36,8 @@ def run_once() -> str:
 def run_once_verbose(trace_leaks=None) -> tuple[str, int, int, int]:
     scn = build_default_scenario()
     dt = 0.05
-    total_ticks = int(400.0 / dt)
+    # See run_once — 1200 s required for drone transit after Milestone G.
+    total_ticks = int(1200.0 / dt)
     for _ in range(total_ticks):
         scn.step(dt)
         if trace_leaks is not None:
