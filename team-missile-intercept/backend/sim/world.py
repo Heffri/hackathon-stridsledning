@@ -32,6 +32,11 @@ class World:
         self.misses: int = 0  # threats that reached base / ground
         self.leaked: int = 0  # threats that hit the base
 
+        # Milestone I: Blue spends USD per interceptor launch. Budget
+        # exhaustion = Red wins. BlueAI._fire deducts spec.usd_cost.
+        self.blue_budget: int = config.BLUE_BUDGET_START
+        self.blue_budget_max: int = config.BLUE_BUDGET_START
+
         self.events: List[dict] = []  # transient event log for this tick
 
     def _new_id(self) -> int:
@@ -207,6 +212,9 @@ class World:
                     threat.state.alive = False
                     site.leaks += 1
                     self.leaked += 1
+                    # Milestone I: per-kind HP damage on every leak.
+                    dmg = config.SITE_LEAK_DAMAGE.get(threat.state.kind, 10)
+                    site.hp = max(0, site.hp - dmg)
                     self.explosions.append(Explosion(pos=threat.state.pos.copy(), t=self.t))
                     self.events.append(
                         {
@@ -214,6 +222,8 @@ class World:
                             "threat": tid,
                             "kind": threat.state.kind,
                             "site": site.name,
+                            "damage": dmg,
+                            "site_hp": site.hp,
                         }
                     )
                     break
@@ -240,12 +250,16 @@ class World:
                 if hit_site is not None:
                     hit_site.leaks += 1
                     self.leaked += 1
+                    dmg = config.SITE_LEAK_DAMAGE.get(threat.state.kind, 10)
+                    hit_site.hp = max(0, hit_site.hp - dmg)
                     self.events.append(
                         {
                             "type": "leak",
                             "threat": tid,
                             "kind": threat.state.kind,
                             "site": hit_site.name,
+                            "damage": dmg,
+                            "site_hp": hit_site.hp,
                         }
                     )
                 else:
@@ -303,5 +317,7 @@ class World:
                 "active_interceptors": sum(
                     1 for i in self.interceptors.values() if i.state.alive
                 ),
+                "blue_budget": self.blue_budget,
+                "blue_budget_max": self.blue_budget_max,
             },
         }

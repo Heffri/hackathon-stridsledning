@@ -54,7 +54,11 @@ class SimRunner:
                 n = max(1, int(sim_steps_per_stream * self.speed))
                 for _ in range(n):
                     self.scenario.step(dt)
-                    if self.scenario.world.t > config.MAX_SIM_TIME:
+                    # Milestone I: halt as soon as a winner is declared
+                    # (site HP <= 0, budget <= 0, Red out of threats, or
+                    # MAX_SIM_TIME cap). Frontend reads snap.winner to
+                    # render the overlay.
+                    if self.scenario.done:
                         self.running = False
                         break
             snap = self.scenario.snapshot()

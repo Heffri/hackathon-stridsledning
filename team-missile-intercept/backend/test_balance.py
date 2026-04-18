@@ -2,43 +2,32 @@
 print the Blue/Red/Draw tally. Used to tune wave timing and ammo loadouts
 so Blue doesn't cruise at 100 % win rate.
 
-Win conditions (per run):
-  * Blue win : 0-1 leaked (clean or minor damage absorbed)
-  * Red win  : ≥ 3 leaked (base overwhelmed)
-  * Draw     : 2 leaked (scraping through)
+Milestone I: Win conditions now come straight from `Scenario.winner`
+(site HP depletion, Blue budget exhaustion, Red out of threats, or the
+3600 s safety cap). The old leak-count heuristic is gone. Each match
+runs until `scenario.done` fires, so wall-clock time per match varies —
+most end in 150-400 s of sim time.
 """
+from sim import config
 from sim.scenarios import build_default_scenario
 
 
 def run_once() -> str:
     scn = build_default_scenario()
     dt = 0.05
-    # 1200 s covers all 5 waves PLUS the long drone flight now that
-    # drones spawn 125 km north of the base (Milestone G strait-origin
-    # rework). At 120 m/s a drone takes ~1040 s to reach the base, so
-    # the old 400 s window left most drones still in flight at sim end.
-    total_ticks = int(1200.0 / dt)
-    for _ in range(total_ticks):
+    max_ticks = int(config.MAX_SIM_TIME / dt) + 10
+    for _ in range(max_ticks):
         scn.step(dt)
-
-    snap = scn.snapshot()
-    leaked = snap["stats"]["leaked"]
-    spawned = snap["stats"]["spawned"]
-    intercepts = snap["stats"]["intercepts"]
-
-    if leaked <= 1:
-        return "blue"
-    if leaked >= 3:
-        return "red"
-    return "draw"
+        if scn.done:
+            break
+    return scn.winner or "draw"
 
 
 def run_once_verbose(trace_leaks=None) -> tuple[str, int, int, int]:
     scn = build_default_scenario()
     dt = 0.05
-    # See run_once — 1200 s required for drone transit after Milestone G.
-    total_ticks = int(1200.0 / dt)
-    for _ in range(total_ticks):
+    max_ticks = int(config.MAX_SIM_TIME / dt) + 10
+    for _ in range(max_ticks):
         scn.step(dt)
         if trace_leaks is not None:
             for ev in scn.world.events:
@@ -46,19 +35,14 @@ def run_once_verbose(trace_leaks=None) -> tuple[str, int, int, int]:
                     trace_leaks.append(
                         (round(scn.world.t, 1), ev.get("kind", "?"))
                     )
+        if scn.done:
+            break
 
     snap = scn.snapshot()
     leaked = snap["stats"]["leaked"]
     spawned = snap["stats"]["spawned"]
     intercepts = snap["stats"]["intercepts"]
-
-    if leaked <= 1:
-        result = "blue"
-    elif leaked >= 3:
-        result = "red"
-    else:
-        result = "draw"
-    return result, spawned, intercepts, leaked
+    return (scn.winner or "draw"), spawned, intercepts, leaked
 
 
 def main(n: int = 20) -> None:

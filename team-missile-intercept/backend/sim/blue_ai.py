@@ -433,6 +433,14 @@ class BlueAI:
             kind, launch_pos, tuple(initial_dir), tid
         )
         lch.fire(t_now)
+        # Milestone I: Blue pays spec.usd_cost per launch. Budget floor
+        # at 0; Scenario.winner treats budget <= 0 as a Red win. We
+        # deduct regardless of whether the launch was rational (the
+        # engagement-decision layer already gates via PRIMARY / FALLBACK
+        # / LAST_RESORT; this just wires the cost).
+        world.blue_budget = max(
+            0, world.blue_budget - INTERCEPTOR_SPECS[kind].usd_cost
+        )
         self.assignments.setdefault(tid, []).append(iid)
         threat_spec = THREAT_SPECS[ThreatType(threat.state.kind)]
         dmg = INTERCEPTOR_SPECS[kind].damage_prox

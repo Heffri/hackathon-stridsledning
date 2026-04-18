@@ -289,6 +289,128 @@ html, body {
   padding-left: 4px;
 }
 
+/* --- Per-site HP bars (Milestone I) --- */
+.site-hp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+.site-hp-head {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.site-hp-val {
+  color: #ffd86b;
+  font-weight: 600;
+  font-size: 11px;
+}
+.site-hp-bar-outer {
+  height: 5px;
+  background: rgba(120, 180, 255, 0.08);
+  border-radius: 3px;
+  margin-top: 2px;
+  overflow: hidden;
+}
+.site-hp-bar-inner {
+  height: 100%;
+  background: linear-gradient(90deg, #5fe39a 0%, #ffd86b 60%, #ff5060 100%);
+  transition: width 0.25s ease-out;
+}
+.site-hp-bar-inner.low {
+  animation: ammoFlash 0.8s ease-in-out infinite alternate;
+}
+.site-hp-bar-inner.dead {
+  background: #552626;
+}
+
+/* --- Blue budget bar (Milestone I) --- */
+.hud-block.budget {
+  min-width: 200px;
+  font-size: 12px;
+  padding: 8px 12px;
+  border-color: rgba(90, 227, 154, 0.28);
+}
+.budget-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  color: #b6e9c8;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+#budget-current { color: #5fe39a; font-size: 14px; }
+.budget-sep { opacity: 0.5; }
+.budget-max { opacity: 0.7; font-size: 11px; }
+.budget-bar-outer {
+  height: 6px;
+  background: rgba(120, 180, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.budget-bar-inner {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #5fe39a 0%, #8adc7f 60%, #ffd86b 100%);
+  transition: width 0.25s ease-out;
+}
+.budget-bar-inner.low { background: #ffd86b; }
+.budget-bar-inner.critical {
+  background: #ff8a52;
+  animation: ammoFlash 0.6s ease-in-out infinite alternate;
+}
+.budget-bar-inner.empty {
+  background: #ff5060;
+}
+
+/* --- Match-end overlay (Milestone I) --- */
+#match-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 8, 16, 0.55);
+  backdrop-filter: blur(4px);
+  z-index: 20;
+  pointer-events: none;
+  transition: opacity 0.3s ease-out;
+  opacity: 1;
+}
+#match-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.mo-inner {
+  background: rgba(8, 14, 26, 0.88);
+  border: 2px solid rgba(120, 180, 255, 0.35);
+  border-radius: 14px;
+  padding: 40px 64px;
+  text-align: center;
+  box-shadow: 0 12px 60px rgba(0, 0, 0, 0.55);
+}
+.mo-title {
+  font-size: 54px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  margin-bottom: 12px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+.mo-title.mo-blue  { color: #6fb8ff; text-shadow: 0 0 22px rgba(110, 184, 255, 0.55); }
+.mo-title.mo-red   { color: #ff7a7a; text-shadow: 0 0 22px rgba(255, 122, 122, 0.55); }
+.mo-title.mo-draw  { color: #ffd86b; text-shadow: 0 0 22px rgba(255, 216, 107, 0.5); }
+.mo-sub {
+  font-size: 14px;
+  opacity: 0.85;
+  max-width: 420px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
 /* --- Per-entity status panel (bottom-right, click to inspect) --- */
 #status-panel {
   position: fixed;

@@ -1,4 +1,6 @@
 """Demo scenario wiring — combines Red AI waves, Blue AI, and World."""
+from typing import Optional
+
 from . import config, sites
 from .blue_ai import BlueAI
 from .red_ai import RedAI, build_demo_waves
@@ -27,14 +29,36 @@ class Scenario:
         self.world.prune_dead()
 
     @property
+    def winner(self) -> Optional[str]:
+        """Milestone I win-condition resolver.
+
+        Returns:
+          'red'  — any Site HP <= 0, or Blue budget exhausted.
+          'blue' — all Red waves spawned AND no Red threats still alive.
+          'draw' — 3600 s safety cap reached (should basically never fire).
+          None   — match still in progress.
+
+        Red-victory checks fire first so that a leak that both drops the
+        last Blue HP AND was the final threat on the map resolves as a
+        Red win rather than a Blue one. This matches operator intent:
+        "if Blue is down to a dying site, Red got through."
+        """
+        if self.world.blue_budget <= 0:
+            return "red"
+        for s in sites.SOUTH_SITES:
+            if s.hp <= 0:
+                return "red"
+        if self.red.done and all(
+            not t.state.alive for t in self.world.threats.values()
+        ):
+            return "blue"
+        if self.world.t >= config.MAX_SIM_TIME:
+            return "draw"
+        return None
+
+    @property
     def done(self) -> bool:
-        # Done when all waves spawned and nothing active
-        return (
-            self.red.done
-            and all(not t.state.alive for t in self.world.threats.values())
-            and all(not i.state.alive for i in self.world.interceptors.values())
-            and self.world.t > 180.0
-        )
+        return self.winner is not None
 
     def snapshot(self) -> dict:
         snap = self.world.snapshot()
@@ -62,10 +86,16 @@ class Scenario:
                 "subtype": s.subtype,
                 "pos": [s.pos[0], s.pos[1]],
                 "hp": s.hp,
+                "hp_max": s.hp_max,
                 "leaks": s.leaks,
             }
             for s in sites.SOUTH_SITES
         ]
+        # Milestone I: publish winner + match timer so the frontend can
+        # render the end-of-match overlay AND the countdown to the 3600 s
+        # safety cap. `winner` is None while the match is in progress.
+        snap["winner"] = self.winner
+        snap["max_sim_time"] = config.MAX_SIM_TIME
         return snap
 
 
