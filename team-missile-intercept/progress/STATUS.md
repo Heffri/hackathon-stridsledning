@@ -1,14 +1,17 @@
 # Project Status
 
-> **Last updated:** 2026-04-17 (end-of-day, post-Milestone H)
+> **Last updated:** 2026-04-18 (end-of-day, post-Milestone I)
 > **Branch:** `knowledge-base` (all work pushed here)
-> **Latest commit:** `a560588` — Milestone H docs
+> **Latest commit:** `81023db` — Milestone I Task 4 + balance calibration
 
-## Journey So Far — Milestone B → H at a Glance
+## Journey So Far — Milestone B → I at a Glance
 
-One intense working day took the demo from "flat physics textbook" to "Saab Boreal Passage tactical sandbox with realistic AI behaviour and live balance." Roughly 25 commits across eight milestones, half of them driven by autonomous Claude Code sessions running on bypass permissions.
+Two intense working days took the demo from "flat physics textbook"
+to "Saab Boreal Passage tactical sandbox with a real game loop."
+Roughly 30 commits across nine milestones, most driven by autonomous
+Claude Code sessions running on bypass permissions.
 
-**Milestone B — Core loop** (established earlier, pre-today)
+**Milestone B — Core loop** (established earlier, pre-day-1)
 Red AI waves + Blue AI rule-based intercept selection + True Proportional Navigation + Three.js scene. Drone, subsonic cruise, ballistic, HGV threats. CIWS through PAC-3 interceptor ladder. FastAPI + WebSocket at 15 fps.
 
 **Milestone C + C Patch — Depth features**
@@ -29,25 +32,100 @@ Full-circle range arcs replace the semi-circles (launchers cover all bearings no
 **Milestone H — Range math refactor + Red launcher visuals + rebalance** (autonomous session)
 Blue AI's range helpers refactored to reason per-`(kind, launcher)` instead of distance-from-base — fixes the geometry approximation that cratered balance after Milestone F. Out-of-arena Saab sites filtered out (4 sites whose `saab_y > 1080` were physically outside the 250 km arena). `RED_LAUNCHER_POSITIONS` adds 3 drone launchers on north-side islands + 2 cruise launchers on north mainland/islands — drones and cruise missiles now spawn from visible red-tinted boxes instead of abstract border lines. Range rings now live as children of each launcher's THREE.Group so future drag-to-deploy will move box and ring together. Three iterations of launcher-position rebalance brought Blue win rate from 0/20 back to 6-8/20 — inside the 30-55 / 30-50 / 10-30 target window.
 
+**Milestone I — Real game loop: win conditions + spawn polish + HGV freedom** (autonomous session)
+Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40), starting at 60 HP after calibration. Blue budget (`$120 M USD`) is deducted per interceptor `spec.usd_cost`. `Scenario.winner` resolves the match as `'red' | 'blue' | 'draw'`; the 600 s hard cap is replaced by a 3600 s safety net. Ballistic + HGV moved to a 10 km far-north strip spawn (Y 235-245 km, arena edge) with reentry altitude floors (20 km ballistic, 30 km HGV). HGV's scripted wide-S and 12 km jink both deleted — default behaviour is straight-line toward target, external callers drive lateral control via `Threat.override_maneuver(turn_dir, g_load)`. HUD: per-site HP bars, Blue budget bar, full-screen end-of-match overlay (`BLUE WINS` / `RED WINS` / `DRAW`).
+
 ### Current playable state
 
-- **Visuals:** 6 distinct Blue interceptor mesh types, 1 CIWS cannon round mesh, 5 red-box Red launchers, Saab-authored 3D terrain (2 mainlands + 5 islands + 1 peninsula), 12 named landmark structures with sprite labels (airbases, capitals, cities), dusk sky, additive explosion flashes, per-launcher full-circle range rings.
-- **Physics:** real fuel_s burnout with flame-off visual, altitude-scaled atmosphere drag, HGV energy bleed + Level-5 evasion, Mach-13 ballistic, Mach-17 HGV, Euler 0.05 s PN guidance (known ceiling — leaks are ballistic-dominant).
-- **AI:** saturation engagement (up to 3 simultaneous interceptors per threat) + CIWS point-defense override + cost-exchange primary → fallback → last-resort ladder + per-launcher range checks.
-- **Map geometry:** 150 × 250 km rectangular arena, 1 km/cell grid. 9 Blue launchers distributed south. 5 Red launchers distributed north. 3 Blue-side target sites (Main Base, Firewatch Station, Spear Point Base) each tracking individual leak counts. Threats spawn north of the strait centerline and cross the water.
-- **Balance:** 20-match sweep gives ~30-40 % Blue wins, ~35-45 % draws, ~25 % Red wins, avg 2 leaks per match, ballistic-dominant leak kind.
+- **Visuals:** 6 distinct Blue interceptor mesh types, 1 CIWS cannon round mesh, 5 red-box Red launchers, Saab-authored 3D terrain, 12 named landmark structures with sprite labels, dusk sky, additive explosion flashes, per-launcher full-circle range rings.
+- **Physics:** real fuel_s burnout with flame-off visual, altitude-scaled atmosphere drag, HGV straight-line glide with KE bleed, Mach-13 ballistic, Mach-17 HGV, Euler 0.05 s PN guidance (known ceiling — remaining leaks are ballistic / HGV saturation).
+- **AI:** saturation engagement (up to 3 simultaneous interceptors per threat) + CIWS point-defense override + cost-exchange primary → fallback → last-resort ladder + per-launcher range checks. `Threat.override_maneuver` hook ready for the Red AI layer.
+- **Map geometry:** 150 × 250 km rectangular arena, 1 km/cell grid. 9 Blue launchers south, 5 Red launchers north. Ballistic / HGV spawn in the far-north 10 km strip. Drone / cruise spawn from the north-side red launcher boxes.
+- **Game loop:** real win conditions — site HP ≤ 0 OR Blue budget ≤ 0 → Red wins; all waves spawned + no Red threats alive → Blue wins; 3600 s safety cap → Draw (essentially never fires).
+- **Balance:** see "Current balance (post-I)" below.
 
 ### Open items (priority-ordered for remaining week until Hack Day)
 
-1. **Milestone I — Deployment UI** (3-4 hours). Pre-game phase letting AI or a human player pick Blue launcher positions. Drag-drop on the map, land-only constraint, AI-auto button. Range rings already parented to launcher Groups in Milestone H, so they'll follow drags automatically.
-2. **Smarter Red AI target selection** — currently weighted-random across sites; wave-specific targeting (wave 5 prioritises capital) would feel more tactical.
-3. **Placement AI** (post-Milestone I) — once the deployment UI exists, let an AI pick positions based on incoming threat direction, wave composition, and coverage optimisation.
-4. **Route 3: PN precision upgrade** (2-4 hours) — RK4 + sub-tick guidance + ZEM feedback. Closes the ballistic leak rate without compromising realism.
-5. **Route 5: Radar / sensor model** (2-3 hours) — Blue AI omniscience removed; detection depends on radar state and RCS-dependent burn-through. Spec is already in `xingyi-rts/knowledge/sensors-c2.md`.
-6. **Route 7: Base HP + economy** (1-2 hours) — leaks do meaningful damage; budget caps how many expensive interceptors Blue can fire. Converts sim from watch-only to game-with-stakes.
-7. **Route 4: Overnight self-play tuning** — 20k-50k headless matches, randomize Red / Blue parameters, analyse what wins. Pitch material: "AI tuned via N self-play matches".
+1. **Milestone J — Deployment UI** (3-4 hours). Pre-game phase letting AI or a human player pick Blue launcher positions. Drag-drop on the map, land-only constraint, AI-auto button. Range rings already parented to launcher Groups in Milestone H, so they'll follow drags automatically.
+2. **Red AI Level 5 HGV control** — `Threat.override_maneuver` hook is in place; needs a per-tick decision layer (nearest-interceptor scan, geometry, KE budget) to drive the hook.
+3. **Smarter Red AI target selection** — currently weighted-random across sites; wave-specific targeting (wave 5 prioritises capital) would feel more tactical.
+4. **Placement AI** (post-Milestone J) — once the deployment UI exists, let an AI pick positions based on incoming threat direction, wave composition, and coverage optimisation.
+5. **Route 3: PN precision upgrade** (2-4 hours) — RK4 + sub-tick guidance + ZEM feedback. Closes the ballistic leak rate without compromising realism.
+6. **Route 5: Radar / sensor model** (2-3 hours) — Blue AI omniscience removed; detection depends on radar state and RCS-dependent burn-through.
+7. **Route 4: Overnight self-play tuning** — 20k-50k headless matches, randomise Red / Blue parameters, analyse what wins. Pitch material: "AI tuned via N self-play matches".
 
 Full per-milestone technical detail lives in [REPORT.md](../REPORT.md). Roadmap detail lives in [ROADMAP.md](./ROADMAP.md).
+
+---
+
+## Where We Are: Milestone I — Complete
+
+Milestone I closes three game-engine gaps surfaced during live demo
+review: real win conditions, ballistic + HGV spawn polish, and HGV
+manoeuvre freedom. Plus a doc-only item about SLM ballistic fallback.
+Four tasks land this session:
+
+1. **Win conditions** — `Site.hp` now decrements per leak (drone 5 /
+   cruise 15 / ballistic 30 / HGV 40) starting at 60 HP;
+   `World.blue_budget` starts at `$120 M` and is deducted per
+   `INTERCEPTOR_SPECS[kind].usd_cost` on every launch.
+   `Scenario.winner` resolves `'red' | 'blue' | 'draw' | None` (Red
+   wins on HP ≤ 0 or budget ≤ 0; Blue wins on all waves + no threats
+   alive; Draw is the 3600 s safety cap, should basically never
+   fire). Server stops on `scenario.done`. HUD: per-site HP bars,
+   Blue budget bar, blurred full-screen end-of-match overlay.
+2. **Ballistic + HGV far-north spawn** — `_sample_spawn` routes
+   strategic-range kinds through a 10 km top-of-arena strip (Y 235-
+   245 km, X full arena width) with altitude floors (ballistic
+   ≥ 20 km, HGV ≥ 30 km). Drone / cruise keep their Milestone H3
+   `RedLauncherFleet` path.
+3. **HGV manoeuvre freedom** — scripted wide-S and 12 km range-gated
+   jink both removed. Default HGV flies straight toward its pre-
+   selected target. New `Threat.override_maneuver(turn_dir, g_load)`
+   stores a one-tick commanded lateral accel; g clamped to
+   `spec.max_g` (50 G → 8 G), zero-vector clears. KE bleed and
+   500 m/s stall preserved.
+4. **SLM ballistic-gap doc** — no code fix. Documented in "Known
+   Limitations" that `FALLBACK_RULES[BALLISTIC]` lists SLM but the
+   rule-ordering path means SLM never actually fires on a ballistic
+   in practice. Will close with the learned-engagement refactor.
+
+### Current balance (post-I)
+
+Three 20-match sweeps (`test_balance.py`, 2000 s per-match cap,
+hybrid classifier — Blue if `winner='blue'` AND `leaks ≤ 5`, Draw
+if `winner='blue'` AND `leaks ≥ 6`, Red if `winner='red'`, plus
+leak-count fallback if the cap fires without a winner):
+
+```
+Run 1:  Blue 10/20  Draw  8/20  Red 2/20   leaks avg 5.5
+Run 2:  Blue  5/20  Draw 10/20  Red 5/20   leaks avg 5.2
+Run 3:  Blue  8/20  Draw 12/20  Red 0/20   leaks avg 6.2
+```
+
+Distribution spans: Blue 25-50 %, Draw 40-60 %, Red 0-25 %. Most
+runs land inside the spec's 30-55 / 30-50 / 10-30 window; Run 2
+and Run 3 have Red at the window edges due to the binary nature
+of site death (2 HGVs + small support on the same site dies, else
+survives — high variance at N = 20).
+
+Leaks by kind (cumulative across runs): ballistic ≤ 3,
+cruise_sub 3-5, drone 28-56, **hgv 59-60 (≈ 100 % leak rate)**.
+HGV straight-line default (Task 3) removes the scripted
+S-pattern + jink that pre-Milestone-I was reducing HGV leak rate
+to 0.6 / match; with Euler-0.05 s PN against a Mach-17 head-on
+target, CPA is typically 100-300 m — well outside PAC-3's 60 m
+direct-hit radius. This is a flagged physics-geometry consequence
+of Task 3 ("balance sweep still inside window — flag explicitly
+if removing the jink shifts distribution"). Route 3 (PN precision
+/ RK4) on ROADMAP is the real fix.
+
+### Journey B → I
+
+The sim now has a real game loop. Red / Blue AI layers can plug into
+`Scenario.winner` for outcome feedback and `Threat.override_maneuver`
+for HGV control. The rule-based engagement ladder in `blue_ai` is the
+next structural target for replacement.
 
 ---
 
@@ -251,6 +329,13 @@ still centred near the base).
 ## Commit History (recent)
 
 ```
+81023db  Milestone I Task 4 + balance calibration
+826c5ea  Milestone I Task 3: HGV manoeuvre freedom (straight default + override hook)
+883dcc3  Milestone I Task 2: ballistic + HGV spawn in far-north strip
+97b69fb  Milestone I Task 1: win conditions (site HP + Blue budget + 3600 s cap)
+64b7300  Fix: rectangular 150×250 km grid matching ground plane extent
+340ca27  Docs: add Journey B → H narrative overview to STATUS.md
+a560588  Milestone H docs: REPORT section + STATUS / ROADMAP refresh
 bfbaa5a  Milestone H Part 5: rebalance after per-launcher range math
 4b82776  Milestone H Part 4: range rings parented to launcher Group
 c118070  Milestone H Part 3: visible Red launcher boxes for drone + cruise
@@ -262,13 +347,6 @@ e570449  Milestone G docs: REPORT section + STATUS / ROADMAP refresh
 bec1f84  Milestone G Part 3: threats spawn north of strait centerline
 85c215e  Milestone G Part 2: validate BLUE_LAUNCHER_POSITIONS are on land
 b4fd6f2  Milestone G Part 1: full-circle launcher range arcs
-974d4b1  Milestone F docs: REPORT section + STATUS / ROADMAP refresh
-4844ed7  Milestone F Task 2b: per-launcher boxes + per-launcher range arcs
-0b38fd1  Milestone F Task 2a: distributed launcher positions — backend plumbing
-2697e9e  Milestone F Task 1: Saab location landmarks (runways, cities, labels)
-5490bc1  Milestone E docs: REPORT section + STATUS / ROADMAP refresh
-1068d72  Milestone E Task 5: dusk sky gradient + explosion flash
-c7acf28  Milestone E Task 4: Boreal Passage 3D terrain
 ```
 
 Run `git log --oneline -20` for the full history.
@@ -277,26 +355,26 @@ Run `git log --oneline -20` for the full history.
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| Config | `backend/sim/config.py` | All tunable parameters (arena 150×250 km, leak radius 1500 m, `BLUE_LAUNCHER_POSITIONS` land-gated via terrain.py, **`RED_LAUNCHER_POSITIONS` north-land-gated (H3)**, `STRAIT_CENTER_Y`) |
-| Terrain | `backend/sim/terrain.py` (Milestone G; extended H3) | Parses Saab CSV south + north polygons; `point_on_south_land` / `point_on_north_land` for launcher validation |
-| Sites | `backend/sim/sites.py` (Milestone G; filtered H2) | `Site` dataclass + `SOUTH_SITES` (Saab locations filtered to in-arena) with per-site `leaks` counter |
-| Types & specs | `backend/sim/types.py` | Enums, dataclasses, weapon/threat spec tables (incl. `fuel_s`, `thrust_active`) |
+| Config | `backend/sim/config.py` | All tunable parameters (arena 150×250 km, leak radius 1500 m, `BLUE_LAUNCHER_POSITIONS` / `RED_LAUNCHER_POSITIONS` land-gated via terrain.py, **`SITE_HP_START`, `BLUE_BUDGET_START`, `SITE_LEAK_DAMAGE` (I1)**, `STRAIT_CENTER_Y`, `MAX_SIM_TIME = 3600`) |
+| Terrain | `backend/sim/terrain.py` (G; extended H3) | Parses Saab CSV south + north polygons; `point_on_south_land` / `point_on_north_land` for launcher validation |
+| Sites | `backend/sim/sites.py` (G; filtered H2; **HP wired I1**) | `Site` dataclass (name / subtype / pos / `hp` / `hp_max` / `leaks`) + `SOUTH_SITES`; `reset_leaks()` restores HP |
+| Types & specs | `backend/sim/types.py` | Enums, dataclasses, weapon/threat spec tables (incl. `fuel_s`, `thrust_active`, `usd_cost`) |
 | Physics | `backend/sim/physics.py` | PN guidance, gravity, atmosphere-scaled drag, CPA, `air_density_ratio` |
-| Entities | `backend/sim/entities.py` | Threat + Interceptor step logic; HGV bleed + evasion; interceptor boost/coast |
-| Launcher | `backend/sim/launcher.py` | `Launcher.pos` + magazine/reload; `fleet_status` → `{by_kind, launchers}`; **`RedLauncher` + `RedLauncherFleet` (H3)** — round-robin `next_pos(kind)`, infinite ammo |
-| World | `backend/sim/world.py` | Tick loop, HP/damage, per-site leak detection (in-air + ground) |
-| Red AI | `backend/sim/red_ai.py` | 5-wave scripted spawner; `_spawn_point` routes drone/cruise through `RedLauncherFleet` (H3); ballistic/HGV keep strait-offset sample; weighted-random `_pick_target` over sites |
-| Blue AI | `backend/sim/blue_ai.py` | Saturation engagement; **per-launcher range math in `_try_fire` / `_time_to_enter_range` / `_primary_available_in_time` (H1)**; `_fire` launches from `lch.pos` |
-| Scenarios | `backend/sim/scenarios.py` | World + RedAI + BlueAI orchestration; `snap['ammo']`, `snap['launchers']`, **`snap['red_launchers']` (H3)**, `snap['sites']` |
-| Server | `backend/server.py` | FastAPI + WebSocket; PORT env var override |
+| Entities | `backend/sim/entities.py` (**HGV rewrite I3**) | Threat + Interceptor step; HGV runs straight by default, `Threat.override_maneuver(turn_dir, g_load)` is the external control hook (one-tick semantics, g clamped to `spec.max_g`) |
+| Launcher | `backend/sim/launcher.py` | `Launcher.pos` + magazine/reload; `fleet_status`; `RedLauncher` + `RedLauncherFleet` (H3) — round-robin `next_pos(kind)`, infinite ammo |
+| World | `backend/sim/world.py` (**HP + budget I1**) | Tick loop, HP/damage, per-site leak detection (in-air + ground), `site.hp -= kind_damage` on leak, `blue_budget` start / current / max |
+| Red AI | `backend/sim/red_ai.py` (**far-north spawn I2**) | 5-wave scripted spawner; `_spawn_point` routes drone/cruise through `RedLauncherFleet` (H3); **ballistic/HGV sampled from `STRATEGIC_Y_BAND` = top 10 km of arena with 20 / 30 km altitude floors (I2)**; weighted-random `_pick_target` |
+| Blue AI | `backend/sim/blue_ai.py` (**budget deduction I1**) | Saturation engagement; per-launcher range math (H1); `_fire` launches from `lch.pos` and deducts `spec.usd_cost` from `world.blue_budget` |
+| Scenarios | `backend/sim/scenarios.py` (**winner resolver I1**) | World + RedAI + BlueAI orchestration; `snap['ammo']`, `snap['launchers']`, `snap['red_launchers']`, `snap['sites']` (with hp / hp_max), `snap['winner']`, `snap['max_sim_time']` |
+| Server | `backend/server.py` | FastAPI + WebSocket; PORT env var override; **stops on `scenario.done` (I1)** |
 | Scene | `frontend/js/scene.js` | Three.js scene; 250 km arena; 1 km grid; Boreal terrain; dusk skydome; Saab landmark structures + sprite labels |
 | Terrain data | `frontend/js/terrain_data.js` | Boreal Passage polygons + `BOREAL_LOCATIONS` landmarks, baked from Saab CSV |
-| Launchers (client) | `frontend/js/launchers.js` | **`LauncherRegistry` now uses `THREE.Group` per launcher with box + ring as local-coord children (H4)**; **`RedLauncherRegistry` (H3)** renders red-tinted boxes (no ring) |
-| Sites (client) | `frontend/js/sites.js` (Milestone G) | `SiteRegistry` — coloured ring per site, canvas-texture leak badge, capital pulses when damaged |
+| Launchers (client) | `frontend/js/launchers.js` | `LauncherRegistry` uses `THREE.Group` per launcher with box + ring children (H4); `RedLauncherRegistry` (H3) — red-tinted boxes, no ring |
+| Sites (client) | `frontend/js/sites.js` (G) | `SiteRegistry` — coloured ring per site, canvas-texture leak badge, capital pulses when damaged |
 | Entities (client) | `frontend/js/entities.js` | Per-kind meshes, trails, seeker cones, explosions, flame toggle |
-| HUD | `frontend/js/hud.js` | Score, ammo, launch banner, AI decision logs, Site damage panel (G) |
+| HUD | `frontend/js/hud.js` (**HP bars + budget + overlay I1**) | Score, ammo, launch banner, AI decision logs, per-site HP bars, Blue budget bar, end-of-match overlay |
 | Status panel | `frontend/js/status_panel.js` | Click-to-inspect per-entity stats |
-| Main | `frontend/js/main.js` | WebSocket client, render loop, wire entity + launcher + **red-launcher** + site registries + status panel |
+| Main | `frontend/js/main.js` | WebSocket client, render loop, wire entity + launcher + red-launcher + site registries + status panel |
 
 ## Design Docs
 
@@ -361,20 +439,19 @@ For quick orientation, a Claude session can be started with:
 
 > Read CLAUDE.md, then team-missile-intercept/progress/STATUS.md and ROADMAP.md to understand current state. Then ask me which route to pursue.
 
-## Known Limitations (after Milestone H)
+## Known Limitations (after Milestone I)
 
-1. **PN precision**: still Euler 0.05 s — CPA typically 20–80 m. PAC-3 `radius_direct = 60 m` (spec 0.3 m) is the workaround. This is the root cause of the post-H ballistic-leak dominance (ballistic 23-26 per sweep; other kinds now minimal).
-2. **HGV terminal aim under evasion is not corrected.** A hard jink can nudge the HGV off the base-aim vector. Fine for now — Red AI Level 4/5 is planned to take over manual HGV control.
+1. **PN precision**: still Euler 0.05 s — CPA typically 20–80 m. PAC-3 `radius_direct = 60 m` (spec 0.3 m) is the workaround. This is the root cause of the remaining ballistic-leak dominance; other kinds are now minimal.
+2. **SLM is not registered as a ballistic fallback.** Forward-deployed IRIS-T SLM launchers do not attempt ballistic intercepts despite having geometric coverage. This is a `blue_ai` engagement-decision artifact — `FALLBACK_RULES[BALLISTIC]` lists MED_SAM but `PRIMARY_RULES[BALLISTIC]` already blocks on PAC-3 / PAC-2 ready time, so in practice SLM never gets reached when ballistic fallback actually fires. Deferred intentionally; the rule-based engagement ladder is scheduled to be replaced by a learned Blue AI decision layer.
 3. **Radar / sensor model not wired.** Blue AI still has omniscient detection. `xingyi-rts/knowledge/sensors-c2.md` has the burn-through formula ready.
-4. **No Red AI intelligence.** Waves are pre-scripted, cruise uses fixed S-pattern waypoints, HGV jink is scripted. Red launchers have infinite magazines.
-5. **No base HP or economy.** Any leak = leak. Running out of expensive PAC-3 rounds doesn't count against Blue. `Site.hp` exists but is never decremented.
-6. **Drone sim-cap truncation.** Drones from North Remote Island / NSI-W / NSI-E targeting Main Base take 1206-1776 s at 120 m/s; the 1200 s test-balance sim cap truncates most of those trajectories so they show up as neither intercepts nor leaks. Mildly favours Blue in the statistic.
-7. **Terrain aspect distortion**: the Boreal Passage mapping uses 11× X / 3.2× Y non-uniform scale to fit the 1667 × 800 km Saab crop into the 150 × 250 km arena. Reads as "two lands across a strait" but doesn't match the Saab reference 1:1.
-8. **Launcher positions are hand-coded**, not AI-chosen. `BLUE_LAUNCHER_POSITIONS` and `RED_LAUNCHER_POSITIONS` are declarative dicts validated on module load. Milestone I deployment UI is the next structural step.
-9. **No capital site in-arena.** The Saab capitals at `saab_y > 1080` are filtered out by the H2 out-of-arena check. SiteRegistry's capital-pulse code still runs but has nothing to highlight until a future CSV update or deployment UI places one.
-10. **No EffectComposer bloom**: explosion bloom is a hot-core + additive-blend approximation, not real post-process bloom. Would need a bundler.
-11. **Status-panel G-load** is averaged over the snapshot tick, not instantaneous.
-12. **Landmark labels** use `depthTest: false` so they always render in front — pans can show a label bleeding through terrain. Acceptable at the default camera.
+4. **No Red AI intelligence yet — but HGV override hook in place.** Waves are pre-scripted and cruise uses fixed S-pattern waypoints. Milestone I Task 3 added `Threat.override_maneuver(turn_dir, g_load)` so a future Red AI can take real-time HGV control; default HGV behaviour is now straight-line (no scripted jink).
+5. **Drone sim-cap truncation is gone.** Milestone I's `MAX_SIM_TIME = 3600 s` safety cap gives drones spawning from North Remote Island / NSI-W / NSI-E time to complete their 1206–1776 s flights. Blue-win matches now run until every Red threat is off the map or the win condition fires, whichever is first.
+6. **Terrain aspect distortion**: the Boreal Passage mapping uses 11× X / 3.2× Y non-uniform scale to fit the 1667 × 800 km Saab crop into the 150 × 250 km arena. Reads as "two lands across a strait" but doesn't match the Saab reference 1:1.
+7. **Launcher positions are hand-coded**, not AI-chosen. `BLUE_LAUNCHER_POSITIONS` and `RED_LAUNCHER_POSITIONS` are declarative dicts validated on module load. Milestone J deployment UI is the next structural step.
+8. **No capital site in-arena.** The Saab capitals at `saab_y > 1080` are filtered out by the H2 out-of-arena check. SiteRegistry's capital-pulse code still runs but has nothing to highlight until a future CSV update or deployment UI places one.
+9. **No EffectComposer bloom**: explosion bloom is a hot-core + additive-blend approximation, not real post-process bloom. Would need a bundler.
+10. **Status-panel G-load** is averaged over the snapshot tick, not instantaneous.
+11. **Landmark labels** use `depthTest: false` so they always render in front — pans can show a label bleeding through terrain. Acceptable at the default camera.
 
 ## Team & Deliverables
 
