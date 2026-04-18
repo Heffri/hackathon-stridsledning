@@ -247,6 +247,17 @@ export function setWsStatus(connected) {
   if (!el) return;
   el.textContent = connected ? 'connected' : 'disconnected';
   el.className = connected ? 'connected' : 'disconnected';
+  // Update the sibling dot in the new sidebar footer.
+  const dot = el.closest('.sb-footer')?.querySelector('.ws-dot');
+  if (dot) {
+    if (connected) {
+      dot.style.background = 'var(--accent-green, #50d9a0)';
+      dot.style.boxShadow = '0 0 6px rgba(80, 217, 160, 0.75)';
+    } else {
+      dot.style.background = '#ff5a5a';
+      dot.style.boxShadow = 'none';
+    }
+  }
 }
 
 function setText(id, v) {
