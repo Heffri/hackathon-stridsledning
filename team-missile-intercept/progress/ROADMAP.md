@@ -145,7 +145,7 @@ Route 2 is **fully closed**. Remaining routes:
 
 New items **surfaced by Milestone D**:
 
-- Radar / sensor model (blue_ai is still omniscient; `sensors-c2.md` has the formula)
+- Radar / sensor model (blue_ai is still omniscient; `team-missile-intercept/common-info/source-data/knowledge/sensors-c2.md` has the formula)
 - Red AI Level 3/4/5 (wave scripts are dumb). Milestone I gave the
   Red AI a concrete hook: `Threat.override_maneuver(turn_dir, g_load)`
   is the per-tick control input for HGV; Red AI Level 5 will use it.
@@ -224,7 +224,7 @@ Saab's jury judges on visual clarity + AI transparency. After Milestone D the si
    - Small polish, high perceived quality
 
 5. **Boreal Passage terrain** (~2 hours)
-   - Use `xingyi-rts/saab-provided/the-boreal-passage-map.svg` for landmass outline
+   - Use `team-missile-intercept/common-info/source-data/saab-provided/the-boreal-passage-map.svg` for landmass outline
    - Extrude the SVG into a low-poly terrain mesh
    - Makes the demo feel grounded in Saab's own scenario
    - Big task — do this last if time allows
@@ -287,7 +287,7 @@ Morning analysis produces:
 **Effort:** 2–3 hours
 **Impact:** Medium (adds tactical depth; sets up SEAD / jamming scenarios)
 
-Currently Blue AI sees every threat instantly with perfect position. Real IADS has detection ranges, RCS-dependent burn-through, and terrain masking. `xingyi-rts/knowledge/sensors-c2.md` has the spec.
+Currently Blue AI sees every threat instantly with perfect position. Real IADS has detection ranges, RCS-dependent burn-through, and terrain masking. `team-missile-intercept/common-info/source-data/knowledge/sensors-c2.md` has the spec.
 
 **Tasks:**
 

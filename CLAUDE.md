@@ -1,30 +1,38 @@
-# Smart Stridsledning — Saab Hackathon 2026
+# Smart Stridsledning - Saab Hackathon 2026
 
-## Repo Structure
+## Current Repo Reality
 
-This repo contains two separate projects:
+- `team-missile-intercept/` is the only active project in this repo.
+- `team-missile-intercept/archive/xingyi-rts/` is archived legacy material retained for provenance only.
+- `team-missile-intercept/common-info/` is the active home for shared docs, archive policy, and canonical source-data references.
 
-- `team-missile-intercept/` — **Team project**: 3D AI vs AI missile interception
-- `xingyi-rts/` — **Xingyi's personal project**: RTS-style air defense decision support
+## Session Start
 
-## Team Project: Missile Intercept
+Start every new work session from the active team project:
 
-3D missile interception simulation. Red AI launches threats (hypersonic, cruise, ballistic, drones), Blue AI selects interceptors and computes real-time physics-based intercept solutions. Not probability — actual trajectory math.
+1. `team-missile-intercept/common-info/REPO_ONBOARDING_NOTES.md`
+2. `team-missile-intercept/progress/STATUS.md`
+3. `team-missile-intercept/progress/ROADMAP.md`
+4. Relevant docs and code inside `team-missile-intercept/`
 
-## Xingyi's RTS Project
+Useful shared references:
 
-Full IADS decision support system with knowledge base in `xingyi-rts/knowledge/`:
-- `air-assets.md` — Gripen E/F, GlobalEye, Meteor, IRIS-T
-- `ground-defense.md` — Patriot, IRIS-T SLM/SLS, RBS 70, Lvkv 90
-- `threats.md` — 11-tier threat classification with cost-exchange ratios
-- `doctrine.md` — 13 sections: 3-layer response, GlobalEye protection, CAP rotation
-- `scenario.md` — 5-wave demo scenario on Saab's Boreal Passage map
-- `data-model.md` — Abstract parameterized data model
-- `sensors-c2.md` — Radar specs, AESA trade-offs, burn-through formula
+- `team-missile-intercept/common-info/ACTIVE_SOURCE_DATA_INDEX.md`
+- `team-missile-intercept/common-info/MODULARIZATION_SPEC.md`
+- `team-missile-intercept/common-info/TEAM_OWNERSHIP_SPEC.md`
+- `team-missile-intercept/common-info/RUNTIME_STABILITY_RULES.md`
+- `team-missile-intercept/common-info/ARCHIVE_POLICY.md`
+- `team-missile-intercept/common-info/DEPENDENCY_CUTOVER_REPORT.md`
+
+## Archived Legacy Material
+
+The `team-missile-intercept/archive/xingyi-rts/` tree is archived legacy material. It should not be treated as an active implementation home, an onboarding destination, or the canonical location for active source data.
+
+If older material is still needed, use the canonical active copies under `team-missile-intercept/common-info/source-data/` and check `ACTIVE_SOURCE_DATA_INDEX.md` for the current path of record.
 
 ## Event Info
 
-- **Hack Day**: April 25, 08:30-17:00, KTH Innovation
-- **Grand Finale**: April 27, 16:30-20:30
-- **Presentation**: 4 minutes per team
-- **API**: OpenRouter ($50 credit, Google Gemini). NEVER commit API keys.
+- Hack Day: April 25, 2026, 08:30-17:00, KTH Innovation
+- Grand Finale: April 27, 2026, 16:30-20:30
+- Presentation: 4 minutes per team
+- API: OpenRouter ($50 credit, Google Gemini). Never commit API keys.

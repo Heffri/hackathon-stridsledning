@@ -99,7 +99,7 @@ Points not spelled out in the spec that needed a call:
 4. **Add remaining 3 interceptors + 3 threats**: IRIS-T SLS (60G knife-fight), PAC-2, PAC-3; supersonic cruise, ballistic terminal, HGV. Unlocks the full cost-exchange matrix from WEAPON_SPECS.
 5. **Red AI Levels 2/3**: ballistic fixed arcs + terminal maneuvers, cruise waypoint adjustments. Levels 4/5 (stealth terminal takeover, HGV full control) are bigger — defer to Milestone D.
 6. **Per-entity status panel**: click a cone, right-side panel shows type/speed/G/HP/fuel/target/time-to-intercept. UI skeleton exists; add a Raycaster + a `#status-panel` div in entities.js.
-7. **Terrain heightmap**: add terrain.py + frontend/js/terrain.js using the Boreal Passage heightmap from `knowledge/scenario.md`. Prep work for Level 4 "terminal takeover at sea strait crossing".
+7. **Terrain heightmap**: add terrain.py + frontend/js/terrain.js using the Boreal Passage heightmap from `team-missile-intercept/common-info/source-data/knowledge/scenario.md`. Prep work for Level 4 "terminal takeover at sea strait crossing".
 8. **Economy + win conditions**: base_hp, Red/Blue budgets, endgame decision. Turns the sim from a demo into an actual game.
 
 ## Note: Deliberately Deferred Items (not omitted)
@@ -467,7 +467,7 @@ Key facts:
 1. **Ballistic interception is the weakest link.** ~50 % leak rate on Mach 13 RVs. Mitigations possible without dropping speed: tighter PN (RK4 + sub-tick integration), or shoot-look-shoot with multiple PAC-3 per target without burning the 4-round magazine. Might be worth the PN upgrade path.
 2. **HGV terminal aim under evasion is not corrected.** During a jink the HGV can end up slightly off the base-aim vector; with Mach 17 it doesn't have time to recover. Operator note: this is fine for now because the long-term plan has Red AI taking over manual HGV control. Revisit when Red AI levels 4/5 land.
 3. **CIWS still under-fires against drones.** Because a single SHORT_SAM / RBS 70 round prox-kills a 10-HP drone at 10 km, drones basically never reach the 4 km CIWS envelope. Point-defense override catches the occasional survivor plus any hypersonic crossing the inner ring. If we want CIWS firing on every demo wave, bump drone HP to ~25 or add a close-spawn drone harassment wave.
-4. **Radar / sensor model not wired.** Detection is currently omniscient. `xingyi-rts/knowledge/sensors-c2.md` has the burn-through formula ready; it's the cleanest next physics layer to add.
+4. **Radar / sensor model not wired.** Detection is currently omniscient. `team-missile-intercept/common-info/source-data/knowledge/sensors-c2.md` has the burn-through formula ready; it's the cleanest next physics layer to add.
 5. **No Red AI intelligence yet.** Waves are pre-scripted, cruise uses fixed S-pattern waypoints, HGV uses pre-programmed jink. Levels 3 / 4 / 5 (waypoint adjust → terminal takeover → full realtime HGV AI) are still the biggest single bang-for-buck visual upgrade.
 6. **No base HP or economy.** Any leak = leak, regardless of weapon. Running out of $48M of PAC-3 doesn't count against Blue the way it would in a real engagement. `GAME_DESIGN.md` has the budget model specced; plumbing it into the win condition is straightforward.
 7. **Per-entity status panel not built.** Clicking on a missile still does nothing. For the 4-minute demo judges' "transparency" score this is the single biggest missing piece.
@@ -478,7 +478,7 @@ Key facts:
 2. **Red AI Level 3/4 — cruise terminal walk + stealth detection.** Breaks the "Red just follows a schedule" feel. Populates the Red AI log panel with actual decisions.
 3. **Base HP + economy budget.** Converts the sim from a watch-only demo into a game with win/lose stakes. Leaks now do something. Running out of PAC-3 is a real loss condition.
 4. **PN accuracy upgrade.** RK4 + 0.01 s guidance update. Closes the ballistic-leak gap without cheapening the threat speeds. Biggest physics win for the remaining hackathon time.
-5. **Sensor model.** Plug `sensors-c2.md`'s detection rules into Blue AI so launches depend on radar state, not omniscient world snapshots. Adds tactical depth and sets up SEAD / jamming scenarios later.
+5. **Sensor model.** Plug `team-missile-intercept/common-info/source-data/knowledge/sensors-c2.md`'s detection rules into Blue AI so launches depend on radar state, not omniscient world snapshots. Adds tactical depth and sets up SEAD / jamming scenarios later.
 
 ## How to run (updated)
 
@@ -599,7 +599,7 @@ Replaced the flat dark-blue rectangle ground with an extruded
 rendering of Saab's Boreal Passage landmasses (2 mainlands, 5
 islands, 1 peninsula, 12 named locations).
 
-Input: `xingyi-rts/saab-provided/Boreal_passage_coordinates.csv`.
+Input: `team-missile-intercept/common-info/source-data/saab-provided/Boreal_passage_coordinates.csv`.
 Baked at check-in into `frontend/js/terrain_data.js`
 (`BOREAL_TERRAIN` + `BOREAL_LOCATIONS`) as ES-module exports, so no
 static-mount change to `server.py` was needed. Regenerate with a

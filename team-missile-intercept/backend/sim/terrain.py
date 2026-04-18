@@ -35,11 +35,18 @@ import os
 from typing import List, Tuple
 
 # Path resolution: this file lives at backend/sim/terrain.py. The CSV is
-# at xingyi-rts/saab-provided/... relative to the repo root.
+# copied into the active project's canonical source-data home under
+# team-missile-intercept/common-info/source-data/... relative to the repo
+# root so the runtime no longer depends on the archived legacy tree.
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", "..", ".."))
 _CSV_PATH = os.path.join(
-    _REPO_ROOT, "xingyi-rts", "saab-provided", "Boreal_passage_coordinates.csv"
+    _REPO_ROOT,
+    "team-missile-intercept",
+    "common-info",
+    "source-data",
+    "saab-provided",
+    "Boreal_passage_coordinates.csv",
 )
 
 

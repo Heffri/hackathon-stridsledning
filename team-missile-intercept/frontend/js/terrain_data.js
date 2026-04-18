@@ -1,5 +1,6 @@
 // Boreal Passage terrain polygons & named locations.
-// Baked at check-in from xingyi-rts/saab-provided/Boreal_passage_coordinates.csv.
+// Baked at check-in from
+// team-missile-intercept/common-info/source-data/saab-provided/Boreal_passage_coordinates.csv.
 // Coordinates are in Saab-map km: X east (0..1667), Y SOUTH-positive (0..1300).
 // Transform to scene coords happens in scene.js via saabToScene().
 

@@ -3,7 +3,9 @@
 > ⚠️ **This is the full arsenal for the final product.**
 > The first playable MVP uses a reduced subset (drone + subsonic cruise vs CIWS + RBS 70 + IRIS-T SLM). See **[DEMO_PLAN.md](DEMO_PLAN.md)**.
 
-> Data sourced from xingyi-rts/knowledge/ (manufacturer datasheets, public domain).
+> Data sourced from `team-missile-intercept/common-info/source-data/knowledge/`
+> (canonical active copies of the Saab/reference inputs; manufacturer datasheets,
+> public domain). Bare source names in this document refer to that directory.
 > Values marked [est] are reasonable estimates where exact data is unavailable.
 > Reload times >60s are scaled ÷10 for demo pacing (see GAME_DESIGN.md for the scaling rule).
 
@@ -339,8 +341,8 @@ PAC-3 is a pure kinetic kill vehicle with no warhead. On direct hit: devastating
 
 ## Sources
 
-- Ground defense specs: `xingyi-rts/knowledge/ground-defense.md` (Saab datasheets, Raytheon, Diehl)
-- Threat profiles: `xingyi-rts/knowledge/threats.md` (public domain, CSIS, defense analysis)
-- Air assets: `xingyi-rts/knowledge/air-assets.md` (MBDA, Saab, Leonardo)
-- Cost-exchange framework: `xingyi-rts/knowledge/threats.md`
-- Full citations: `xingyi-rts/knowledge/SOURCES.md`
+- Ground defense specs: `team-missile-intercept/common-info/source-data/knowledge/ground-defense.md` (Saab datasheets, Raytheon, Diehl)
+- Threat profiles: `team-missile-intercept/common-info/source-data/knowledge/threats.md` (public domain, CSIS, defense analysis)
+- Air assets: `team-missile-intercept/common-info/source-data/knowledge/air-assets.md` (MBDA, Saab, Leonardo)
+- Cost-exchange framework: `team-missile-intercept/common-info/source-data/knowledge/threats.md`
+- Full citations: `team-missile-intercept/common-info/source-data/knowledge/SOURCES.md`
