@@ -51,15 +51,31 @@ def _pick_target(rng: np.random.Generator) -> tuple:
 # made every spawn look narratively absurd. Milestone G anchors spawn
 # Y to the strait centerline instead, so every threat starts physically
 # north of the water. Offsets below are "distance NORTH of strait
-# centre" (positive = deeper into Red territory).
+# centre" (positive = deeper into Red territory). Drone / cruise still
+# use them as a fallback when the Red launcher fleet is empty; ballistic
+# / HGV moved to the Milestone I far-north strip sampler below.
 STRAIT_OFFSET_DRONE     = 10_000   # just over the strait, close-in attack
 STRAIT_OFFSET_CRUISE    = 25_000   # further back — cruise is faster
-STRAIT_OFFSET_BALLISTIC = 50_000   # deep Red territory
-STRAIT_OFFSET_HGV       = 70_000   # deepest — 70 km buffer back from HGV line
-# Resulting spawn Y values with STRAIT_CENTER_Y = 120_000:
-#   drone 130 km, cruise 145 km, ballistic 170 km, HGV 190 km
-# All still inside the 250 km arena (HGV keeps ~60 km buffer).
 BORDER_HALF_WIDTH = 30_000.0    # X spans ±30 km around base axis
+
+# --- Milestone I: ballistic / HGV far-north strip ---
+# Strategic-range re-entry weapons now originate at the far-north edge
+# of the arena instead of the old STRAIT_CENTER_Y + offset anchor.
+# Mirrors doctrine: ICBM / IRBM launchers sit deep in Red territory, the
+# operator wants them visibly "off the map to the north" rather than
+# 10-20 km north of the strait.
+#
+# Y-strip sits at the top of the arena with a 5 km buffer from the edge
+# and 10 km band width. X uniform across the full arena width. With
+# ARENA_Y = 250 km this lands in [235 km, 245 km].
+STRATEGIC_Y_BAND = (config.ARENA_Y - 15_000.0, config.ARENA_Y - 5_000.0)
+
+# Altitude floors for re-entry realism — ballistic RVs and HGVs cannot
+# enter the scene at low altitude; they're a kinetic-energy-plus-
+# altitude trade. Spawn Z is clamped to at least these values even if
+# the random sample from the per-kind range lands lower.
+BALLISTIC_MIN_Z = 20_000.0   # m — re-entry entry altitude
+HGV_MIN_Z       = 30_000.0   # m — glide ceiling
 
 # --- Per-kind spawn altitude envelopes (m AGL) ---
 # Three visual tiers on the 150 km × 150 km arena:
@@ -117,38 +133,39 @@ def build_demo_waves() -> List[WaveSpec]:
 
 
 def _sample_spawn(kind: ThreatType, rng: np.random.Generator, base_x: float, base_y: float):
-    """Pick (x, y, z) north of the strait centerline for one threat.
+    """Pick (x, y, z) for one threat.
 
-    All threats' Y is anchored to `config.STRAIT_CENTER_Y` plus a per-
-    kind offset (positive = deeper into Red territory). X is sampled
-    ±30 km around the base X axis. Z is per-kind so drones cluster low
-    over the northern land / strait, cruise hugs the deck, and
-    ballistic / HGV re-enter from the upper atmosphere.
+    * Ballistic / HGV (Milestone I): X uniform across the arena width,
+      Y uniform in the far-north strip `STRATEGIC_Y_BAND`, Z clamped to
+      the reentry / glide floor (20 km / 30 km). Strategic-range
+      weapons originate at the far edge, not 10-20 km north of the
+      strait.
+    * Drone / cruise: fallback path only. Normally routed through
+      `RedLauncherFleet.next_pos` in `_spawn_point`; this branch fires
+      only when the launcher fleet is empty for that kind (e.g. in
+      tests that bypass `config.RED_LAUNCHER_POSITIONS`). Keeps the
+      strait-offset sampler so existing behaviour is unchanged.
 
-    `base_y` is retained in the signature for API compatibility but is
-    no longer used for the Y anchor (kept to avoid cascading scenario
-    changes).
+    `base_y` is retained in the signature for API compatibility.
     """
-    x = base_x + float(rng.uniform(-BORDER_HALF_WIDTH, BORDER_HALF_WIDTH))
-    # Per-kind distance NORTH of the strait centerline (see constants).
+    if kind == ThreatType.BALLISTIC:
+        x = float(rng.uniform(0.0, config.ARENA_X))
+        y = float(rng.uniform(*STRATEGIC_Y_BAND))
+        z = max(BALLISTIC_MIN_Z, float(rng.uniform(*BALLISTIC_ALT_RANGE)))
+        return (x, y, z)
     if kind == ThreatType.HGV:
-        y = config.STRAIT_CENTER_Y + STRAIT_OFFSET_HGV       # 190 km
-    elif kind == ThreatType.BALLISTIC:
-        y = config.STRAIT_CENTER_Y + STRAIT_OFFSET_BALLISTIC # 170 km
-    elif kind == ThreatType.DRONE:
-        y = config.STRAIT_CENTER_Y + STRAIT_OFFSET_DRONE     # 130 km
-    else:
-        y = config.STRAIT_CENTER_Y + STRAIT_OFFSET_CRUISE    # 145 km (cruise)
+        x = float(rng.uniform(0.0, config.ARENA_X))
+        y = float(rng.uniform(*STRATEGIC_Y_BAND))
+        z = max(HGV_MIN_Z, float(rng.uniform(*HGV_ALT_RANGE)))
+        return (x, y, z)
+    # Drone / cruise fallback (rare — primary path is RedLauncherFleet).
+    x = base_x + float(rng.uniform(-BORDER_HALF_WIDTH, BORDER_HALF_WIDTH))
     if kind == ThreatType.DRONE:
+        y = config.STRAIT_CENTER_Y + STRAIT_OFFSET_DRONE
         z = float(rng.uniform(*DRONE_ALT_RANGE))
-    elif kind == ThreatType.CRUISE_SUB:
+    else:  # CRUISE_SUB
+        y = config.STRAIT_CENTER_Y + STRAIT_OFFSET_CRUISE
         z = float(rng.uniform(*CRUISE_ALT_RANGE))
-    elif kind == ThreatType.BALLISTIC:
-        z = float(rng.uniform(*BALLISTIC_ALT_RANGE))
-    elif kind == ThreatType.HGV:
-        z = float(rng.uniform(*HGV_ALT_RANGE))
-    else:
-        z = 0.0
     return (x, y, z)
 
 

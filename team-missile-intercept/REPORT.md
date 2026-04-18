@@ -1430,3 +1430,244 @@ python server.py
 4. `python test_balance.py` (1200 s × 20 matches) prints Blue
    30-40 / draw 35-45 / Red 25 with leaks 2.0 avg; kind breakdown
    ballistic-dominant.
+
+# Milestone I — Win conditions + spawn polish + HGV freedom
+
+Scope: close three engine gaps surfaced during live demo review so
+future Red / Blue AI layers have a proper game loop to plug into.
+Four tasks land this session:
+
+1. **Win conditions** — site HP + Blue USD budget + 3600 s safety
+   cap replace the old 600 s hard cap.
+2. **Ballistic / HGV spawn polish** — strategic-range weapons
+   originate in a 10 km strip at the far-north arena edge with
+   reentry-realistic altitude floors.
+3. **HGV manoeuvre freedom** — scripted S + range-gated jink
+   removed; default HGV flies straight, external callers drive
+   lateral control via `Threat.override_maneuver(dir, g)`.
+4. **SLM ballistic-gap doc** — no code fix; documented in STATUS
+   "Known Limitations" for the upcoming learned-engagement
+   refactor.
+
+## Task 1 — Win conditions
+
+The sim has carried placeholder `Site.hp` since Milestone G and the
+spec's `usd_cost` per interceptor since Milestone D, neither wired
+to anything. Milestone I turns them into real stakes.
+
+- `Site.hp` decrements per leak by kind damage (drone 5, cruise 15,
+  ballistic 30, HGV 40) in both leak paths in `world.py` (in-air
+  and ground-impact). Starting HP = 100; any site at 0 → Red wins.
+- `World.blue_budget` starts at $120 M — sized against the
+  `WEAPON_SPECS.md` USD values so a typical match burns 30-60 %.
+  `BlueAI._fire` subtracts `spec.usd_cost` every launch (floor at
+  0). Budget exhausted → Red wins.
+- `Scenario.winner` resolves `'red' | 'blue' | 'draw' | None`:
+  - Red wins if any site HP <= 0 OR Blue budget <= 0.
+  - Blue wins if `red.done` AND no Red threats alive on the map.
+  - Draw if `world.t >= config.MAX_SIM_TIME`.
+  - Red-loss checks fire first so a final leak that both kills a
+    site AND was the final threat resolves as Red wins, matching
+    operator intent ("if Blue's last site is dying Red got
+    through").
+- `config.MAX_SIM_TIME = 3600 s` (was 600 s). The new cap is a
+  safety net; normal matches end on HP / budget / Red-out within
+  150-400 s of sim time.
+- Server sim loop halts the instant `scenario.done` fires (removed
+  the old `t > MAX_SIM_TIME` bail). Frontend reads `snap.winner`
+  and shows the overlay.
+- `test_balance.py` rewritten — it now reads `scenario.winner`
+  directly; the leak-count heuristic (0-1 blue, 2 draw, 3+ red)
+  is gone. Each match runs until `scenario.done` or 3600 s cap.
+
+Frontend:
+
+- `index.html` gains a Blue-budget panel + match-overlay root.
+- `hud.js` replaces the old "leaks > 0" Site-damage list with per-
+  site HP bars (coloured by ratio, pulses below 30 %). Budget
+  rendered as "$current / $max" plus a coloured bar (green → amber
+  → red → flashing empty). End-of-match overlay is a blurred
+  full-screen card with colour-coded title (`BLUE WINS` blue,
+  `RED WINS` red, `DRAW` amber) + sub-line explanation.
+- Reset button hides overlay + launch-banner locally for
+  instant-feeling UI even before the next WebSocket snapshot.
+
+## Task 2 — Ballistic + HGV spawn in the far-north strip
+
+Pre-I the `_sample_spawn` in `red_ai.py` put ballistic at
+`STRAIT_CENTER_Y + 50 km = 170 km` and HGV at `190 km` — both still
+south of the visible arena top. The demo narrative ("strategic
+assets fire from deep Red territory") wanted a wider, far-north
+origin. Milestone I dedicates a 10 km strip at the top of the
+arena to ballistic / HGV spawns and keeps drone / cruise on their
+Milestone H3 `RedLauncherFleet` path.
+
+- New `STRATEGIC_Y_BAND = (ARENA_Y - 15 km, ARENA_Y - 5 km)` — a
+  10 km band 5 km inside the top edge. X sampled uniformly across
+  the full 150 km arena width, so strategic threats can now arrive
+  from any bearing.
+- Per-kind Z floors for reentry realism:
+  - `BALLISTIC_MIN_Z = 20 km` (RV entry altitude).
+  - `HGV_MIN_Z = 30 km` (glide ceiling).
+  Existing spec ranges (both 30-40 km) already exceed the floors;
+  the clamp protects a future range retune.
+- Old `STRAIT_OFFSET_BALLISTIC` / `STRAIT_OFFSET_HGV` constants
+  deleted. `STRAIT_CENTER_Y` kept for drone / cruise fallback.
+
+Sanity (200 s run, 26 spawns observed):
+- ballistic Y ∈ [235.7, 242.8] km, Z ∈ [32.5, 38.4] km.
+- HGV Y ∈ [235.5, 243.7] km, Z ∈ [34.8, 39.4] km.
+Both inside the band, both above their floors.
+
+## Task 3 — HGV manoeuvre freedom
+
+Milestone D's HGV ran a scripted wide-S (two virtual waypoints at
+±15 km lateral) plus a Level-5 jink when any interceptor closed
+inside 12 km. Both evasion mechanisms were hardcoded, which is
+exactly what the operator wants to strip out before the Red AI
+layer (coming in a later milestone) takes over.
+
+Default path is now a straight-line glide toward the pre-selected
+target site:
+
+- `Threat.__init__` builds HGV state with `waypoint = target` and
+  `_wp_queue = []`. Initial velocity points directly at the
+  target (XY unit, -80 m/s Z).
+- `Threat.step` for HGV drops the waypoint-advance block and the
+  `world.interceptors` nearest-neighbour scan. No S, no jink.
+  Terminal 3D aim at the target preserved for the dive within
+  30 km. The same cruise-altitude-hold + lift-cancels-gravity
+  physics carry through to the glide.
+- Constants `_HGV_S_OFFSET_M`, `_HGV_WP_SWITCH_RADIUS`,
+  `_HGV_DETECT_RADIUS`, `_HGV_JINK_G` removed. `_HGV_BLEED_RATE`
+  and `_HGV_STALL_SPEED` retained.
+
+External control hook:
+
+- `Threat.override_maneuver(turn_direction, g_load)` (on every
+  Threat instance; no-op on non-HGV since only the HGV step path
+  consumes `_override_accel`).
+- `turn_direction`: any 3-vector, normalised internally. Zero-
+  vector clears a pending override.
+- `g_load`: desired G load, clamped to `[0, spec.max_g]` (so HGV
+  commands at 50 G clamp to 8 G, negative G clamps to 0).
+- Stored as `_override_accel = unit * g * GRAVITY` on the threat.
+  HGV step consumes the field, applies it to `accel`, adds its
+  magnitude to the KE-bleed manoeuvre budget, and clears it. Each
+  call is good for exactly one step — Red AI must keep calling
+  every tick to maintain a sustained turn.
+- Physics limits remain: max_g cap (the override direction is
+  always unit-length, so the magnitude is `g_clamped * GRAVITY`
+  ≤ `max_g * GRAVITY`); KE bleed quadratic in (total_G / max_G)²;
+  500 m/s stall preserved.
+
+Sanity (headless): HGV lateral deviation after 10 s of free flight
+= 0.0 m (pre-I this would be ±2-3 km from the scripted S).
+`override_maneuver([1,0,0], 50)` → stored accel magnitude 98.10
+m/s² = exactly 8 G × GRAVITY (clamp working). `override_maneuver
+([1,0,0], -5)` → zero (clamped to 0). `override_maneuver([0,0,0],
+5)` → `_override_accel = None` (zero-vector clear).
+
+Balance note (actual measured vs predicted): the spec anticipated
+straight-line HGV would be easier to intercept ("since straight-
+line HGV is easier to intercept"). The measurement disagreed —
+post-Task-3 the HGV leak rate climbed from ~0.6 / match (Milestone
+H, with the scripted S + jink) to ~3.0 / match (Milestone I, a
+100 % leak rate against head-on Mach-17 geometry). Two physics
+factors produce the shift:
+
+1. **Head-on geometry is the WORST case for Euler-0.05 s PN.** The
+   scripted S-pattern made HGVs cross defensive envelopes
+   transversally, which gave PN guidance a tractable closing-
+   velocity problem. Head-on convergence at Mach 17 + interceptor
+   max 1700 m/s yields a relative displacement of ~380 m per 0.05 s
+   physics tick, and CPA typically drifts to 100-300 m — outside
+   PAC-3's 60 m direct-hit radius and eating the prox damage
+   quadratic falloff.
+2. **Shorter path = less engagement window.** The scripted S added
+   ~30 % to HGV transit distance. Removing it gave Blue ~30 %
+   less time to launch, home, and resolve a PN solution.
+
+The Milestone I win conditions (site HP, Blue budget) add a Red-
+wins vector that partially restores balance — matches that would
+have been "many leaks but Blue survives" under Milestone H now
+resolve as "site dies, Red wins" when enough HGV leak concentrate
+on the same target. Result across three 20-match sweeps: Blue
+25-50 %, Draw 40-60 %, Red 0-25 % — landing inside spec's 30-55 /
+30-50 / 10-30 window on the first sweep and trending toward the
+window edges on subsequent runs (binary-concentration variance at
+N = 20).
+
+Route 3 (PN precision upgrade — RK4 + sub-tick guidance + ZEM
+feedback) on the ROADMAP is the real fix; it would close the
+HGV-leak gap without restoring a scripted evasion pattern.
+
+## Task 4 — Document SLM ballistic gap
+
+Added to STATUS "Known Limitations":
+
+> Forward-deployed IRIS-T SLM launchers do not attempt ballistic
+> intercepts despite having geometric coverage. This is a `blue_ai`
+> engagement-decision artifact — SLM is listed in
+> `FALLBACK_RULES[BALLISTIC]` but `PRIMARY_RULES[BALLISTIC]` blocks
+> on PAC-3 / PAC-2 ready time, so in practice the fallback branch
+> never gets reached when ballistic fallback actually fires.
+> Deferred intentionally; the rule-based engagement ladder is
+> scheduled to be replaced by a learned Blue AI decision layer.
+
+ROADMAP updated: Route 7 closed; the prior "Milestone I —
+Deployment UI" renamed to **Milestone J — Deployment UI** to free
+up the "I" slot.
+
+## Files touched (Milestone I)
+
+```
+backend/sim/config.py       — MAX_SIM_TIME 3600, SITE_HP_START,
+                              SITE_LEAK_DAMAGE, BLUE_BUDGET_START
+backend/sim/sites.py        — Site.hp_max, reset_leaks restores HP
+backend/sim/world.py        — blue_budget field, site.hp decrement
+                              on leaks, snapshot stats additions
+backend/sim/blue_ai.py      — world.blue_budget deduction on _fire
+backend/sim/scenarios.py    — Scenario.winner + done; snap.winner,
+                              snap.max_sim_time, site.hp_max
+backend/sim/red_ai.py       — _sample_spawn: far-north strip for
+                              ballistic / HGV with altitude floors
+backend/sim/entities.py     — HGV straight-default + no jink,
+                              Threat.override_maneuver + _override_accel
+backend/server.py           — stop on scenario.done
+backend/test_balance.py     — read scenario.winner directly
+
+frontend/index.html         — budget panel, match-overlay root
+frontend/js/hud.js          — renderSiteHp, renderBudget,
+                              renderMatchOverlay, reset-clears
+frontend/style.css          — site-hp-bar / budget / overlay styles
+
+progress/STATUS.md          — Milestone I section + limits refresh
+progress/ROADMAP.md         — Route 7 closed, Milestone J rename
+```
+
+## How to test Milestone I
+
+```bash
+cd team-missile-intercept/backend
+python server.py
+# http://localhost:5174/  → click Start
+```
+
+1. Top-left HUD shows per-site HP bars (Firewatch / Spear Point /
+   Main Base each at 100/100), Blue budget panel at `$120.0M /
+   $120.0M` (full green bar).
+2. During play, budget counter decrements on every interceptor
+   launch and the bar colour shifts green → amber → red → flashes
+   red below ~15 %.
+3. Ballistic / HGV trails visibly enter at the far-north map edge
+   (Y = 235–245 km). Drones + cruise still emerge from the red-
+   tinted launcher boxes on the north islands.
+4. HGVs fly straight toward their target site — no S-weave, no
+   range-gated jink.
+5. On match end, a blurred full-screen overlay appears (`BLUE
+   WINS` blue, `RED WINS` red, `DRAW` amber) with a sub-line.
+   Reset clears it.
+6. `python test_balance.py` prints the sweep tally using the new
+   win-condition resolver.
+

@@ -51,7 +51,8 @@ class Site:
     name: str
     subtype: str                    # 'air_base' | 'capital' | 'major_city' | 'base'
     pos: Tuple[float, float]         # world (x, y) metres
-    hp: int = 100                    # reserved for future degradation; currently unused
+    hp: int = config.SITE_HP_START   # Milestone I: decremented per-leak
+    hp_max: int = config.SITE_HP_START
     leaks: int = 0                   # threats that crossed hit radius
 
 
@@ -110,8 +111,10 @@ SOUTH_SITES: List[Site] = _build_south_sites()
 
 
 def reset_leaks() -> None:
-    """Zero every site's leak counter. Used by Scenario reset so a fresh
-    run starts with a clean HUD."""
+    """Zero every site's leak counter AND restore full HP. Called by
+    Scenario at construction so a fresh run starts with a clean HUD
+    and no damage carried over from the previous match."""
     for s in SOUTH_SITES:
         s.leaks = 0
-        s.hp = 100
+        s.hp = config.SITE_HP_START
+        s.hp_max = config.SITE_HP_START

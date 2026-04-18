@@ -29,7 +29,13 @@ export function wireHud(sendCmd) {
   };
   bindClick('btn-start', { cmd: 'start' });
   bindClick('btn-pause', { cmd: 'pause' });
-  bindClick('btn-reset', { cmd: 'reset' });
+  // Reset also clears the match overlay / launch banner locally so the
+  // HUD reads "fresh" the instant the operator clicks, without waiting
+  // for the next WebSocket snapshot.
+  document.getElementById('btn-reset')?.addEventListener('click', () => {
+    sendCmd({ cmd: 'reset' });
+    resetHudEventTracking();
+  });
 
   const speed = document.getElementById('speed');
   const speedVal = document.getElementById('speed-val');
@@ -68,8 +74,14 @@ export function updateHud(snap) {
     _seenEvents.clear();
   }
 
-  // Site-damage panel — list sites with leaks > 0, sorted by count desc.
-  renderSiteDamage(snap.sites || []);
+  // Per-site HP bars (Milestone I — replaces the old leak counters).
+  renderSiteHp(snap.sites || []);
+
+  // Blue budget bar (Milestone I).
+  renderBudget(snap.stats || {});
+
+  // End-of-match overlay (Milestone I).
+  renderMatchOverlay(snap.winner || null);
 
   // Ammo rows (falls back to ∞ when server omits the field, e.g. legacy runs)
   const ammo = snap.ammo || {};
@@ -121,33 +133,91 @@ const SITE_SUBTYPE_LABEL = {
   base: 'Base',
 };
 
-function renderSiteDamage(sitesList) {
+function renderSiteHp(sitesList) {
   const el = document.getElementById('site-damage-list');
   if (!el) return;
-  const damaged = sitesList
-    .filter((s) => (s.leaks || 0) > 0)
-    .slice()
-    .sort((a, b) => (b.leaks || 0) - (a.leaks || 0));
-  if (damaged.length === 0) {
-    el.innerHTML = '<div class="site-damage-empty">all sites intact</div>';
+  if (!sitesList.length) {
+    el.innerHTML = '<div class="site-damage-empty">waiting for scenario…</div>';
     return;
   }
-  el.innerHTML = damaged
+  el.innerHTML = sitesList
     .map((s) => {
       const color = SITE_SUBTYPE_COLORS[s.subtype] || '#888';
       const kind = SITE_SUBTYPE_LABEL[s.subtype] || s.subtype;
-      const leaks = s.leaks || 0;
-      const word = leaks === 1 ? 'leak' : 'leaks';
+      const hp = Math.max(0, s.hp || 0);
+      const hpMax = Math.max(1, s.hp_max || 100);
+      const pct = Math.min(100, (hp / hpMax) * 100);
+      let barCls = 'site-hp-bar-inner';
+      if (hp <= 0) barCls += ' dead';
+      else if (pct < 30) barCls += ' low';
       return (
-        `<div class="site-damage-row">` +
+        `<div class="site-hp-row">` +
+        `<div class="site-hp-head">` +
         `<span class="site-damage-dot" style="background:${color}"></span>` +
         `<span class="site-damage-name">${escapeHtml(s.name)}</span>` +
         `<span class="site-damage-sub">${kind}</span>` +
-        `<span class="site-damage-count">${leaks} ${word}</span>` +
+        `<span class="site-hp-val">${hp}/${hpMax}</span>` +
+        `</div>` +
+        `<div class="site-hp-bar-outer">` +
+        `<div class="${barCls}" style="width:${pct}%"></div>` +
+        `</div>` +
         `</div>`
       );
     })
     .join('');
+}
+
+function formatMoney(n) {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+  return `$${n}`;
+}
+
+function renderBudget(stats) {
+  const curEl = document.getElementById('budget-current');
+  const maxEl = document.getElementById('budget-max');
+  const barEl = document.getElementById('budget-bar-inner');
+  if (!curEl || !maxEl || !barEl) return;
+  const cur = stats.blue_budget;
+  const max = stats.blue_budget_max;
+  if (cur == null || max == null) {
+    curEl.textContent = '—';
+    maxEl.textContent = '—';
+    barEl.style.width = '0%';
+    return;
+  }
+  curEl.textContent = formatMoney(cur);
+  maxEl.textContent = formatMoney(max);
+  const pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
+  barEl.style.width = `${pct}%`;
+  barEl.classList.remove('low', 'critical', 'empty');
+  if (cur <= 0) barEl.classList.add('empty');
+  else if (pct < 15) barEl.classList.add('critical');
+  else if (pct < 35) barEl.classList.add('low');
+}
+
+const OVERLAY_TEXT = {
+  blue: { title: 'BLUE WINS', sub: 'Red force neutralised — all waves defeated.' },
+  red:  { title: 'RED WINS',  sub: 'Blue defence collapsed — site destroyed or budget exhausted.' },
+  draw: { title: 'DRAW',      sub: 'Safety time cap reached.' },
+};
+
+function renderMatchOverlay(winner) {
+  const el = document.getElementById('match-overlay');
+  if (!el) return;
+  if (!winner) {
+    el.classList.add('hidden');
+    return;
+  }
+  const text = OVERLAY_TEXT[winner] || { title: winner.toUpperCase(), sub: '' };
+  const titleEl = document.getElementById('mo-title');
+  const subEl = document.getElementById('mo-sub');
+  if (titleEl) {
+    titleEl.textContent = text.title;
+    titleEl.className = `mo-title mo-${winner}`;
+  }
+  if (subEl) subEl.textContent = text.sub;
+  el.classList.remove('hidden');
 }
 
 function showLaunchBanner(interceptorKind, targetId) {
@@ -168,8 +238,8 @@ function showLaunchBanner(interceptorKind, targetId) {
 // state and banner re-triggers for the next game.
 export function resetHudEventTracking() {
   _seenEvents.clear();
-  const el = document.getElementById('launch-banner');
-  el?.classList.add('hidden');
+  document.getElementById('launch-banner')?.classList.add('hidden');
+  document.getElementById('match-overlay')?.classList.add('hidden');
 }
 
 export function setWsStatus(connected) {

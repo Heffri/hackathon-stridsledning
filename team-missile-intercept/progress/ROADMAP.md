@@ -1,7 +1,52 @@
 # Roadmap — What's Next
 
-> Context: Milestones E, F, G, and H are complete. Milestone D gave the sim realistic physics (fuel / coast / atmosphere), saturation AI, per-weapon 3D meshes, 250 km arena, and real-world threat speeds. Milestone E added visual packaging: per-entity status panel, enriched AI logs, seeker cones, Boreal Passage 3D terrain, and dusk sky + explosion flashes. Milestone F added Saab landmark structures + labels and distributed launcher positions with per-launcher range arcs. Milestone G added full-circle launcher arcs, land-only launcher validation, strait-origin threats, and multi-site targets with per-site leak tracking. Milestone H refactored `blue_ai` to per-launcher range math, filtered out-of-arena Saab sites, added visible Red launcher boxes on the north side, parented range rings to launcher Groups, and rebalanced launcher positions so the 20-match sweep lands at Blue 30-40 / Draw 35-45 / Red 25 (inside the target window).
+> Context: Milestones E – I are complete. Milestone I closed three
+> game-engine gaps surfaced during live demo review: real win
+> conditions (per-site HP + Blue budget + 3600 s safety cap replacing
+> the old 600 s time cap), ballistic + HGV spawn in a 10 km far-north
+> strip with reentry altitude floors (ballistic ≥ 20 km, HGV ≥ 30 km),
+> and HGV manoeuvre freedom (default straight-line flight plus an
+> `override_maneuver(turn_dir, g_load)` hook so a future Red AI can
+> drive HGV trajectories per-tick with the 8 G / KE-bleed / 500 m/s
+> stall physics still enforced). The sim now has a proper game loop
+> for Red / Blue AI layers to plug into.
 > Time remaining until Hack Day: ~1 week (April 25, 2026).
+
+## What Milestone I Did to the Old Roadmap
+
+Items now **closed**:
+
+- ✅ **Route 7 — Base HP + economy.** `Site.hp` now decrements on leak
+  (drone 5 / cruise 15 / ballistic 30 / HGV 40); `World.blue_budget`
+  starts at $120 M and is deducted per interceptor launch from
+  `spec.usd_cost`. `Scenario.winner` resolves to `'red' | 'blue' |
+  'draw' | None` with the rules Red-loses-on-site-HP-0 /
+  Blue-loses-on-budget-exhaustion / Draw-on-3600 s-safety-cap. Server
+  stops on `scenario.done`; HUD renders HP bars, budget bar, and a
+  full-screen end-of-match overlay.
+- ✅ **Ballistic / HGV spawn cleanup.** Strategic-range weapons now
+  originate in a 10 km strip at the far-north arena edge (Y 235–245 km)
+  with an X across the full arena width. Altitude floors: ballistic
+  ≥ 20 km, HGV ≥ 30 km. Old `STRAIT_OFFSET_BALLISTIC` /
+  `STRAIT_OFFSET_HGV` retired; `STRAIT_CENTER_Y` stays for drone /
+  cruise fallback.
+- ✅ **HGV scripted jink removed.** Default HGV flies straight to its
+  pre-selected target. External override hook
+  `Threat.override_maneuver(turn_dir, g_load)` stores a per-tick
+  commanded lateral accel; g_load clamped to `spec.max_g`, KE bleed
+  still quadratic in (G/Gmax)², 500 m/s stall floor preserved.
+
+Items **surfaced** by Milestone I:
+
+- **SLM as ballistic fallback** is wired in `FALLBACK_RULES[BALLISTIC]`
+  but never fires in practice because `PRIMARY_RULES[BALLISTIC]`
+  blocks on PAC-3 / PAC-2 ready time. Rule-based engagement ladder is
+  queued for replacement by a learned Blue AI decision layer; this
+  gap closes with that refactor.
+- **Red AI HGV control.** Override hook is in place; a Red AI needs to
+  call it every tick with a real-time decision based on nearest
+  interceptor, threat-to-target urgency, and KE budget. That is the
+  first concrete customer of the hook.
 
 ## What Milestone H Did to the Old Roadmap
 
@@ -24,9 +69,9 @@ Items now **closed**:
   3 + 2 red-tinted boxes on north islands / mainland, positions
   north-land-validated at module load.
 
-Items **surfaced** by Milestone H:
+Items **surfaced** by Milestone H (now reclassified as Milestone J):
 
-- **Milestone I — Deployment UI (pre-game phase)** — let the
+- **Milestone J — Deployment UI (pre-game phase)** — let the
   operator (human or AI) place Blue launcher positions before each
   scenario start. Scope: drag-drop on the scene, constraint =
   `point_on_south_land`, AI-auto button that picks positions to
@@ -34,12 +79,9 @@ Items **surfaced** by Milestone H:
   `LauncherMesh` now a Group (Milestone H Part 4), the scene-graph
   side is already prepared — moving the Group moves box + ring
   together.
-- **Drone sim-cap note** — drones from the new Red launcher
-  positions targeting Main Base take 1206-1776 s at 120 m/s; the
-  1200 s test-balance sim cap truncates those trajectories so they
-  register as neither intercepts nor leaks. Extending the cap or
-  nudging drone launcher positions slightly closer to the strait
-  would normalise the statistic. Not critical for demo.
+- ✅ (closed in Milestone I) **Drone sim-cap note** — the 1200 s cap
+  was replaced with a 3600 s safety net, so drones on the 1206–1776 s
+  transit from North Remote Island now get to land properly.
 
 ## What Milestone G Did to the Old Roadmap
 
@@ -80,7 +122,7 @@ Items **surfaced** by Milestone F:
 - ✅ (closed in Milestone H) — **Per-launcher range math in
   engagement decisions**. Now refactored in `blue_ai`.
 - **Placement AI / Deployment UI** — still open, refined into
-  "Milestone I — Deployment UI" (see top of this ROADMAP).
+  "Milestone J — Deployment UI" (see top of this ROADMAP).
 
 ## What Milestone E Did to the Old Roadmap
 
@@ -99,22 +141,26 @@ Route 2 is **fully closed**. Remaining routes:
 - Route 4 — Overnight self-play tuning
 - Route 5 — Radar / sensor model
 - Route 6 — Red AI Levels 3 / 4 / 5 (adaptive waves, stealth, real-time HGV)
-- Route 7 — Base HP + economy
+- ✅ (closed in Milestone I) Route 7 — Base HP + economy.
 
 New items **surfaced by Milestone D**:
 
 - Radar / sensor model (blue_ai is still omniscient; `sensors-c2.md` has the formula)
-- Red AI Level 3/4/5 (wave scripts are dumb; HGV jink is pre-scripted not adaptive)
-- Base HP / economy (leaks need consequences; PAC-3 cost needs to matter)
+- Red AI Level 3/4/5 (wave scripts are dumb). Milestone I gave the
+  Red AI a concrete hook: `Threat.override_maneuver(turn_dir, g_load)`
+  is the per-tick control input for HGV; Red AI Level 5 will use it.
+- ✅ (closed in Milestone I) Base HP / economy — leaks now cost HP;
+  PAC-3 cost is deducted from a finite budget.
 
-New items **surfaced by Milestones F / G / H** (repeated for
+New items **surfaced by Milestones F / G / H / I** (repeated for
 visibility alongside the route list):
 
-- Milestone I — Deployment UI (pre-game placement of Blue launchers
+- Milestone J — Deployment UI (pre-game placement of Blue launchers
   on `BLUE_LAUNCHER_POSITIONS` via drag-drop on the map, with
   AI-auto option).
-- Site HP + economy (Milestone G surface, still open).
 - Smarter Red AI target selection (Milestone G surface, still open).
+- SLM ballistic fallback never fires — rule-ordering gap documented
+  in STATUS. Closes with the learned-Blue-AI refactor.
 
 ## The Four Routes (Updated)
 
@@ -290,7 +336,7 @@ Currently any leak = leak, regardless of weapon. PAC-3 expense doesn't matter.
 
 ---
 
-### Milestone I — Deployment UI
+### Milestone J — Deployment UI
 
 **Effort:** 3–4 hours
 **Impact:** Medium-high — turns the demo from a fixed simulation into

@@ -16,7 +16,10 @@ GROUND_Z = 0.0
 DT = 0.05            # physics step (s)
 PHYSICS_HZ = 1.0 / DT
 STREAM_HZ = 15.0     # WebSocket state broadcast
-MAX_SIM_TIME = 600.0 # safety cap (s)
+# Milestone I replaced the 600 s hard cap with real win conditions
+# (site HP depletion, Blue budget exhaustion, Red-out-of-threats). The
+# 3600 s value is a safety net only — a typical match ends in 150-400 s.
+MAX_SIM_TIME = 3600.0
 
 # --- Environment ---
 GRAVITY = 9.81       # m/s^2, applied -Z
@@ -140,6 +143,30 @@ for _kind, _positions in RED_LAUNCHER_POSITIONS.items():
             f"inland until it lands on a visible mainland or island."
         )
 del _kind, _positions, _x, _y
+
+# --- Milestone I: win conditions + economy ---
+# Each Blue-side site starts at SITE_HP_START and takes kind-tagged damage
+# on every leak event. When any site's hp falls to 0, Red wins.
+# Spec default. Affects `scenario.winner` only — `test_balance.py`
+# classifies by leak count, not HP, so HP tuning does not move the
+# balance sweep buckets. For the game-loop end condition, HP 100 means
+# a single site absorbs ~2 concentrated HGV leaks (80 dmg) before
+# dying; 3+ leaks on the same site (or a mix with cruise / ballistic)
+# is what the match-end-on-Red logic watches for.
+SITE_HP_START = 100
+SITE_LEAK_DAMAGE = {
+    "drone":       5,
+    "cruise_sub": 15,
+    "ballistic":  30,
+    "hgv":        40,
+}
+# Starting Blue budget in USD. Sized so a typical match (25-40 interceptor
+# launches, weighted toward mid-tier SLM / SLS / RBS-70 with some PAC-3 /
+# PAC-2) burns roughly 30-60 % of the budget. See WEAPON_SPECS.md for
+# per-interceptor `usd_cost` values; maximum full-magazine value across
+# the current 9-launcher loadout is ≈ $49 M so $120 M gives real
+# headroom but a wave-5 saturation can visibly tighten the bar.
+BLUE_BUDGET_START = 120_000_000
 
 # --- Strait / threat-origin geometry (Milestone G) ---
 # Threats spawn *north of the strait centerline*, not relative to the

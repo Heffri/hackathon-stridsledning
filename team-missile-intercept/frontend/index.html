@@ -19,6 +19,13 @@
 
   <div id="launch-banner" class="hidden"></div>
 
+  <div id="match-overlay" class="hidden">
+    <div class="mo-inner">
+      <div id="mo-title" class="mo-title">BLUE WINS</div>
+      <div id="mo-sub" class="mo-sub"></div>
+    </div>
+  </div>
+
   <div id="status-panel" class="hidden"></div>
 
   <div id="hud">
@@ -37,9 +44,20 @@
         <div>Leaked: <span id="stat-leaked">0</span></div>
       </div>
       <div class="hud-block site-damage" id="site-damage-panel">
-        <div class="ammo-title">Site damage</div>
+        <div class="ammo-title">Site HP</div>
         <div id="site-damage-list" class="site-damage-list">
-          <div class="site-damage-empty">all sites intact</div>
+          <div class="site-damage-empty">waiting for scenario…</div>
+        </div>
+      </div>
+      <div class="hud-block budget" id="budget-panel">
+        <div class="ammo-title">Blue budget</div>
+        <div class="budget-amount">
+          <span id="budget-current">—</span>
+          <span class="budget-sep">/</span>
+          <span id="budget-max" class="budget-max">—</span>
+        </div>
+        <div class="budget-bar-outer">
+          <div id="budget-bar-inner" class="budget-bar-inner"></div>
         </div>
       </div>
       <div class="hud-block ammo" id="ammo-panel">
