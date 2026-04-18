@@ -97,20 +97,25 @@ export function createScene(canvas) {
   // Arena is asymmetric (150 km wide × 250 km deep to accommodate HGV
   // spawns 180 km north of the base). Ground plane is a rectangle
   // centred on the arena centre, not the base, so the whole fight area
-  // is covered. Grid uses the larger dimension so gridlines extend
-  // through the full depth (few east-west gridlines drape off the edge,
-  // fine visually).
+  // is covered.
   const widthUnits = ARENA_X * SCALE;
   const depthUnits = ARENA_Y * SCALE;
   const arenaCentreZ = -(ARENA_Y / 2 - BASE_POS[1]) * SCALE;
-  const gridSize = Math.max(widthUnits, depthUnits);
-  // 1 division per kilometre — gridSize is in scene units and 1 scene
-  // unit = 1 km (SCALE = 0.001). Lets the operator eyeball weapon
-  // ranges on the floor: CIWS 4 km = 4 cells, RBS 70 9 km = 9 cells,
-  // SLS 12, SLM 40, PAC-3 60, PAC-2 70.
-  const gridDivisions = Math.round(gridSize);
-  const grid = new THREE.GridHelper(gridSize, gridDivisions, 0x224466, 0x152842);
-  grid.position.set(0, 0, arenaCentreZ);
+  // Rectangular floor grid matching the ground's 150 × 250 km extent.
+  // THREE.GridHelper is square-only, so a max(150, 250) = 250 grid hung
+  // 50 km off the east and west edges. makeRectGrid builds a
+  // LineSegments grid whose edges line up with the ground rectangle.
+  // 1 unit = 1 km; sub-lines every 1 km let the operator eyeball weapon
+  // ranges (CIWS 4 km = 4 cells, RBS 70 9, SLS 12, SLM 40, PAC-3 60,
+  // PAC-2 70), with brighter main lines every 10 km for coarser reads.
+  const grid = makeRectGrid(
+    widthUnits,
+    depthUnits,
+    1,
+    arenaCentreZ,
+    0x224466,
+    0x152842,
+  );
   scene.add(grid);
 
   // "Sea" plane — slightly deeper blue so the landmasses read as
@@ -328,6 +333,51 @@ export function worldToScene(x, y, z) {
 
 export function worldToSceneXY(x, y) {
   return [(x - BASE_X) * SCALE, -(y - BASE_Y) * SCALE];
+}
+
+// Rectangular floor grid — THREE.GridHelper is always square, so we build
+// one manually from LineSegments whose extent matches the rectangular
+// ground plane exactly. `spacing` is in scene units (1 unit = 1 km); every
+// 10th line is drawn in `mainColor`, the rest in `subColor`, reproducing
+// the main/sub colour hierarchy GridHelper provided.
+function makeRectGrid(width, depth, spacing, centreZ, mainColor, subColor) {
+  const halfW = width / 2;
+  const halfD = depth / 2;
+  const minX = -halfW;
+  const minZ = centreZ - halfD;
+  const maxZ = centreZ + halfD;
+  const mainPositions = [];
+  const subPositions = [];
+  // East-west lines (vary Z).
+  const nZ = Math.round(depth / spacing);
+  for (let i = 0; i <= nZ; i++) {
+    const z = minZ + i * spacing;
+    const arr = (i % 10 === 0) ? mainPositions : subPositions;
+    arr.push(minX, 0, z, halfW, 0, z);
+  }
+  // North-south lines (vary X).
+  const nX = Math.round(width / spacing);
+  for (let i = 0; i <= nX; i++) {
+    const x = minX + i * spacing;
+    const arr = (i % 10 === 0) ? mainPositions : subPositions;
+    arr.push(x, 0, minZ, x, 0, maxZ);
+  }
+  const group = new THREE.Group();
+  for (const [positions, color] of [[mainPositions, mainColor], [subPositions, subColor]]) {
+    if (positions.length === 0) continue;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute(
+      'position',
+      new THREE.BufferAttribute(new Float32Array(positions), 3),
+    );
+    const mat = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.55,
+    });
+    group.add(new THREE.LineSegments(geom, mat));
+  }
+  return group;
 }
 
 // Canvas-textured Sprite label used for Boreal Passage landmarks. A 256×64
