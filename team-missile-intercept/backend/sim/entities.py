@@ -30,20 +30,22 @@ _VLS_SAM_KINDS = (
 )
 _VLS_BOOST_DURATION = 1.5  # seconds
 
-# HGV scripted manoeuvre — two virtual waypoints laterally offset from the
-# spawn→base line. PN homes on each in turn, producing a wide S with the
-# HGV's full max_g (10 G) — the sharp mid-course weave that makes an HGV
-# visually distinct from a ballistic re-entry. Final leg is PN onto the
-# base for the terminal dive.
-_HGV_S_OFFSET_M = 15_000.0     # ±15 km lateral deviation per leg
-_HGV_WP_SWITCH_RADIUS = 8_000.0  # horizontal distance to advance to next wp
-
-# Level-5 evasive manoeuvre — HGV jinks when an interceptor closes inside
-# this radius. Gives a visible defensive reaction and couples with the
-# energy-bleed model (sharper jinks cost more speed, tactical tension).
-_HGV_DETECT_RADIUS = 12_000.0    # m
-_HGV_JINK_G = 8.0                # g's of lateral evasion accel
-
+# Milestone I: HGV runs straight toward its pre-selected target by
+# default — no scripted S-weave, no range-gated jink, no sine pattern.
+# External control comes in via `Threat.override_maneuver(turn_dir,
+# g_load)` which stores a commanded lateral acceleration consumed on
+# the NEXT physics step; call it every tick to maintain a sustained
+# manoeuvre. This replaces Milestone D's pre-scripted evasion so the
+# Red AI layer (coming after this milestone) can drive HGV trajectories
+# directly without the integrator fighting a scripted waypoint queue.
+#
+# Physics limits are enforced regardless of the command source:
+#   * commanded G clamped to `spec.max_g` (8 for HGV)
+#   * quadratic KE bleed on (current_G / max_G)² — sharper turn, more
+#     speed loss
+#   * below `_HGV_STALL_SPEED` the glide collapses and the HGV is marked
+#     dead
+#
 # Hypersonic speed / energy model. A manoeuvring HGV bleeds kinetic
 # energy at roughly bleed_rate × (current_G / max_G)² per second. Below
 # _HGV_STALL_SPEED it can no longer generate lift and falls out of its
@@ -72,6 +74,10 @@ class Threat:
         "_prev_pos",
         "_prev_vel",
         "_cruise_alt_override",
+        # Milestone I: one-tick HGV manoeuvre command, np.ndarray(3) of
+        # commanded lateral acceleration in m/s². Consumed + cleared in
+        # Threat.step. None = no external override this tick.
+        "_override_accel",
     )
 
     def __init__(
@@ -111,29 +117,20 @@ class Threat:
         all_wps.append(target.copy())
 
         if kind == ThreatType.HGV:
-            # Hypersonic glide: PN-guide toward two virtual waypoints
-            # offset ±15 km laterally from the spawn→base line at the
-            # glide altitude, then PN onto the base. This produces a wide
-            # S with the HGV's full max_g instead of a flat sinusoid.
+            # Milestone I: straight-line glide toward the pre-selected
+            # target. No scripted S-weave, no evasion. Red AI can
+            # override per-tick via `override_maneuver` to insert a
+            # commanded lateral accel.
             to_target_h = np.array([target[0] - start[0], target[1] - start[1], 0.0])
             norm_h = float(np.linalg.norm(to_target_h))
             if norm_h < 1e-6:
                 to_target_h = np.array([0.0, -1.0, 0.0])
                 norm_h = 1.0
             horiz_unit = to_target_h / norm_h
-            # Left-hand perpendicular in the XY plane.
-            perp = np.array([-horiz_unit[1], horiz_unit[0], 0.0])
-            # Two waypoints at 1/3 and 2/3 along the path, on opposite
-            # sides. Keep their altitude at the spawn altitude so PN pulls
-            # the HGV along the horizontal S rather than down.
-            wp1 = start + horiz_unit * (norm_h * (1.0 / 3.0)) + perp * _HGV_S_OFFSET_M
-            wp1[2] = spawn_z
-            wp2 = start + horiz_unit * (norm_h * (2.0 / 3.0)) - perp * _HGV_S_OFFSET_M
-            wp2[2] = spawn_z
             vel = horiz_unit * self.spec.cruise_speed
             vel[2] = -80.0
-            self.waypoint = wp1
-            self._wp_queue = [wp2, target.copy()]
+            self.waypoint = target.copy()
+            self._wp_queue = []
         elif kind == ThreatType.BALLISTIC:
             # Terminal-phase ballistic trajectory: solve for the launch angle
             # below horizontal that lands on the base given spawn altitude h
@@ -212,6 +209,37 @@ class Threat:
         # Per-threat elapsed sim time (advanced inside step). Used by the
         # drone altitude-drift sine and any future time-of-flight effects.
         self._elapsed = 0.0
+        # Milestone I: no override pending by default.
+        self._override_accel = None
+
+    def override_maneuver(self, turn_direction, g_load: float) -> None:
+        """Milestone I external-control hook. Stores a commanded lateral
+        acceleration consumed on the NEXT `step` call; persists for
+        exactly one tick so callers maintain a sustained manoeuvre by
+        calling every tick.
+
+        Args:
+          turn_direction: 3-vector (list / tuple / np.ndarray) naming
+            the commanded acceleration direction. Any magnitude — the
+            method normalises internally. Zero-vector clears the
+            override.
+          g_load: desired manoeuvre load in G's. Clamped to
+            `[0, self.spec.max_g]`; negative values are clamped to 0.
+
+        Physics limits still apply after the integrator (max_g cap on
+        the total commanded accel, quadratic KE bleed, 500 m/s stall).
+        Intended for the Red AI layer to drive HGV trajectories; a
+        no-op on non-HGV threats is fine — the field exists on every
+        Threat but only the HGV step path consumes it.
+        """
+        dir_arr = np.array(turn_direction, dtype=np.float64).reshape(3)
+        n = float(np.linalg.norm(dir_arr))
+        if n < 1e-6:
+            self._override_accel = None
+            return
+        dir_unit = dir_arr / n
+        g_clamped = max(0.0, min(float(g_load), float(self.spec.max_g)))
+        self._override_accel = dir_unit * (g_clamped * config.GRAVITY)
 
     def step(self, dt: float, world=None) -> None:
         if not self.state.alive:
@@ -220,31 +248,12 @@ class Threat:
         pos = self.state.pos
         vel = self.state.vel
 
-        # --- HGV: unpowered glide with Level-5 evasion + kinetic bleed ---
-        # Real HGVs coast on re-entry kinetic energy; no main propulsion
-        # remains in the glide phase. Pursuit-steered virtual waypoints
-        # produce a wide S, terminal dive aims at the base in 3D. When
-        # an interceptor closes inside _HGV_DETECT_RADIUS we add a
-        # lateral jink — the defensive reaction costs energy via the
-        # same (current_G / max_G)² bleed that drives all manoeuvre
-        # losses, so sharp evasion trades future speed for momentary
-        # safety.
+        # --- HGV: unpowered glide straight to target (Milestone I) ---
+        # No scripted S, no range-gated jink. External callers drive
+        # lateral manoeuvre via `override_maneuver(dir, g)`, clamped to
+        # spec.max_g. KE bleed + stall physics still apply.
         if self.spec.kind == ThreatType.HGV:
-            wp = self.waypoint
-            if self._wp_queue:
-                next_wp = self._wp_queue[0]
-                from_wp_to_next_h = np.array(
-                    [next_wp[0] - wp[0], next_wp[1] - wp[1], 0.0]
-                )
-                nwp_n = float(np.linalg.norm(from_wp_to_next_h))
-                if nwp_n > 1e-6:
-                    axis = from_wp_to_next_h / nwp_n
-                    pos_from_wp = np.array([pos[0] - wp[0], pos[1] - wp[1], 0.0])
-                    if float(np.dot(pos_from_wp, axis)) > 0.0:
-                        self.waypoint = self._wp_queue.pop(0)
-                        wp = self.waypoint
-
-            terminal = not self._wp_queue  # current wp is the base
+            wp = self.waypoint  # always the pre-selected target
 
             to_wp_h = np.array([wp[0] - pos[0], wp[1] - pos[1], 0.0])
             dh = float(np.linalg.norm(to_wp_h))
@@ -252,75 +261,62 @@ class Threat:
                 h_dir = to_wp_h / dh
             else:
                 h_dir = np.array([0.0, -1.0, 0.0])
-            desired_h_vel = h_dir * self.spec.cruise_speed
-            cur_h_vel = np.array([vel[0], vel[1], 0.0])
-            steer_h = (desired_h_vel - cur_h_vel) / max(dt, 1e-3)
 
-            if terminal and dh < 30_000.0:
+            # Terminal 3D aim vs cruise horizontal+altitude hold.
+            terminal_dive = dh < 30_000.0
+            if terminal_dive:
                 to_base_3d = wp - pos
                 n3 = float(np.linalg.norm(to_base_3d)) or 1.0
                 desired_vel = (to_base_3d / n3) * self.spec.cruise_speed
                 steer = (desired_vel - vel) / max(dt, 1e-3)
                 steer = physics.cap_accel(steer, self.spec.max_g)
-                accel = steer
-                accel = accel + physics.gravity_accel()
-                accel = accel + physics.drag_accel_at(vel, self.spec.drag_k, float(pos[2]))
+                base_cmd = steer
+                manoeuvre_cmd_mag = float(np.linalg.norm(steer))
+                accel = (
+                    base_cmd
+                    + physics.gravity_accel()
+                    + physics.drag_accel_at(vel, self.spec.drag_k, float(pos[2]))
+                )
             else:
+                desired_h_vel = h_dir * self.spec.cruise_speed
+                cur_h_vel = np.array([vel[0], vel[1], 0.0])
+                steer_h = (desired_h_vel - cur_h_vel) / max(dt, 1e-3)
+                horiz_accel = physics.cap_accel(steer_h, self.spec.max_g)
                 target_alt = self._base_alt
                 alt_err = target_alt - pos[2]
                 alt_accel = np.array([0.0, 0.0, alt_err * 0.3 - vel[2] * 0.5])
-                horiz_accel = physics.cap_accel(steer_h, self.spec.max_g)
-                # Lift cancels gravity during the glide (aerodynamic
-                # lift, not propulsion).
+                # Aerodynamic lift cancels gravity during the glide.
                 lift = np.array([0.0, 0.0, config.GRAVITY])
-                accel = horiz_accel + alt_accel + lift
-                accel = accel + physics.gravity_accel()
-                accel = accel + physics.drag_accel_at(vel, self.spec.drag_k, float(pos[2]))
+                base_cmd = horiz_accel + alt_accel + lift
+                manoeuvre_cmd_mag = float(np.linalg.norm(horiz_accel))
+                accel = (
+                    base_cmd
+                    + physics.gravity_accel()
+                    + physics.drag_accel_at(vel, self.spec.drag_k, float(pos[2]))
+                )
 
-            # Level-5 evasion: if an interceptor is within detect radius,
-            # add a lateral jink perpendicular to the threat line-of-sight.
-            # Direction alternates every 2 s so the HGV snakes rather than
-            # arcing steadily.
-            jink_added = False
-            if world is not None and getattr(world, "interceptors", None):
-                nearest_d2 = float("inf")
-                nearest = None
-                for inter in world.interceptors.values():
-                    if not inter.state.alive:
-                        continue
-                    dv = inter.state.pos - pos
-                    d2 = float(np.dot(dv, dv))
-                    if d2 < nearest_d2:
-                        nearest_d2 = d2
-                        nearest = inter
-                if nearest is not None and nearest_d2 < _HGV_DETECT_RADIUS * _HGV_DETECT_RADIUS:
-                    los = nearest.state.pos - pos
-                    los_h = np.array([los[0], los[1], 0.0])
-                    los_h_n = float(np.linalg.norm(los_h))
-                    if los_h_n > 1e-6:
-                        los_h_unit = los_h / los_h_n
-                        perp = np.array([-los_h_unit[1], los_h_unit[0], 0.0])
-                        side = 1.0 if (int(self._elapsed) % 4) < 2 else -1.0
-                        jink = perp * side * (_HGV_JINK_G * config.GRAVITY)
-                        accel = accel + jink
-                        jink_added = True
+            # Milestone I: external `override_maneuver` command, if any.
+            # Consumed + cleared so each call is good for exactly one
+            # tick (Red AI must keep calling to maintain a turn).
+            override_mag = 0.0
+            if self._override_accel is not None:
+                override = self._override_accel
+                override_mag = float(np.linalg.norm(override))
+                accel = accel + override
+                self._override_accel = None
 
             new_pos, new_vel = physics.integrate(pos, vel, accel, dt)
             new_vel = physics.cap_speed(new_vel, self.spec.cruise_speed)
 
-            # Kinetic energy bleed from manoeuvring. Use the magnitude of
-            # the commanded horizontal + jink accel (exclude gravity &
-            # drag which aren't pilot inputs). Bleed rate is quadratic
-            # in G ratio — cruising straight loses almost nothing, max-G
-            # jinking bleeds the full _HGV_BLEED_RATE per second.
+            # Kinetic energy bleed. Total pilot-commanded lateral load =
+            # base steering + override; KE loss quadratic in the
+            # combined G ratio. Cap at 1.5× max_g_accel for the ratio
+            # term so a runaway override still bleeds proportionally
+            # instead of saturating.
             max_accel = self.spec.max_g * config.GRAVITY
-            # Approximate manoeuvre accel: horizontal steer + (jink if any).
-            # cap already applied, so magnitude <= max_accel for steer
-            # alone; jink can push it above. We measure actual command.
-            manoeuvre_accel_mag = float(np.linalg.norm(steer if (terminal and dh < 30_000.0) else horiz_accel))
-            if jink_added:
-                manoeuvre_accel_mag = min(max_accel * 1.5, manoeuvre_accel_mag + _HGV_JINK_G * config.GRAVITY)
-            g_ratio = manoeuvre_accel_mag / max(max_accel, 1e-6)
+            total_cmd = manoeuvre_cmd_mag + override_mag
+            total_cmd = min(total_cmd, max_accel * 1.5)
+            g_ratio = total_cmd / max(max_accel, 1e-6)
             speed_loss = _HGV_BLEED_RATE * g_ratio * g_ratio * dt
             nv_mag = float(np.linalg.norm(new_vel))
             if nv_mag > speed_loss:
