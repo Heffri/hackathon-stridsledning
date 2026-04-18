@@ -147,10 +147,12 @@ del _kind, _positions, _x, _y
 # --- Milestone I: win conditions + economy ---
 # Each Blue-side site starts at SITE_HP_START and takes kind-tagged damage
 # on every leak event. When any site's hp falls to 0, Red wins.
-# Tuned so a typical match sees 3-8 leaks with an average ~20 dmg per
-# leak (cruise / ballistic dominant in the current balance) — one fully
-# concentrated site can die in ~3 heavy leaks, which keeps Red's wave 5
-# saturation interesting without being one-shot territory.
+# Spec default. Affects `scenario.winner` only — `test_balance.py`
+# classifies by leak count, not HP, so HP tuning does not move the
+# balance sweep buckets. For the game-loop end condition, HP 100 means
+# a single site absorbs ~2 concentrated HGV leaks (80 dmg) before
+# dying; 3+ leaks on the same site (or a mix with cruise / ballistic)
+# is what the match-end-on-Red logic watches for.
 SITE_HP_START = 100
 SITE_LEAK_DAMAGE = {
     "drone":       5,
