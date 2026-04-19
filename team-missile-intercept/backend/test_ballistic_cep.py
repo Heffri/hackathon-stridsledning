@@ -22,6 +22,7 @@ beyond 5 km would indicate a real targeting bug.
 """
 from __future__ import annotations
 
+import sys
 from math import hypot
 
 import numpy as np
@@ -197,6 +198,11 @@ def main() -> None:
             f"Verdict: {verdict}  "
             f"(median {median:.1f} m vs threshold {threshold:.0f} m)"
         )
+        # M-TIER2.6-AUDIT (A6): raise the verdict to an exit code so
+        # `python test_ballistic_cep.py` fails visibly in a regression
+        # runner. Print-only verdicts are invisible to CI.
+        if median > threshold:
+            sys.exit(1)
 
 
 if __name__ == "__main__":

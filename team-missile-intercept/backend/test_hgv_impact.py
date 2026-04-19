@@ -16,6 +16,7 @@ PASS criteria:
 """
 from __future__ import annotations
 
+import sys
 from math import hypot, isnan
 
 import numpy as np
@@ -223,6 +224,11 @@ def main() -> None:
     )
     overall = pass_impact and pass_cep and pass_nan and pass_osc
     print(f"Overall: {'PASS' if overall else 'FAIL'}")
+    # M-TIER2.6-AUDIT (A6): a verdict-only test that never raises is
+    # invisible to a regression runner. Exit non-zero so
+    # `python test_hgv_impact.py` surfaces failure in the shell.
+    if not overall:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
