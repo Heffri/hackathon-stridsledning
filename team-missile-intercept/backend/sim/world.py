@@ -202,6 +202,10 @@ class World:
         #    Uses horizontal 2D distance so an HGV terminal-diving over
         #    a site doesn't skim the 3D sphere.
         hit_r_sq = config.BASE_HIT_RADIUS * config.BASE_HIT_RADIUS
+        # Ground-impact epsilon above site altitude (sites sit at GROUND_Z).
+        # A 50 m window catches the terminal dive frame without letting a
+        # high-altitude airburst count as a hit.
+        ground_eps = config.GROUND_Z + 50.0
         for tid, threat in list(self.threats.items()):
             if not threat.state.alive:
                 continue
@@ -209,6 +213,12 @@ class World:
                 dx = threat.state.pos[0] - site.pos[0]
                 dy = threat.state.pos[1] - site.pos[1]
                 if (dx * dx + dy * dy) < hit_r_sq:
+                    # HGV (and any future kind flagged requires_ground_impact)
+                    # must also be near ground; otherwise it flies through
+                    # and the damage is instead resolved by the ground-
+                    # impact leak path at section 4b when/if it crashes.
+                    if threat.spec.requires_ground_impact and threat.state.pos[2] > ground_eps:
+                        continue
                     threat.state.alive = False
                     site.leaks += 1
                     self.leaked += 1

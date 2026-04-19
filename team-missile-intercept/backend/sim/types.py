@@ -45,6 +45,13 @@ class ThreatSpec:
     color: str               # hex, client render hint
     hp: int = 10             # hull points; 0 = dead
     usd_cost: int = 30_000   # per-unit price, used for cost-exchange logic
+    # If True, the 1500 m horizontal-disc leak check additionally requires
+    # the threat to be near ground level before it damages the site — an
+    # airburst above a site no longer counts as a hit. Used for HGV,
+    # which at Mach 17 produces 100–300 m PN-CPA airbursts that were
+    # previously scoring ground-hit damage without touching the ground.
+    # Future nuclear warhead kind keeps this False to preserve airburst.
+    requires_ground_impact: bool = False
 
 
 @dataclass
@@ -123,6 +130,7 @@ THREAT_SPECS = {
         color="#ff4080",
         hp=60,
         usd_cost=10_000_000,
+        requires_ground_impact=True,
     ),
 }
 
