@@ -13,11 +13,51 @@ from .types import (
     LEGAL_PHASE_TRANSITIONS,
     EntityState,
     Explosion,
+    InterceptorSpec,
     InterceptorType,
     MatchPhase,
     Team,
     ThreatType,
 )
+
+
+def resolve_damage(
+    spec: InterceptorSpec,
+    engagement_mode: str,
+    d_min: float,
+) -> tuple:
+    """Compute (damage, hit_kind) for an interceptor→threat encounter
+    at closest-approach distance `d_min`. Extracted from the World.step
+    damage branch so `test_engagement_mode` can unit-test the model
+    without running the full integrator.
+
+    Mode semantics (M-TIER2.5):
+      * 'prox' — current auto direct+prox behaviour. Bit-for-bit
+        identical to pre-M-TIER2.5: direct hit inside `radius_direct`
+        deals `damage_direct`; inside `radius_prox` deals a linearly-
+        falling off fraction of `damage_prox` (at least 1); wider is
+        a clean miss (0 damage). Event strings preserved as
+        'direct' / 'prox' / 'miss'.
+      * 'htk'  — hit-to-kill. Direct hit inside `radius_direct` deals
+        `damage_direct * 2`; anything wider is a clean miss. Event
+        strings 'htk_direct' / 'htk_miss'. HTK is opt-in (M-TIER2.5
+        infrastructure only — no caller defaults to HTK except pac_3,
+        which is physically HTK-only).
+
+    Raises ValueError for unknown mode strings (caller bug).
+    """
+    if engagement_mode == "prox":
+        if d_min < spec.radius_direct:
+            return (spec.damage_direct, "direct")
+        if d_min < spec.radius_prox:
+            fall = 1.0 - (d_min / spec.radius_prox)
+            return (max(1, int(round(spec.damage_prox * fall))), "prox")
+        return (0, "miss")
+    if engagement_mode == "htk":
+        if d_min < spec.radius_direct:
+            return (spec.damage_direct * 2, "htk_direct")
+        return (0, "htk_miss")
+    raise ValueError(f"Unknown engagement_mode: {engagement_mode!r}")
 
 
 class World:
@@ -95,9 +135,17 @@ class World:
         launch_pos,
         initial_dir,
         target_id: int,
+        engagement_mode: Optional[str] = None,
     ) -> int:
         eid = self._new_id()
-        i = Interceptor(eid, kind, launch_pos, initial_dir, target_id, self.t)
+        # `engagement_mode=None` → Interceptor uses the spec default.
+        # Legal callers (BlueAI._fire) pass the value resolved by
+        # Launcher.fire so both ends agree; the Interceptor constructor
+        # validates defensively.
+        i = Interceptor(
+            eid, kind, launch_pos, initial_dir, target_id, self.t,
+            engagement_mode=engagement_mode,
+        )
         self.interceptors[eid] = i
         self.events.append(
             {"type": "launch", "id": eid, "kind": kind.value, "target": target_id}
@@ -169,18 +217,12 @@ class World:
             # PN's typical 20-80 m CPA. We instead use a linear falloff with
             # radius_prox scaled up — keeps the "direct vs prox" design
             # intent and spec damage values intact while giving the demo
-            # legible 1-3 shot kills.
-            spec = inter.spec
-            if d_min < spec.radius_direct:
-                damage = spec.damage_direct
-                hit_kind = "direct"
-            elif d_min < spec.radius_prox:
-                fall = 1.0 - (d_min / spec.radius_prox)
-                damage = max(1, int(round(spec.damage_prox * fall)))
-                hit_kind = "prox"
-            else:
-                damage = 0
-                hit_kind = "miss"
+            # legible 1-3 shot kills. M-TIER2.5 factored this out into
+            # `resolve_damage` so the mode split (prox vs htk) is unit-
+            # testable without the full step loop.
+            damage, hit_kind = resolve_damage(
+                inter.spec, inter.engagement_mode, d_min
+            )
 
             hit_pos = (inter.state.pos + target.state.pos) * 0.5
             target.state.hp = max(0, target.state.hp - damage)

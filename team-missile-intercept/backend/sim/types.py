@@ -109,6 +109,22 @@ class InterceptorSpec:
     radius_direct: float = 0.5    # direct-hit radius in metres
     radius_prox: float = 8.0      # proximity-fuse radius
     usd_cost: int = 175_000       # cost-exchange reference price
+    # Engagement-mode infrastructure (M-TIER2.5). Each spec declares the
+    # legal modes it can be fired in and a default. Modes:
+    #   * 'prox' — current auto direct-then-prox behaviour (damage falls
+    #     off linearly inside radius_prox, direct hit inside radius_direct).
+    #   * 'htk'  — hit-to-kill: direct hit inside radius_direct deals
+    #     `damage_direct * 2`; anything wider is a clean miss (0 damage).
+    # Per-type overrides live on the spec instances below:
+    #   * CIWS  → choices=('prox',), default='prox' (cannon has no HTK concept).
+    #   * SHORT_SAM / IRIS_T_SLS / MED_SAM / LONG_SAM →
+    #       choices=('prox', 'htk'), default='prox' (dual-mode; HTK opt-in).
+    #   * HIT_TO_KILL (PAC-3) → choices=('htk',), default='htk' (physically
+    #       HTK-only; prox is not a legal mode for pac_3).
+    # Defaults below preserve current behaviour (prox everywhere) — no
+    # caller opts into HTK in M-TIER2.5; this is infrastructure only.
+    engagement_mode_choices: Tuple[str, ...] = ("prox",)
+    default_engagement_mode: str = "prox"
 
 
 # --- Threat specs ---
@@ -222,6 +238,7 @@ INTERCEPTOR_SPECS = {
         radius_direct=1.0,
         radius_prox=120.0,
         usd_cost=175_000,
+        engagement_mode_choices=("prox", "htk"),
     ),
     # Short-range SAM+ (IRIS-T SLS / RBS 98). Mach 2 average, 60G TVC —
     # the most agile interceptor, designed for terminal "knife fight" vs
@@ -241,6 +258,7 @@ INTERCEPTOR_SPECS = {
         radius_direct=1.0,
         radius_prox=100.0,
         usd_cost=500_000,
+        engagement_mode_choices=("prox", "htk"),
     ),
     InterceptorType.MED_SAM: InterceptorSpec(
         kind=InterceptorType.MED_SAM,
@@ -256,6 +274,7 @@ INTERCEPTOR_SPECS = {
         radius_direct=2.0,
         radius_prox=150.0,
         usd_cost=1_000_000,
+        engagement_mode_choices=("prox", "htk"),
     ),
     # Long-range SAM (Patriot PAC-2 class). Mach 5, 70 km, large blast-frag.
     InterceptorType.LONG_SAM: InterceptorSpec(
@@ -272,6 +291,7 @@ INTERCEPTOR_SPECS = {
         radius_direct=3.0,
         radius_prox=180.0,
         usd_cost=3_000_000,
+        engagement_mode_choices=("prox", "htk"),
     ),
     # Hit-to-kill (PAC-3 MSE). Pure kinetic kill mechanism — 200 dmg on
     # a direct hit, one-shots ballistic / HGV. Our grid-stepped PN only
@@ -300,6 +320,8 @@ INTERCEPTOR_SPECS = {
         radius_direct=60.0,
         radius_prox=80.0,
         usd_cost=4_000_000,
+        engagement_mode_choices=("htk",),
+        default_engagement_mode="htk",
     ),
 }
 

@@ -429,10 +429,14 @@ class BlueAI:
         launch_np = np.array(launch_pos, dtype=np.float64)
         initial_dir = threat.state.pos - launch_np
         initial_dir[2] = max(initial_dir[2], 1000.0)
+        # M-TIER2.5: caller does not override engagement_mode — spec
+        # default applies (prox for every interceptor except pac_3,
+        # which is htk by construction). Launcher.fire returns the
+        # resolved mode so the Interceptor carries a matching field.
+        mode = lch.fire(t_now)
         iid = world.spawn_interceptor(
-            kind, launch_pos, tuple(initial_dir), tid
+            kind, launch_pos, tuple(initial_dir), tid, engagement_mode=mode,
         )
-        lch.fire(t_now)
         # Milestone I: Blue pays spec.usd_cost per launch. Budget floor
         # at 0; Scenario.winner treats budget <= 0 as a Red win. We
         # deduct regardless of whether the launch was rational (the

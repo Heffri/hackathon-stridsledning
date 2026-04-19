@@ -15,9 +15,9 @@ still spawns exactly as many threats per wave as `build_demo_waves`
 dictates.
 """
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from .types import InterceptorType, ThreatType
+from .types import INTERCEPTOR_SPECS, InterceptorType, ThreatType
 
 
 @dataclass
@@ -58,11 +58,42 @@ class Launcher:
             return False
         return (t_now - self.last_shot_t) >= self.inter_shot_cd
 
-    def fire(self, t_now: float) -> None:
+    def fire(self, t_now: float, engagement_mode: Optional[str] = None) -> str:
+        """Decrement ammo + record shot time; resolve & return the
+        engagement mode string the caller should pass to the
+        Interceptor constructor (and `World.spawn_interceptor`).
+
+        Args:
+          t_now: current sim time (seconds).
+          engagement_mode: optional override. `None` → spec default;
+            explicit string must appear in the spec's
+            `engagement_mode_choices` tuple. Validation is at-fire so
+            caller bugs surface here instead of silently producing an
+            in-flight interceptor with a meaningless mode.
+
+        Returns:
+          The resolved mode string ('prox' or 'htk'). Callers pass this
+          to `World.spawn_interceptor(..., engagement_mode=...)`.
+
+        Raises:
+          ValueError if `engagement_mode` is not in the spec's choices.
+        """
+        spec = INTERCEPTOR_SPECS[self.kind]
+        if engagement_mode is None:
+            resolved = spec.default_engagement_mode
+        elif engagement_mode in spec.engagement_mode_choices:
+            resolved = engagement_mode
+        else:
+            raise ValueError(
+                f"Launcher.fire({self.kind.value}): engagement_mode="
+                f"{engagement_mode!r} not in choices "
+                f"{spec.engagement_mode_choices}"
+            )
         self.current_ammo -= 1
         self.last_shot_t = t_now
         if self.current_ammo <= 0:
             self.reload_start_t = t_now
+        return resolved
 
 
 # Per-type launcher template (magazine + cooldowns). Reload values are

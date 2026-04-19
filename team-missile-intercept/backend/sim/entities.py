@@ -515,6 +515,10 @@ class Interceptor:
         "_boost_phase_end",
         "_horiz_launch_dir",
         "_burnout_flagged",
+        # M-TIER2.5 engagement-mode infrastructure. 'prox' or 'htk'
+        # string; set at construction via `spec.default_engagement_mode`
+        # when the caller doesn't override. See `ENGAGEMENT_MODE_DESIGN.md`.
+        "engagement_mode",
     )
 
     # Stall speed below which an unpowered interceptor loses aerodynamic
@@ -539,8 +543,23 @@ class Interceptor:
         initial_dir,
         target_id: int,
         t_now: float,
+        engagement_mode: Optional[str] = None,
     ):
         self.spec: InterceptorSpec = INTERCEPTOR_SPECS[kind]
+        # M-TIER2.5: validate + resolve engagement_mode. `None` → spec
+        # default; explicit values must be in the spec's choices or the
+        # caller bug raises. Launcher.fire pre-validates the same way,
+        # so a well-formed caller never hits the ValueError here.
+        if engagement_mode is None:
+            self.engagement_mode = self.spec.default_engagement_mode
+        elif engagement_mode in self.spec.engagement_mode_choices:
+            self.engagement_mode = engagement_mode
+        else:
+            raise ValueError(
+                f"Interceptor({kind.value}): engagement_mode="
+                f"{engagement_mode!r} not in choices "
+                f"{self.spec.engagement_mode_choices}"
+            )
         pos = np.array(launch_pos, dtype=np.float64).copy()
 
         # Horizontal component of initial_dir (used as the boost-phase lean
