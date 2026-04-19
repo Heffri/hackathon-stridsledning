@@ -143,6 +143,17 @@ Target outcome:
 - prefer additive snapshot changes over breaking renames
 - preserve `build_default_scenario()` as the runnable composition entry until wrappers exist
 
+Landed seams available to Oskar / Boyu:
+
+- `Threat.override_maneuver(turn_dir, g_load)` — per-tick external
+  lateral-accel command for HGV real-time control (Milestone I3).
+- `Launcher.fire(t_now, engagement_mode=None)` →
+  `World.spawn_interceptor(..., engagement_mode=...)` — per-shot
+  engagement mode (`'prox'` | `'htk'`) threaded into the Interceptor
+  instance and consumed by `world.resolve_damage`. Default preserves
+  pre-M-TIER2.5 behaviour. Full contract in
+  `./ENGAGEMENT_MODE_DESIGN.md` (landed M-TIER2.5, 2026-04-19).
+
 Likely touchpoints:
 
 - `backend/sim/scenarios.py`

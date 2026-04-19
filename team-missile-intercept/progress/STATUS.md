@@ -53,6 +53,21 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
    protocol additions (`start` / `pause` / `resume` / typed
    `phase_change` + `error` frames), HUD phase chip, and phase-specific
    centre-screen overlay. Prerequisite for Milestone J.
+0.5 **M-TIER2.5-BALANCE — broad flyover rule + engagement_mode infra.**
+   Landed 2026-04-19 (commits `b06fd11` flyover, `960d041` engagement_mode
+   infra, `8faaa1f` post-W5 baseline, plus this docs commit).
+   Every non-nuclear threat kind now sets
+   `requires_ground_impact=True` (Issue #2 extended from HGV-only to
+   ballistic / cruise / drone); `InterceptorSpec` carries
+   `engagement_mode_choices` + `default_engagement_mode`; `Launcher.fire`
+   / `World.spawn_interceptor` / `Interceptor.__init__` plumb the mode
+   end-to-end; `world.resolve_damage(spec, mode, d_min)` is the
+   extracted helper. Default behaviour is prox (bit-for-bit identical
+   to pre-W5), except pac_3 which defaults to htk (physically HTK-only).
+   See `game-core/ENGAGEMENT_MODE_DESIGN.md` for the full contract
+   and `backend/BALANCE_BASELINE_README.md` 2026-04-20 entry for the
+   post-W5 numbers. 20-match sweep Blue win rate went 1/20 → 14/20;
+   no budget tune per operator rule (Blue over target = good problem).
 1. **Milestone J — Deployment UI** (3-4 hours). Pre-game phase letting AI or a human player pick Blue launcher positions. Drag-drop on the map, land-only constraint, AI-auto button. Range rings already parented to launcher Groups in Milestone H, so they'll follow drags automatically. The `setup` phase exposed by M-TIER2-PHASE is the hook point.
 2. **Red AI Level 5 HGV control** — `Threat.override_maneuver` hook is in place; needs a per-tick decision layer (nearest-interceptor scan, geometry, KE budget) to drive the hook.
 3. **Smarter Red AI target selection** — currently weighted-random across sites; wave-specific targeting (wave 5 prioritises capital) would feel more tactical.
