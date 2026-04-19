@@ -84,10 +84,11 @@ class ThreatSpec:
     usd_cost: int = 30_000   # per-unit price, used for cost-exchange logic
     # If True, the 1500 m horizontal-disc leak check additionally requires
     # the threat to be near ground level before it damages the site — an
-    # airburst above a site no longer counts as a hit. Used for HGV,
-    # which at Mach 17 produces 100–300 m PN-CPA airbursts that were
-    # previously scoring ground-hit damage without touching the ground.
-    # Future nuclear warhead kind keeps this False to preserve airburst.
+    # airburst above a site no longer counts as a hit. Every current
+    # threat kind (drone, cruise_sub, ballistic, HGV) sets this True so
+    # flyover at altitude doesn't trigger damage on a non-targeted site
+    # the ground-track happens to cross. Spec default stays False so a
+    # future nuclear warhead kind can omit the override and keep airburst.
     requires_ground_impact: bool = False
 
 
@@ -122,6 +123,7 @@ THREAT_SPECS = {
         color="#ff3040",
         hp=10,
         usd_cost=30_000,
+        requires_ground_impact=True,
     ),
     ThreatType.CRUISE_SUB: ThreatSpec(
         kind=ThreatType.CRUISE_SUB,
@@ -133,6 +135,7 @@ THREAT_SPECS = {
         color="#ff5050",
         hp=30,
         usd_cost=1_500_000,
+        requires_ground_impact=True,
     ),
     # Terminal-phase ballistic missile. 13 Mach (4459 m/s) matches the
     # public terminal velocity of modern MaRV / heavy-RV designs
@@ -150,6 +153,7 @@ THREAT_SPECS = {
         color="#ff8020",
         hp=80,
         usd_cost=3_000_000,
+        requires_ground_impact=True,
     ),
     # Hypersonic glide vehicle (Kinzhal/DF-ZF class). 17 Mach glide
     # velocity — at this speed the R = v²/a formula gives a ~347 km
