@@ -23,7 +23,9 @@
     <div class="mo-inner">
       <div id="mo-title" class="mo-title">BLUE WINS</div>
       <div id="mo-sub" class="mo-sub"></div>
-      <button id="btn-restart" class="mo-restart">Restart</button>
+      <button id="btn-start-match" class="mo-action hidden">Start Match</button>
+      <button id="btn-resume" class="mo-action hidden">Resume</button>
+      <button id="btn-restart" class="mo-action hidden">Restart</button>
     </div>
   </div>
 
@@ -34,6 +36,10 @@
       <div class="hud-block">
         <div class="hud-title">Smart Stridsledning</div>
         <div class="hud-sub">AI vs AI Missile Intercept — Milestone B</div>
+      </div>
+      <div class="hud-block phase-chip" id="phase-chip" data-phase="setup">
+        <div class="phase-chip-dot"></div>
+        <div class="phase-chip-label" id="phase-chip-label">SETUP</div>
       </div>
       <div class="hud-block stats">
         <div>T <span id="stat-t">0.0</span>s</div>
@@ -91,8 +97,7 @@
     </div>
 
     <div id="hud-bottom">
-      <button id="btn-start">Start</button>
-      <button id="btn-pause">Pause</button>
+      <button id="btn-pause" class="hidden">Pause</button>
       <button id="btn-reset">Reset</button>
       <label class="speed">
         Speed

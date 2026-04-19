@@ -396,7 +396,8 @@ html, body {
   box-shadow: 0 12px 60px rgba(0, 0, 0, 0.55);
   pointer-events: auto;
 }
-.mo-restart {
+.mo-restart,
+.mo-action {
   margin-top: 22px;
   background: #153560;
   color: #cfe1ff;
@@ -410,7 +411,13 @@ html, body {
   letter-spacing: 1.2px;
   text-transform: uppercase;
 }
-.mo-restart:hover { background: #1e4a82; }
+.mo-restart:hover,
+.mo-action:hover { background: #1e4a82; }
+/* M-TIER2-PHASE: multiple action buttons share the overlay; utility
+   class hides the inactive ones so only the phase-appropriate button
+   is clickable. */
+.mo-action.hidden,
+#btn-pause.hidden { display: none; }
 .mo-title {
   font-size: 54px;
   font-weight: 800;
@@ -418,9 +425,53 @@ html, body {
   margin-bottom: 12px;
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
-.mo-title.mo-blue  { color: #6fb8ff; text-shadow: 0 0 22px rgba(110, 184, 255, 0.55); }
-.mo-title.mo-red   { color: #ff7a7a; text-shadow: 0 0 22px rgba(255, 122, 122, 0.55); }
-.mo-title.mo-draw  { color: #ffd86b; text-shadow: 0 0 22px rgba(255, 216, 107, 0.5); }
+.mo-title.mo-blue    { color: #6fb8ff; text-shadow: 0 0 22px rgba(110, 184, 255, 0.55); }
+.mo-title.mo-red     { color: #ff7a7a; text-shadow: 0 0 22px rgba(255, 122, 122, 0.55); }
+.mo-title.mo-draw    { color: #ffd86b; text-shadow: 0 0 22px rgba(255, 216, 107, 0.5); }
+.mo-title.mo-setup   { color: #cfe0f5; text-shadow: 0 0 18px rgba(120, 180, 255, 0.35); }
+.mo-title.mo-paused  { color: #ffd86b; text-shadow: 0 0 18px rgba(255, 216, 107, 0.4); }
+
+/* M-TIER2-PHASE: phase chip in the top HUD. Colour per phase surfaces
+   match state at a glance without needing the centre-screen overlay. */
+.hud-block.phase-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-variant-numeric: tabular-nums;
+}
+.phase-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8295ad;
+  box-shadow: 0 0 6px currentColor;
+}
+.phase-chip-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #cfe0f5;
+}
+.phase-chip[data-phase="setup"]    { border-color: rgba(150, 170, 200, 0.45); }
+.phase-chip[data-phase="setup"]    .phase-chip-dot { background: #8295ad; color: #8295ad; }
+.phase-chip[data-phase="setup"]    .phase-chip-label { color: #9fb8d4; }
+.phase-chip[data-phase="running"]  { border-color: rgba(95, 227, 154, 0.55); }
+.phase-chip[data-phase="running"]  .phase-chip-dot {
+  background: #5fe39a; color: #5fe39a;
+  animation: phaseChipPulse 1.4s ease-in-out infinite alternate;
+}
+.phase-chip[data-phase="running"]  .phase-chip-label { color: #7ce0a3; }
+.phase-chip[data-phase="paused"]   { border-color: rgba(255, 216, 107, 0.55); }
+.phase-chip[data-phase="paused"]   .phase-chip-dot { background: #ffd86b; color: #ffd86b; }
+.phase-chip[data-phase="paused"]   .phase-chip-label { color: #ffd86b; }
+.phase-chip[data-phase="finished"] { border-color: rgba(255, 122, 122, 0.55); }
+.phase-chip[data-phase="finished"] .phase-chip-dot { background: #ff7a7a; color: #ff7a7a; }
+.phase-chip[data-phase="finished"] .phase-chip-label { color: #ff9a9a; }
+@keyframes phaseChipPulse {
+  from { opacity: 0.55; }
+  to   { opacity: 1.0; }
+}
 .mo-sub {
   font-size: 14px;
   opacity: 0.85;

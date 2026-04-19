@@ -23,12 +23,17 @@ const WEAPON_COLORS = {
 };
 
 export function wireHud(sendCmd) {
-  const bindClick = (id, cmd) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('click', () => sendCmd(cmd));
-  };
-  bindClick('btn-start', { cmd: 'start' });
-  bindClick('btn-pause', { cmd: 'pause' });
+  // Pause lives in the bottom bar; Start / Resume / Restart live inside
+  // the centre-screen match overlay (phase-specific content).
+  document.getElementById('btn-pause')?.addEventListener('click', () => {
+    sendCmd({ cmd: 'pause' });
+  });
+  document.getElementById('btn-start-match')?.addEventListener('click', () => {
+    sendCmd({ cmd: 'start' });
+  });
+  document.getElementById('btn-resume')?.addEventListener('click', () => {
+    sendCmd({ cmd: 'resume' });
+  });
   // Reset also clears the match overlay / launch banner locally so the
   // HUD reads "fresh" the instant the operator clicks, without waiting
   // for the next WebSocket snapshot.
@@ -36,10 +41,15 @@ export function wireHud(sendCmd) {
     sendCmd({ cmd: 'reset' });
     resetHudEventTracking();
   });
-  // End-of-match overlay: Restart rebuilds the scenario AND auto-resumes
-  // time advancement so judges don't have to hit Start between matches.
+  // End-of-match Restart = reset + start in one click. The two
+  // commands go out back-to-back; the server processes them FIFO
+  // (reset first lands in SETUP, start then flips to RUNNING) so the
+  // next snapshot the client receives shows a fresh RUNNING match.
+  // Keeps demo UX as one-click while still exercising the real phase
+  // FSM underneath.
   document.getElementById('btn-restart')?.addEventListener('click', () => {
     sendCmd({ cmd: 'reset' });
+    sendCmd({ cmd: 'start' });
     resetHudEventTracking();
   });
 
@@ -92,8 +102,10 @@ export function updateHud(snap) {
   // Blue budget bar (Milestone I).
   renderBudget(snap.stats || {});
 
-  // End-of-match overlay (Milestone I).
-  renderMatchOverlay(snap.winner || null);
+  // Phase chip + phase-gated overlay (M-TIER2-PHASE).
+  renderPhaseChip(snap.phase || 'setup');
+  renderPhaseOverlay(snap.phase || 'setup', snap.winner || null);
+  renderPauseButtonVisibility(snap.phase || 'setup');
 
   // Ammo rows (falls back to ∞ when server omits the field, e.g. legacy runs)
   const ammo = snap.ammo || {};
@@ -214,22 +226,88 @@ const OVERLAY_TEXT = {
   draw: { title: 'DRAW',      sub: 'Safety time cap reached.' },
 };
 
-function renderMatchOverlay(winner) {
+const PHASE_LABEL = {
+  setup:    'SETUP',
+  running:  'RUNNING',
+  paused:   'PAUSED',
+  finished: 'FINISHED',
+};
+
+// Phase chip — small colour-coded indicator near the HUD title so the
+// current Match Phase is visible at all times, independent of the
+// centre-screen overlay. Data-phase attr drives CSS styling.
+function renderPhaseChip(phase) {
+  const el = document.getElementById('phase-chip');
+  const labelEl = document.getElementById('phase-chip-label');
+  if (!el || !labelEl) return;
+  el.dataset.phase = phase;
+  labelEl.textContent = PHASE_LABEL[phase] || String(phase).toUpperCase();
+}
+
+// Bottom-bar Pause button: only surfaced in RUNNING. Setup / paused /
+// finished states have their own centre-screen call-to-action and
+// don't need a secondary Pause affordance.
+function renderPauseButtonVisibility(phase) {
+  const btn = document.getElementById('btn-pause');
+  if (!btn) return;
+  btn.classList.toggle('hidden', phase !== 'running');
+}
+
+// Centre-screen match overlay — single element reused across three
+// non-running phases. Button visibility swaps per phase so only one
+// call-to-action is ever active. RUNNING hides the overlay entirely.
+function renderPhaseOverlay(phase, winner) {
   const el = document.getElementById('match-overlay');
   if (!el) return;
-  if (!winner) {
+  const titleEl = document.getElementById('mo-title');
+  const subEl = document.getElementById('mo-sub');
+  const btnStart = document.getElementById('btn-start-match');
+  const btnResume = document.getElementById('btn-resume');
+  const btnRestart = document.getElementById('btn-restart');
+
+  // All three action buttons hidden by default; the phase branch
+  // re-shows exactly one.
+  btnStart?.classList.add('hidden');
+  btnResume?.classList.add('hidden');
+  btnRestart?.classList.add('hidden');
+
+  if (phase === 'running') {
     el.classList.add('hidden');
     return;
   }
-  const text = OVERLAY_TEXT[winner] || { title: winner.toUpperCase(), sub: '' };
-  const titleEl = document.getElementById('mo-title');
-  const subEl = document.getElementById('mo-sub');
-  if (titleEl) {
-    titleEl.textContent = text.title;
-    titleEl.className = `mo-title mo-${winner}`;
+  if (phase === 'setup') {
+    if (titleEl) {
+      titleEl.textContent = 'MATCH SETUP';
+      titleEl.className = 'mo-title mo-setup';
+    }
+    if (subEl) subEl.textContent = 'Press Start Match when ready. Future: place Blue launchers here.';
+    btnStart?.classList.remove('hidden');
+    el.classList.remove('hidden');
+    return;
   }
-  if (subEl) subEl.textContent = text.sub;
-  el.classList.remove('hidden');
+  if (phase === 'paused') {
+    if (titleEl) {
+      titleEl.textContent = 'PAUSED';
+      titleEl.className = 'mo-title mo-paused';
+    }
+    if (subEl) subEl.textContent = 'Sim-time is frozen. Resume when ready.';
+    btnResume?.classList.remove('hidden');
+    el.classList.remove('hidden');
+    return;
+  }
+  if (phase === 'finished') {
+    const text = OVERLAY_TEXT[winner] || { title: 'FINISHED', sub: '' };
+    if (titleEl) {
+      titleEl.textContent = text.title;
+      titleEl.className = `mo-title mo-${winner || 'draw'}`;
+    }
+    if (subEl) subEl.textContent = text.sub;
+    btnRestart?.classList.remove('hidden');
+    el.classList.remove('hidden');
+    return;
+  }
+  // Unknown phase — hide overlay so the HUD isn't locked.
+  el.classList.add('hidden');
 }
 
 function showLaunchBanner(interceptorKind, targetId) {
