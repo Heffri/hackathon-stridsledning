@@ -36,8 +36,12 @@ class SimRunner:
         self._task: asyncio.Task | None = None
 
     def reset(self):
+        # Rebuilding the scenario also auto-resumes time advancement so
+        # the end-of-match Restart button flows directly into a new match
+        # without a second click. Speed is preserved across resets —
+        # operators demoing at 20x keep their pace between matches.
         self.scenario = build_default_scenario()
-        self.running = False
+        self.running = True
 
     async def _loop(self):
         dt = config.DT

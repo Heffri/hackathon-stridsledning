@@ -385,6 +385,8 @@ html, body {
   opacity: 0;
   pointer-events: none;
 }
+/* Overlay itself is pointer-events:none so clicks pass to the scene;
+   the inner block re-enables them so the Restart button is clickable. */
 .mo-inner {
   background: rgba(8, 14, 26, 0.88);
   border: 2px solid rgba(120, 180, 255, 0.35);
@@ -392,7 +394,23 @@ html, body {
   padding: 40px 64px;
   text-align: center;
   box-shadow: 0 12px 60px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
 }
+.mo-restart {
+  margin-top: 22px;
+  background: #153560;
+  color: #cfe1ff;
+  border: 1px solid #2a5a9a;
+  padding: 9px 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.mo-restart:hover { background: #1e4a82; }
 .mo-title {
   font-size: 54px;
   font-weight: 800;

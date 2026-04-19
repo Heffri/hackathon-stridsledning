@@ -36,6 +36,12 @@ export function wireHud(sendCmd) {
     sendCmd({ cmd: 'reset' });
     resetHudEventTracking();
   });
+  // End-of-match overlay: Restart rebuilds the scenario AND auto-resumes
+  // time advancement so judges don't have to hit Start between matches.
+  document.getElementById('btn-restart')?.addEventListener('click', () => {
+    sendCmd({ cmd: 'reset' });
+    resetHudEventTracking();
+  });
 
   const speed = document.getElementById('speed');
   const speedVal = document.getElementById('speed-val');
