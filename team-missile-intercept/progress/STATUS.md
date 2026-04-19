@@ -46,7 +46,14 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
 
 ### Open items (priority-ordered for remaining week until Hack Day)
 
-1. **Milestone J — Deployment UI** (3-4 hours). Pre-game phase letting AI or a human player pick Blue launcher positions. Drag-drop on the map, land-only constraint, AI-auto button. Range rings already parented to launcher Groups in Milestone H, so they'll follow drags automatically.
+0. **M-TIER2-PHASE — Match Phase state machine.** Landed 2026-04-19
+   (commits `6fcb15c`, `57e093a`, `79ad5c3`, `01a868e`, `b5f0060`).
+   Four-state FSM (setup / running / paused / finished) with a legal-
+   transition table in `sim/types.py`, phase-gated `Scenario.step`, WS
+   protocol additions (`start` / `pause` / `resume` / typed
+   `phase_change` + `error` frames), HUD phase chip, and phase-specific
+   centre-screen overlay. Prerequisite for Milestone J.
+1. **Milestone J — Deployment UI** (3-4 hours). Pre-game phase letting AI or a human player pick Blue launcher positions. Drag-drop on the map, land-only constraint, AI-auto button. Range rings already parented to launcher Groups in Milestone H, so they'll follow drags automatically. The `setup` phase exposed by M-TIER2-PHASE is the hook point.
 2. **Red AI Level 5 HGV control** — `Threat.override_maneuver` hook is in place; needs a per-tick decision layer (nearest-interceptor scan, geometry, KE budget) to drive the hook.
 3. **Smarter Red AI target selection** — currently weighted-random across sites; wave-specific targeting (wave 5 prioritises capital) would feel more tactical.
 4. **Placement AI** (post-Milestone J) — once the deployment UI exists, let an AI pick positions based on incoming threat direction, wave composition, and coverage optimisation.

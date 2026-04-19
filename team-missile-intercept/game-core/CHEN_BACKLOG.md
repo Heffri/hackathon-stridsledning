@@ -26,25 +26,41 @@ Likely touchpoints:
 
 ## 2. Add Explicit Match Phase State
 
-Priority: High
+Priority: High — **Landed 2026-04-19 (M-TIER2-PHASE)**.
 
-Why it belongs to Chen:
+Commits: `6fcb15c` (enum + transitions), `57e093a` (phase-gated
+sim advancement), `79ad5c3` (WebSocket start/pause/resume + acks),
+`01a868e` (HUD phase chip + overlays), `b5f0060` (integration tests).
+
+Why it belonged to Chen:
 
 - game-core should own whether the sim is in setup, running, paused, or finished
 - deployment UI and future AI placement both need a stable phase model
 
-Target outcome:
+Delivered:
 
-- formal phase model such as `setup`, `running`, `paused`, `finished`
-- snapshot publishes phase cleanly
-- backend shell and frontend shell consume the same phase contract
+- `MatchPhase` enum + 6-edge legal-transition table in `sim/types.py`.
+- `World.phase` + `World.transition(to)` returning True/False on legal/
+  illegal attempts (no raise; server converts illegal to a WebSocket
+  error frame).
+- `Scenario.step` is phase-gated (no-op in SETUP / PAUSED / FINISHED)
+  so `world.t` — and every sim-time timer reading against it — freezes
+  automatically during pause / setup.
+- `build_default_scenario(auto_start=True)` keeps headless tests on
+  the old behaviour; server passes `auto_start=False` to land in SETUP.
+- WebSocket protocol: `start`, `pause`, `resume`, `reset` commands with
+  `{type: "phase_change", phase}` sender-only acks and
+  `{type: "error", reason: "illegal_transition", from, to}` on refused
+  transitions. Every snapshot carries a top-level `phase` field.
+- Frontend: top-HUD phase chip, phase-specific centre-screen overlay
+  (MATCH SETUP → Start / PAUSED → Resume / FINISHED → Restart), Pause
+  button in the bottom bar gated to RUNNING. Restart = reset + start
+  back-to-back so the demo stays one-click.
 
-Likely touchpoints:
-
-- `backend/sim/scenarios.py`
-- `backend/server.py`
-- `frontend/js/main.js`
-- `frontend/js/hud.js`
+Test coverage: 19 unit tests (`test_match_phase.py`) + 5 integration
+tests (`test_match_phase_integration.py`); `test_full_scenario`,
+`test_pn`, `test_ballistic`, `test_threat_impact`, `test_damage_debug`,
+`test_hgv_impact`, `test_ballistic_cep` all still pass.
 
 ## 3. Deployment Phase And Launcher Placement Support
 
