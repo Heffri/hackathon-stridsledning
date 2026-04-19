@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from sim import config
 from sim.scenarios import build_default_scenario
+from sim.types import MatchPhase
 
 
 ROOT = Path(__file__).resolve().parent
@@ -26,22 +27,40 @@ FRONTEND_DIR = ROOT.parent / "frontend"
 
 
 class SimRunner:
-    """Owns the Scenario and the sim loop. Broadcasts via .subscribe()."""
+    """Owns the Scenario and the sim loop. Broadcasts via .subscribe().
+
+    M-TIER2-PHASE: the sim loop is phase-gated — `Scenario.step` is a
+    no-op when `world.phase` is not RUNNING. The server no longer
+    carries a separate `running` boolean; phase is the single source of
+    truth. Snapshots still publish a legacy `running` bool for any
+    older client code, derived from the phase.
+    """
 
     def __init__(self):
-        self.scenario = build_default_scenario()
-        self.running: bool = False
+        # Server flow starts in SETUP (auto_start=False) so the client
+        # walks through the real start → running transition, giving the
+        # Milestone J deployment UI a stable hook point. Headless tests
+        # keep the old auto_start=True default when they call
+        # build_default_scenario() themselves.
+        self.scenario = build_default_scenario(auto_start=False)
         self.speed: float = 1.0   # time multiplier
         self._subscribers: set[asyncio.Queue] = set()
         self._task: asyncio.Task | None = None
 
+    @property
+    def running(self) -> bool:
+        """Legacy `running` bool derived from phase. True iff the sim
+        loop is actively advancing (`phase == RUNNING`)."""
+        return self.scenario.world.phase == MatchPhase.RUNNING
+
     def reset(self):
-        # Rebuilding the scenario also auto-resumes time advancement so
-        # the end-of-match Restart button flows directly into a new match
-        # without a second click. Speed is preserved across resets —
-        # operators demoing at 20x keep their pace between matches.
-        self.scenario = build_default_scenario()
-        self.running = True
+        # Rebuild the scenario and leave it in SETUP — the end-of-match
+        # Restart flow pairs this with a follow-up `start` command so
+        # the operator gets the same one-click UX as before, but via the
+        # real Match Phase FSM instead of a hidden auto-start bool.
+        # Speed is preserved across resets — operators demoing at 20x
+        # keep their pace between matches.
+        self.scenario = build_default_scenario(auto_start=False)
 
     async def _loop(self):
         dt = config.DT
@@ -53,17 +72,20 @@ class SimRunner:
 
         while True:
             t0 = time.perf_counter()
-            if self.running:
-                # advance N sim steps per wall-clock stream period, modulated by speed
+            # Phase-gated advancement (M-TIER2-PHASE). Scenario.step is
+            # a no-op in SETUP / PAUSED / FINISHED; we only loop through
+            # the speed-scaled tick count when we're actually RUNNING.
+            # This keeps CPU down during a long demo-pause and makes the
+            # fact that sim-time is frozen in non-running phases
+            # structurally obvious from the loop shape.
+            if self.scenario.world.phase == MatchPhase.RUNNING:
                 n = max(1, int(sim_steps_per_stream * self.speed))
                 for _ in range(n):
                     self.scenario.step(dt)
-                    # Milestone I: halt as soon as a winner is declared
-                    # (site HP <= 0, budget <= 0, Red out of threats, or
-                    # MAX_SIM_TIME cap). Frontend reads snap.winner to
-                    # render the overlay.
-                    if self.scenario.done:
-                        self.running = False
+                    # Scenario.step auto-transitions RUNNING → FINISHED
+                    # when the winner resolves; break so we don't burn
+                    # the rest of the speed-scaled loop on a done match.
+                    if self.scenario.world.phase == MatchPhase.FINISHED:
                         break
             snap = self.scenario.snapshot()
             snap["running"] = self.running
@@ -92,11 +114,18 @@ class SimRunner:
         self._subscribers.discard(q)
 
     def handle_command(self, cmd: dict) -> None:
+        """Translate a WebSocket command into a phase transition or a
+        scalar setting. Illegal transitions are silently ignored here;
+        Subtask C wires up the explicit `error` response path.
+        """
         kind = cmd.get("cmd")
         if kind == "start":
-            self.running = True
+            # SETUP → RUNNING. No-op if already running or in an illegal
+            # phase; Subtask C reports the error to the client.
+            self.scenario.world.transition(MatchPhase.RUNNING)
         elif kind == "pause":
-            self.running = False
+            # RUNNING → PAUSED.
+            self.scenario.world.transition(MatchPhase.PAUSED)
         elif kind == "reset":
             self.reset()
         elif kind == "speed":
@@ -125,7 +154,12 @@ async def index():
 
 @app.get("/healthz")
 async def healthz():
-    return {"ok": True, "t": runner.scenario.world.t, "running": runner.running}
+    return {
+        "ok": True,
+        "t": runner.scenario.world.t,
+        "running": runner.running,
+        "phase": runner.scenario.world.phase.value,
+    }
 
 
 @app.websocket("/ws")

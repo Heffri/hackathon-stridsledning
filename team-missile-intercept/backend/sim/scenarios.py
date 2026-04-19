@@ -4,6 +4,7 @@ from typing import Optional
 from . import config, sites
 from .blue_ai import BlueAI
 from .red_ai import RedAI, build_demo_waves
+from .types import MatchPhase
 from .world import World
 
 
@@ -19,14 +20,38 @@ class Scenario:
         self.blue = BlueAI()
 
     def step(self, dt: float) -> None:
+        """Advance one sim tick, respecting the Match Phase FSM.
+
+        M-TIER2-PHASE: if `world.phase` is anything other than RUNNING
+        (i.e. SETUP, PAUSED, or FINISHED), the tick is a no-op — events
+        are cleared so a stale events list doesn't get re-broadcast, but
+        `world.t` does not advance and neither AI steps. This freezes
+        every sim-time-based timer (reload / fuel / cooldown
+        comparisons against `world.t`) along with the physics, which is
+        the correct behaviour for pause / setup.
+
+        At the end of a normal RUNNING tick, if a winner has been
+        declared we auto-transition RUNNING → FINISHED so the server /
+        frontend can render the end-of-match overlay without the
+        Scenario doing any extra bookkeeping.
+        """
+        self.world.events = []
+        if self.world.phase != MatchPhase.RUNNING:
+            return
         # Clear last tick's events before anyone appends new ones. Doing
         # this at world.step's start would wipe launch events that
         # blue_ai.step just appended.
-        self.world.events = []
         self.red.step(self.world.t, self.world)
         self.blue.step(self.world.t, self.world)
         self.world.step(dt)
         self.world.prune_dead()
+        # Auto-transition to FINISHED as soon as a winner is declared.
+        # Scenario.winner inspects world/site/budget state; we only act
+        # when we were actually in RUNNING (PAUSED → FINISHED is driven
+        # by the server layer when a mid-pause win resolves — unusual
+        # but the transition table allows it).
+        if self.winner is not None and self.world.phase == MatchPhase.RUNNING:
+            self.world.transition(MatchPhase.FINISHED)
 
     @property
     def winner(self) -> Optional[str]:
@@ -108,5 +133,18 @@ class Scenario:
         return snap
 
 
-def build_default_scenario() -> Scenario:
-    return Scenario()
+def build_default_scenario(auto_start: bool = True) -> Scenario:
+    """Construct the default demo scenario.
+
+    M-TIER2-PHASE adds `auto_start`. A fresh `World` starts in SETUP;
+    headless callers (test_balance, test_full_scenario, ...) expect the
+    old behaviour where `scn.step(dt)` advances immediately, so the
+    default is `True` — we transition SETUP → RUNNING right after the
+    scenario is built. The server passes `auto_start=False` so the
+    interactive client walks through the real SETUP → (player clicks
+    Start) → RUNNING flow needed by the deployment UI (M-TIER2-J).
+    """
+    scn = Scenario()
+    if auto_start:
+        scn.world.transition(MatchPhase.RUNNING)
+    return scn
