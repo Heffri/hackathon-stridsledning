@@ -67,6 +67,13 @@
 - [REPO_ONBOARDING_NOTES.md](REPO_ONBOARDING_NOTES.md) - short repo onboarding
   note that now points into this package
 
+## Collaboration Tooling
+
+- [PM_BOOTSTRAP_PROMPT.md](PM_BOOTSTRAP_PROMPT.md) - copy-paste prompt that
+  bootstraps a Project-Manager Claude session for this hackathon project;
+  includes the hackathon-framing disclaimer that every worker prompt must
+  carry
+
 ## Runtime Touchpoints
 
 These are code entry points, not docs, but they matter for orientation:
