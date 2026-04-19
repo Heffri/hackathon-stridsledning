@@ -356,7 +356,16 @@ class Threat:
                 steer = np.zeros(3)
 
             accel = steer + physics.gravity_accel()
-            accel = accel + physics.drag_accel(vel, self.spec.drag_k)
+            # Altitude-scaled drag: at 35 km spawn altitude rho ≈ 0.016,
+            # so cruise drag is near zero. Dense-air drag only kicks in
+            # during terminal re-entry. Matches the HGV drag model and
+            # lets the projectile-motion trajectory solver at spawn land
+            # close to the pre-selected target across the full 150-240 km
+            # distance range. Sea-level drag here caused a consistent
+            # ~17 km shortfall for the far-north Milestone I spawn strip.
+            accel = accel + physics.drag_accel_at(
+                vel, self.spec.drag_k, float(pos[2])
+            )
 
             new_pos, new_vel = physics.integrate(pos, vel, accel, dt)
             # No speed cap — terminal re-entry is allowed to fly fast.
