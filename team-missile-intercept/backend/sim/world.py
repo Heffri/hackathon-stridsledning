@@ -10,9 +10,11 @@ import numpy as np
 from . import config, physics, sites
 from .entities import Interceptor, Threat
 from .types import (
+    LEGAL_PHASE_TRANSITIONS,
     EntityState,
     Explosion,
     InterceptorType,
+    MatchPhase,
     Team,
     ThreatType,
 )
@@ -37,12 +39,33 @@ class World:
         self.blue_budget: int = config.BLUE_BUDGET_START
         self.blue_budget_max: int = config.BLUE_BUDGET_START
 
+        # M-TIER2-PHASE: Match lifecycle phase. A freshly constructed
+        # World sits in SETUP until someone (server `start` command, a
+        # test calling `transition(RUNNING)`, or `build_default_scenario(
+        # auto_start=True)`) advances it. The sim loop in
+        # `Scenario.step` treats any non-RUNNING phase as frozen.
+        self.phase: MatchPhase = MatchPhase.SETUP
+
         self.events: List[dict] = []  # transient event log for this tick
 
     def _new_id(self) -> int:
         eid = self._next_id
         self._next_id += 1
         return eid
+
+    # --- match phase FSM (M-TIER2-PHASE) ---
+    def transition(self, to: "MatchPhase") -> bool:
+        """Attempt a Match Phase transition. Returns True on success,
+        False on illegal move (state unchanged). The legal table lives
+        in `types.LEGAL_PHASE_TRANSITIONS`. No-op (same phase → same
+        phase) is treated as illegal so the server layer can surface
+        accidental double-clicks as an error rather than silently
+        swallowing them.
+        """
+        if (self.phase, to) not in LEGAL_PHASE_TRANSITIONS:
+            return False
+        self.phase = to
+        return True
 
     # --- spawning ---
     def spawn_threat(

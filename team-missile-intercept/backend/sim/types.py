@@ -15,6 +15,43 @@ class Team(str, Enum):
     BLUE = "blue"
 
 
+class MatchPhase(str, Enum):
+    """Match lifecycle states (M-TIER2-PHASE).
+
+    setup     — pre-match, world frozen, waiting for a start command
+                (used later by Milestone J deployment UI).
+    running   — live game, sim advances, Red/Blue AI tick.
+    paused    — frozen mid-match, sim does not advance. Existing entities
+                keep their poses on-screen so the operator can inspect.
+    finished  — winner declared, sim does not advance. Only legal exit is
+                a reset back to setup.
+
+    Legal transitions are enforced by `World.transition`; callers that
+    attempt an illegal move get a False return (no raise) so the server
+    layer can convert it into a WebSocket error response without
+    aborting the tick.
+    """
+
+    SETUP = "setup"
+    RUNNING = "running"
+    PAUSED = "paused"
+    FINISHED = "finished"
+
+
+# Legal MatchPhase transitions. Keyed by (from_phase, to_phase).
+# finished → setup is the only path out of finished (via reset).
+LEGAL_PHASE_TRANSITIONS: frozenset = frozenset(
+    {
+        (MatchPhase.SETUP, MatchPhase.RUNNING),
+        (MatchPhase.RUNNING, MatchPhase.PAUSED),
+        (MatchPhase.PAUSED, MatchPhase.RUNNING),
+        (MatchPhase.RUNNING, MatchPhase.FINISHED),
+        (MatchPhase.PAUSED, MatchPhase.FINISHED),
+        (MatchPhase.FINISHED, MatchPhase.SETUP),
+    }
+)
+
+
 class ThreatType(str, Enum):
     DRONE = "drone"
     CRUISE_SUB = "cruise_sub"
