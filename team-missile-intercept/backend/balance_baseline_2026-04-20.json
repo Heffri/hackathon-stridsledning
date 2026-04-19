@@ -1,0 +1,146 @@
+{
+  "baseline_name": "M-TIER1.5 post ballistic-drag + HGV glide-path fix",
+  "git_head": "960d041",
+  "generated_at": "2026-04-19T21:10:04",
+  "config": {
+    "dt": 0.05,
+    "sim_cap_s": 1800.0,
+    "cep_n_trials": 30,
+    "cep_sim_cap_s_by_kind": {
+      "drone": 2000.0,
+      "cruise_sub": 2000.0,
+      "ballistic": 300.0,
+      "hgv": 200.0
+    }
+  },
+  "wall_clock_s": {
+    "full_match": 50.4,
+    "no_blue": 39.1,
+    "cep": 117.0,
+    "total": 206.6
+  },
+  "scenarios": {
+    "full_match": {
+      "winner": null,
+      "sim_t_end": 1800.4999999989102,
+      "total_spawned": 26,
+      "total_intercepts": 17,
+      "total_leaked": 3,
+      "blue_budget_remaining": 78848000,
+      "blue_budget_max": 120000000,
+      "site_hp": {
+        "Firewatch Station": 95,
+        "Spear Point Base": 20,
+        "Main Base": 100
+      },
+      "per_kind": {
+        "drone": {
+          "spawned": 11,
+          "intercepted": 8,
+          "leaked": 1,
+          "ground_impacted": 0,
+          "still_alive_at_end": 2
+        },
+        "cruise_sub": {
+          "spawned": 8,
+          "intercepted": 8,
+          "leaked": 0,
+          "ground_impacted": 0,
+          "still_alive_at_end": 0
+        },
+        "ballistic": {
+          "spawned": 4,
+          "intercepted": 0,
+          "leaked": 0,
+          "ground_impacted": 4,
+          "still_alive_at_end": 0
+        },
+        "hgv": {
+          "spawned": 3,
+          "intercepted": 1,
+          "leaked": 2,
+          "ground_impacted": 0,
+          "still_alive_at_end": 0
+        }
+      }
+    },
+    "no_blue": {
+      "sim_t_end": 1800.4999999989102,
+      "total_spawned": 26,
+      "total_leaked": 12,
+      "site_hp": {
+        "Firewatch Station": 50,
+        "Spear Point Base": 0,
+        "Main Base": 100
+      },
+      "per_kind": {
+        "drone": {
+          "spawned": 11,
+          "intercepted": 0,
+          "leaked": 9,
+          "ground_impacted": 0,
+          "still_alive_at_end": 2
+        },
+        "cruise_sub": {
+          "spawned": 8,
+          "intercepted": 0,
+          "leaked": 0,
+          "ground_impacted": 0,
+          "still_alive_at_end": 8
+        },
+        "ballistic": {
+          "spawned": 4,
+          "intercepted": 0,
+          "leaked": 0,
+          "ground_impacted": 4,
+          "still_alive_at_end": 0
+        },
+        "hgv": {
+          "spawned": 3,
+          "intercepted": 0,
+          "leaked": 3,
+          "ground_impacted": 0,
+          "still_alive_at_end": 0
+        }
+      }
+    },
+    "per_kind_cep": {
+      "drone": {
+        "n_trials": 30,
+        "n_impacted": 30,
+        "n_alive_at_cap": 0,
+        "miss_mean_m": 190.67279461675363,
+        "miss_median_m": 237.2192897131563,
+        "miss_p95_m": 252.64685976487908,
+        "miss_max_m": 254.42651822861944
+      },
+      "cruise_sub": {
+        "n_trials": 30,
+        "n_impacted": 0,
+        "n_alive_at_cap": 30,
+        "miss_mean_m": null,
+        "miss_median_m": null,
+        "miss_p95_m": null,
+        "miss_max_m": null
+      },
+      "ballistic": {
+        "n_trials": 30,
+        "n_impacted": 30,
+        "n_alive_at_cap": 0,
+        "miss_mean_m": 3419.14190787976,
+        "miss_median_m": 3313.2840877663766,
+        "miss_p95_m": 3924.63915069817,
+        "miss_max_m": 4047.9494673611034
+      },
+      "hgv": {
+        "n_trials": 30,
+        "n_impacted": 30,
+        "n_alive_at_cap": 0,
+        "miss_mean_m": 185.026415877159,
+        "miss_median_m": 161.03035343567302,
+        "miss_p95_m": 428.86938064920565,
+        "miss_max_m": 479.042449067654
+      }
+    }
+  }
+}

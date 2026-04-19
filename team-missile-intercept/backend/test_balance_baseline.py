@@ -38,8 +38,8 @@ import numpy as np
 
 from sim import config, red_ai, sites
 from sim.red_ai import RedAI, build_demo_waves
-from sim.scenarios import Scenario
-from sim.types import ThreatType
+from sim.scenarios import Scenario, build_default_scenario
+from sim.types import MatchPhase, ThreatType
 from sim.world import World
 
 
@@ -73,8 +73,14 @@ def _run_full_match(sim_cap_s: float) -> dict:
     `threat_spawn` (with kind), `intercept` (threat id), `leak` (kind),
     and `ground_crash` (kind); we build a spawn-time id->kind map to
     tag intercept events which don't carry the kind directly.
+
+    M-TIER2-PHASE gated `Scenario.step` on `phase == RUNNING`. A fresh
+    `Scenario()` lands in SETUP, so without an explicit transition the
+    loop below would be a pure no-op (winner=None, sim_t=0). Use
+    `build_default_scenario(auto_start=True)` to walk SETUP → RUNNING
+    before stepping.
     """
-    scn = Scenario()
+    scn = build_default_scenario(auto_start=True)
     max_ticks = int(sim_cap_s / _DT) + 10
     kind_of_id: dict[int, str] = {}
     intercepted = {k.value: 0 for k in _THREAT_KINDS}
