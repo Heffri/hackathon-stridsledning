@@ -514,7 +514,6 @@ class Interceptor:
         "_prev_vel",
         "_boost_phase_end",
         "_horiz_launch_dir",
-        "_burnout_flagged",
         # M-TIER2.5 engagement-mode infrastructure. 'prox' or 'htk'
         # string; set at construction via `spec.default_engagement_mode`
         # when the caller doesn't override. See `ENGAGEMENT_MODE_DESIGN.md`.
@@ -607,7 +606,6 @@ class Interceptor:
         )
         self.target_id = target_id
         self.launched_t = t_now
-        self._burnout_flagged = False
 
     def step(self, dt: float, target_state: Optional[EntityState], t_now: float) -> None:
         if not self.state.alive:

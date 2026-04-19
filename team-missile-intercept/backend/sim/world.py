@@ -71,7 +71,6 @@ class World:
         # Counters for HUD
         self.threats_spawned: int = 0
         self.intercepts: int = 0
-        self.misses: int = 0  # threats that reached base / ground
         self.leaked: int = 0  # threats that hit the base
 
         # Milestone I: Blue spends USD per interceptor launch. Budget
@@ -353,12 +352,11 @@ class World:
                     {"type": "ground_crash", "interceptor": iid, "kind": inter.state.kind}
                 )
 
-        # 5) sweep dead entities (keep for 1 tick so client can render final pose)
-        for tid in list(self.threats.keys()):
-            if not self.threats[tid].state.alive:
-                # keep a tick of zombie for render continuity
-                pass
-        # We'll prune at next snapshot step below.
+        # 5) dead-entity pruning happens at the end of the RUNNING tick
+        # in Scenario.step via world.prune_dead(). Keeping dead entities
+        # on the dict for exactly one tick lets the snapshot publish their
+        # final pose + kind so the client can render the terminal
+        # explosion frame.
 
         self.t += dt
 
