@@ -28,9 +28,16 @@ function openWs() {
   });
   ws.addEventListener('error', () => setWsStatus(false));
   ws.addEventListener('message', (ev) => {
+    let msg;
     try {
-      latestSnap = JSON.parse(ev.data);
-    } catch (_) { /* ignore */ }
+      msg = JSON.parse(ev.data);
+    } catch (_) { return; }
+    // M-TIER2-PHASE: typed frames carry a `type` field (phase_change,
+    // error). Snapshots are untyped. Full UI handling of phase_change
+    // / error lands in Subtask D; guard here so a typed message can't
+    // get mistaken for a snapshot and crash the HUD.
+    if (msg && typeof msg.type === 'string') return;
+    latestSnap = msg;
   });
 }
 

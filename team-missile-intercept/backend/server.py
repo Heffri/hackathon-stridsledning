@@ -113,28 +113,52 @@ class SimRunner:
     def unsubscribe(self, q: asyncio.Queue) -> None:
         self._subscribers.discard(q)
 
-    def handle_command(self, cmd: dict) -> None:
+    def handle_command(self, cmd: dict) -> "dict | None":
         """Translate a WebSocket command into a phase transition or a
-        scalar setting. Illegal transitions are silently ignored here;
-        Subtask C wires up the explicit `error` response path.
+        scalar setting. Returns an acknowledgment or error dict that the
+        caller (`_consume`) forwards to the sending socket; returns None
+        for commands with no response (speed).
+
+        Success responses:  {"type": "phase_change", "phase": "<new>"}
+        Error responses:    {"type": "error", "reason":
+                             "illegal_transition", "from": "<p>",
+                             "to": "<p>"}
         """
         kind = cmd.get("cmd")
         if kind == "start":
-            # SETUP → RUNNING. No-op if already running or in an illegal
-            # phase; Subtask C reports the error to the client.
-            self.scenario.world.transition(MatchPhase.RUNNING)
-        elif kind == "pause":
-            # RUNNING → PAUSED.
-            self.scenario.world.transition(MatchPhase.PAUSED)
-        elif kind == "reset":
+            return self._phase_cmd(MatchPhase.RUNNING)
+        if kind == "pause":
+            return self._phase_cmd(MatchPhase.PAUSED)
+        if kind == "resume":
+            return self._phase_cmd(MatchPhase.RUNNING)
+        if kind == "reset":
+            # Reset short-circuits the FSM (rebuilds the World, which
+            # naturally starts in SETUP) — any current phase is allowed
+            # as the starting state, so this never reports an illegal-
+            # transition error. The frontend Restart button pairs this
+            # with a follow-up `start` to land in RUNNING.
             self.reset()
-        elif kind == "speed":
+            return {"type": "phase_change", "phase": MatchPhase.SETUP.value}
+        if kind == "speed":
             try:
                 v = float(cmd.get("value", 1.0))
                 if 0.1 <= v <= 20.0:
                     self.speed = v
             except (TypeError, ValueError):
                 pass
+            return None
+        return None
+
+    def _phase_cmd(self, to: MatchPhase) -> dict:
+        prev = self.scenario.world.phase
+        if self.scenario.world.transition(to):
+            return {"type": "phase_change", "phase": to.value}
+        return {
+            "type": "error",
+            "reason": "illegal_transition",
+            "from": prev.value,
+            "to": to.value,
+        }
 
 
 runner = SimRunner()
@@ -197,7 +221,17 @@ async def _consume(ws: WebSocket):
                 cmd = json.loads(text)
             except json.JSONDecodeError:
                 continue
-            runner.handle_command(cmd)
+            response = runner.handle_command(cmd)
+            # Sender-only ack / error (M-TIER2-PHASE). Broadcasting to
+            # every subscriber would cause observer clients to briefly
+            # think they triggered the transition; keeping it
+            # sender-only also scopes illegal-transition errors to the
+            # client that sent the bad command.
+            if response is not None:
+                try:
+                    await ws.send_text(json.dumps(response))
+                except (WebSocketDisconnect, RuntimeError):
+                    return
     except WebSocketDisconnect:
         return
 

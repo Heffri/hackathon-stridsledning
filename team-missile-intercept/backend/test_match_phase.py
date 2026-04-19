@@ -200,6 +200,102 @@ def test_auto_start_false_yields_setup() -> None:
     assert scn.world.phase == MatchPhase.SETUP
 
 
+# --- Subtask C: WebSocket command handler semantics ---------------
+
+def _fresh_runner():
+    """Import lazily — SimRunner imports FastAPI/asyncio which is only
+    relevant to the protocol tests."""
+    from server import SimRunner
+    return SimRunner()
+
+
+def test_cmd_start_from_setup_acks_running() -> None:
+    runner = _fresh_runner()
+    assert runner.scenario.world.phase == MatchPhase.SETUP
+    resp = runner.handle_command({"cmd": "start"})
+    assert resp == {"type": "phase_change", "phase": "running"}
+    assert runner.scenario.world.phase == MatchPhase.RUNNING
+
+
+def test_cmd_start_while_running_returns_illegal_error() -> None:
+    runner = _fresh_runner()
+    runner.handle_command({"cmd": "start"})
+    resp = runner.handle_command({"cmd": "start"})
+    assert resp == {
+        "type": "error",
+        "reason": "illegal_transition",
+        "from": "running",
+        "to": "running",
+    }
+    assert runner.scenario.world.phase == MatchPhase.RUNNING
+
+
+def test_cmd_pause_resume_round_trip() -> None:
+    runner = _fresh_runner()
+    runner.handle_command({"cmd": "start"})
+    resp = runner.handle_command({"cmd": "pause"})
+    assert resp == {"type": "phase_change", "phase": "paused"}
+    assert runner.scenario.world.phase == MatchPhase.PAUSED
+
+    resp = runner.handle_command({"cmd": "resume"})
+    assert resp == {"type": "phase_change", "phase": "running"}
+    assert runner.scenario.world.phase == MatchPhase.RUNNING
+
+
+def test_cmd_pause_from_setup_errors() -> None:
+    runner = _fresh_runner()
+    resp = runner.handle_command({"cmd": "pause"})
+    assert resp["type"] == "error"
+    assert resp["from"] == "setup"
+    assert resp["to"] == "paused"
+    assert runner.scenario.world.phase == MatchPhase.SETUP
+
+
+def test_cmd_resume_from_running_errors() -> None:
+    runner = _fresh_runner()
+    runner.handle_command({"cmd": "start"})
+    resp = runner.handle_command({"cmd": "resume"})
+    assert resp["type"] == "error"
+    assert resp["from"] == "running"
+    assert resp["to"] == "running"
+
+
+def test_cmd_reset_always_returns_to_setup() -> None:
+    """Reset rebuilds the World; any source phase is acceptable and the
+    response is a phase_change → setup (never an error)."""
+    runner = _fresh_runner()
+    # From SETUP.
+    resp = runner.handle_command({"cmd": "reset"})
+    assert resp == {"type": "phase_change", "phase": "setup"}
+    assert runner.scenario.world.phase == MatchPhase.SETUP
+    # From RUNNING.
+    runner.handle_command({"cmd": "start"})
+    resp = runner.handle_command({"cmd": "reset"})
+    assert resp == {"type": "phase_change", "phase": "setup"}
+    assert runner.scenario.world.phase == MatchPhase.SETUP
+    # From PAUSED.
+    runner.handle_command({"cmd": "start"})
+    runner.handle_command({"cmd": "pause"})
+    resp = runner.handle_command({"cmd": "reset"})
+    assert resp == {"type": "phase_change", "phase": "setup"}
+
+
+def test_cmd_speed_returns_none() -> None:
+    runner = _fresh_runner()
+    resp = runner.handle_command({"cmd": "speed", "value": 5.0})
+    assert resp is None
+    assert runner.speed == 5.0
+
+
+def test_snapshot_carries_phase_field() -> None:
+    scn = build_default_scenario(auto_start=False)
+    snap = scn.snapshot()
+    assert snap["phase"] == "setup"
+    scn.world.transition(MatchPhase.RUNNING)
+    snap = scn.snapshot()
+    assert snap["phase"] == "running"
+
+
 # --- Entry point ---------------------------------------------------
 if __name__ == "__main__":
     tests = [
@@ -214,6 +310,14 @@ if __name__ == "__main__":
         test_resume_continues_from_pause,
         test_auto_start_default_true_for_tests,
         test_auto_start_false_yields_setup,
+        test_cmd_start_from_setup_acks_running,
+        test_cmd_start_while_running_returns_illegal_error,
+        test_cmd_pause_resume_round_trip,
+        test_cmd_pause_from_setup_errors,
+        test_cmd_resume_from_running_errors,
+        test_cmd_reset_always_returns_to_setup,
+        test_cmd_speed_returns_none,
+        test_snapshot_carries_phase_field,
     ]
     passed = 0
     for fn in tests:

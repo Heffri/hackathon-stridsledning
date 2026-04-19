@@ -130,6 +130,11 @@ class Scenario:
         # safety cap. `winner` is None while the match is in progress.
         snap["winner"] = self.winner
         snap["max_sim_time"] = config.MAX_SIM_TIME
+        # M-TIER2-PHASE: Match Phase is the single source of truth the
+        # HUD reads to decide which chip / overlay / button state to
+        # render. Always a string value ("setup" / "running" / "paused"
+        # / "finished") from the MatchPhase enum.
+        snap["phase"] = self.world.phase.value
         return snap
 
 
