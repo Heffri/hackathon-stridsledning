@@ -1,8 +1,8 @@
 # Project Status
 
-> **Last updated:** 2026-04-18 (end-of-day, post-Milestone I)
+> **Last updated:** 2026-04-19 (post-Milestone I, post-modularization, post-doc-cleanup)
 > **Branch:** `knowledge-base` (all work pushed here)
-> **Latest commit:** `81023db` — Milestone I Task 4 + balance calibration
+> **Latest commit:** `cd1a40c` — Finalize modularization and archive cutover
 
 ## Journey So Far — Milestone B → I at a Glance
 
@@ -33,7 +33,7 @@ Full-circle range arcs replace the semi-circles (launchers cover all bearings no
 Blue AI's range helpers refactored to reason per-`(kind, launcher)` instead of distance-from-base — fixes the geometry approximation that cratered balance after Milestone F. Out-of-arena Saab sites filtered out (4 sites whose `saab_y > 1080` were physically outside the 250 km arena). `RED_LAUNCHER_POSITIONS` adds 3 drone launchers on north-side islands + 2 cruise launchers on north mainland/islands — drones and cruise missiles now spawn from visible red-tinted boxes instead of abstract border lines. Range rings now live as children of each launcher's THREE.Group so future drag-to-deploy will move box and ring together. Three iterations of launcher-position rebalance brought Blue win rate from 0/20 back to 6-8/20 — inside the 30-55 / 30-50 / 10-30 target window.
 
 **Milestone I — Real game loop: win conditions + spawn polish + HGV freedom** (autonomous session)
-Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40), starting at 60 HP after calibration. Blue budget (`$120 M USD`) is deducted per interceptor `spec.usd_cost`. `Scenario.winner` resolves the match as `'red' | 'blue' | 'draw'`; the 600 s hard cap is replaced by a 3600 s safety net. Ballistic + HGV moved to a 10 km far-north strip spawn (Y 235-245 km, arena edge) with reentry altitude floors (20 km ballistic, 30 km HGV). HGV's scripted wide-S and 12 km jink both deleted — default behaviour is straight-line toward target, external callers drive lateral control via `Threat.override_maneuver(turn_dir, g_load)`. HUD: per-site HP bars, Blue budget bar, full-screen end-of-match overlay (`BLUE WINS` / `RED WINS` / `DRAW`).
+Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40), starting at 100 HP (`config.SITE_HP_START`). Blue budget (`$120 M USD`) is deducted per interceptor `spec.usd_cost`. `Scenario.winner` resolves the match as `'red' | 'blue' | 'draw'`; the 600 s hard cap is replaced by a 3600 s safety net. Ballistic + HGV moved to a 10 km far-north strip spawn (Y 235-245 km, arena edge) with reentry altitude floors (20 km ballistic, 30 km HGV). HGV's scripted wide-S and 12 km jink both deleted — default behaviour is straight-line toward target, external callers drive lateral control via `Threat.override_maneuver(turn_dir, g_load)`. HUD: per-site HP bars, Blue budget bar, full-screen end-of-match overlay (`BLUE WINS` / `RED WINS` / `DRAW`).
 
 ### Current playable state
 
@@ -66,7 +66,8 @@ manoeuvre freedom. Plus a doc-only item about SLM ballistic fallback.
 Four tasks land this session:
 
 1. **Win conditions** — `Site.hp` now decrements per leak (drone 5 /
-   cruise 15 / ballistic 30 / HGV 40) starting at 60 HP;
+   cruise 15 / ballistic 30 / HGV 40) starting at 100 HP
+   (`config.SITE_HP_START`);
    `World.blue_budget` starts at `$120 M` and is deducted per
    `INTERCEPTOR_SPECS[kind].usd_cost` on every launch.
    `Scenario.winner` resolves `'red' | 'blue' | 'draw' | None` (Red
@@ -280,7 +281,7 @@ The sim now has:
 - **Realistic threat speeds** — ballistic 4459 m/s (13 Mach), HGV 5831 m/s (17 Mach). Spawn distances: HGV 180 km, ballistic 120 km, cruise 60 km, drone 30 km.
 - **Expanded 250 km arena** with 1 km/cell grid (CIWS 4 cells, RBS 70 9, SLS 12, SLM 40, PAC-3 60, PAC-2 70 — operator can eyeball ranges from the HUD).
 - **Base leak detection** uses 1500 m horizontal disc (matches visual base marker). HGV terminal dive entry moved to 30 km so aim CEP dropped from 1472 m → 18 m.
-- **Server default port 5174** (Windows reserves 8000/8080/8088). Override via `PORT` env var. See `NOTES_MODEL_AND_PORT.md` for the full trap.
+- **Server default port 5174** (Windows reserves 8000/8080/8088). Override via `PORT` env var. See `archive/pre-milestone-plans/NOTES_MODEL_AND_PORT.md` for the full trap (archived; core content now in `RUNNING_TEAM_MISSILE_INTERCEPT.md`).
 
 ## Current Balance (test_balance.py, 20 matches, post-Milestone G)
 
@@ -380,14 +381,15 @@ Run `git log --oneline -20` for the full history.
 
 | Doc | Purpose |
 |-----|---------|
-| `DEMO_PLAN.md` | Simplified MVP scope (what was built for Milestone B) |
-| `PLAN.md` | Full product vision implementation roadmap |
 | `GAME_DESIGN.md` | Complete mechanics (control levels, fuel, HP, economy) |
 | `WEAPON_SPECS.md` | All weapon parameters with real USD pricing |
 | `REPORT.md` | Running implementation log of each milestone |
-| `NOTES_MODEL_AND_PORT.md` | Mesh-building conventions + Windows port traps |
 | `progress/STATUS.md` | This file — current snapshot |
 | `progress/ROADMAP.md` | Next-step options |
+| `common-info/REPO_ONBOARDING_NOTES.md` | Session-start entry point |
+| `common-info/MODULARIZATION_SPEC.md` | Target module structure + current→future file mapping |
+| `common-info/TEAM_OWNERSHIP_SPEC.md` | Who owns which module |
+| `archive/pre-milestone-plans/` | `DEMO_PLAN.md`, `PLAN.md`, `NOTES_MODEL_AND_PORT.md` — archived 2026-04-19, retained for provenance only |
 
 ## Resuming Work on Another Machine
 
@@ -409,7 +411,7 @@ python server.py
 # Open http://localhost:5174/ in a browser, click Start
 ```
 
-If port 5174 is reserved on this machine (see `NOTES_MODEL_AND_PORT.md`):
+If port 5174 is reserved on this machine (see `RUNNING_TEAM_MISSILE_INTERCEPT.md` at the repo root, or the archived `archive/pre-milestone-plans/NOTES_MODEL_AND_PORT.md` for the original full writeup):
 
 ```bash
 PORT=6969 python server.py       # bash / Git Bash

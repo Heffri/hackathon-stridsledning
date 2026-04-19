@@ -1,13 +1,27 @@
 # Weapon Specifications — Full Reference
 
-> ⚠️ **This is the full arsenal for the final product.**
-> The first playable MVP uses a reduced subset (drone + subsonic cruise vs CIWS + RBS 70 + IRIS-T SLM). See **[DEMO_PLAN.md](DEMO_PLAN.md)**.
+> 📘 **This document is the arsenal spec reference.**
+> As of Milestone I, all 6 interceptors and all 6 threat kinds listed below
+> are active in the shipped sim (the Milestone-B MVP subset framing was
+> retired; see `archive/pre-milestone-plans/DEMO_PLAN.md` for that history).
 
 > Data sourced from `team-missile-intercept/common-info/source-data/knowledge/`
 > (canonical active copies of the Saab/reference inputs; manufacturer datasheets,
 > public domain). Bare source names in this document refer to that directory.
 > Values marked [est] are reasonable estimates where exact data is unavailable.
 > Reload times >60s are scaled ÷10 for demo pacing (see GAME_DESIGN.md for the scaling rule).
+
+> 🧮 **Drift note for Emil (`math-validation/` owner):**
+> Where this file's prose diverged from the shipped runtime, the **2026-04-19
+> cleanup pass** rewrote the prose to match the runtime (single source of
+> truth = `backend/sim/types.py` and `backend/sim/world.py`). Specifically:
+> HGV cruise_speed (5,831 m/s / Mach 17), ballistic cruise_speed (4,459 m/s
+> / Mach 13), HGV KE-bleed constant (`_HGV_BLEED_RATE = 120 m/s/s at max G`
+> with quadratic `(G/Gmax)²` scaling), and the **proximity-damage falloff
+> is linear in code** (`(1 - dist / prox_radius)`, not quadratic). If your
+> math-validation work prefers different numbers or a quadratic falloff,
+> please raise it with Chen — the runtime was treated as authoritative for
+> this pass rather than forcing a code change.
 
 ---
 
@@ -35,15 +49,23 @@
 | PAC-2 GEM+ | 80 | 40 | 20m | Blast-fragmentation |
 | PAC-3 MSE | **200** | **5** | 0.3m | Kinetic kill (no warhead) |
 
-**Damage formula:**
+**Damage formula (runtime, `backend/sim/world.py`):**
 ```
-if dist < direct_hit_radius (0.5m for frag, 0.3m for kinetic):
-    damage = direct_hit_damage
-elif dist < prox_radius:
-    damage = prox_damage * (1 - dist / prox_radius)^2
+if dist < radius_direct (per-weapon; e.g. 0.3m for PAC-3 kinetic):
+    damage = damage_direct
+elif dist < radius_prox:
+    damage = max(1, round(damage_prox * (1 - dist / radius_prox)))
 else:
     damage = 0
 ```
+
+Falloff is **linear** (not the quadratic `(1 - d/r)²` originally sketched)
+because combining real-warhead fuse radii (5–20 m) with the Euler-0.05 s
+PN's typical 20–80 m CPA left almost every hit at 1–2 dmg. The current
+runtime scales `radius_prox` up per-weapon (see `INTERCEPTOR_SPECS` in
+`types.py`) and uses linear falloff with a `max(1, …)` floor so the
+"direct vs prox" design intent still reads in a 1–3 shot kill pattern.
+Flagged for Emil review — see header drift note.
 
 **Key design note — PAC-3 MSE:**
 PAC-3 is a pure kinetic kill vehicle with no warhead. On direct hit: devastating (200 dmg, one-shots anything). On near-miss: almost nothing (5 dmg). This forces Blue AI to achieve perfect guidance — PAC-3 is the "sniper" of the arsenal.
@@ -174,13 +196,13 @@ PAC-3 is a pure kinetic kill vehicle with no warhead. On direct hit: devastating
 | Subsonic cruise | Kalibr-class | 260 m/s | 2G | 30 | 0.08 m² | 50 m | 600 |
 | Stealth cruise | JASSM-ER / Kh-101 | 260 m/s | 3G | 30 | 0.01 m² | 50 m | 600 |
 | Supersonic cruise | BrahMos-class | 900 m/s | 4G | 40 | 0.15 m² | 14,000 m | 180 |
-| Ballistic (terminal) | Iskander SRBM | 2,000 m/s | 1G | 80 | 0.5 m² | 35,000→0 m | **gravity** |
-| Hypersonic glide | Kinzhal / DF-ZF | 1,700 m/s | 8G | 60 | 0.1 m² [est] | 25,000 m | **gravity** |
+| Ballistic (terminal) | Iskander / DF-17 class | 4,459 m/s (Mach 13) | 1G | 80 | 0.5 m² | 35,000→0 m | **gravity** |
+| Hypersonic glide | Kinzhal / DF-ZF | 5,831 m/s (Mach 17) | 8G | 60 | 0.1 m² [est] | 35,000 m | **gravity** |
 
 **Gravity-driven** means no fuel timer — ballistic and HGV operate on kinetic energy and altitude trade:
-- Maneuvers bleed speed (not fuel): `speed_loss = drag_factor * G_applied² * dt`
-- When speed drops below critical threshold → falls and crashes
-- Cannot generate thrust — once launched, they coast on initial energy
+- Maneuvers bleed speed (not fuel). HGV runtime formula (`entities.py`): `speed_loss = _HGV_BLEED_RATE * (G_applied / max_G)² * dt` where `_HGV_BLEED_RATE = 120 m/s/s` at `G_applied = max_G = 8 G`.
+- When speed drops below the stall floor (`_HGV_STALL_SPEED = 500 m/s` for HGV) → HGV loses lift, is marked dead, ground-sweep picks up the wreck.
+- Cannot generate thrust — once launched, they coast on initial energy.
 
 ### Economy Table
 
@@ -249,9 +271,9 @@ PAC-3 is a pure kinetic kill vehicle with no warhead. On direct hit: devastating
 - Cost: ~$3,000,000 [est] (BrahMos ~$2.73M public data)
 - Source: threats.md
 
-#### Ballistic Missile — Iskander-class SRBM (terminal phase)
-- Terminal speed: Mach 6 (~2,000 m/s)
-- Entry altitude: 35,000 m (simulation enters at this point, skipping boost phase)
+#### Ballistic Missile — Iskander / DF-17 class (terminal phase)
+- Terminal speed: Mach 13 (~4,459 m/s) — matches public terminal velocity of modern MaRV / heavy-RV designs (Iskander upgrade, DF-17 depressed-trajectory test)
+- Entry altitude: 35,000 m (simulation enters at this point, skipping boost phase; Milestone I floors reentry at ≥ 20 km on far-north spawn)
 - RCS: 0.5 m² (reentry vehicle, conical low-RCS design)
 - **HP: 80** (hardened RV designed to survive reentry heating)
 - Maneuverability: 1G correction (terminal phase only, very limited)
@@ -263,14 +285,14 @@ PAC-3 is a pure kinetic kill vehicle with no warhead. On direct hit: devastating
 - Source: threats.md
 
 #### Hypersonic Glide Vehicle — Kinzhal/DF-ZF class
-- Initial speed: Mach 5 (~1,700 m/s)
-- Altitude: 25,000–40,000 m (skip-glide trajectory)
-- **Maneuverability: 8G max** — full real-time Red AI control (Level 5)
+- Initial speed: Mach 17 (~5,831 m/s)
+- Altitude: 25,000–40,000 m (skip-glide trajectory; Milestone I floors reentry at ≥ 30 km on far-north spawn)
+- **Maneuverability: 8G max** — `Threat.override_maneuver(turn_dir, g_load)` hook is the Red AI control input (Milestone I); default flight is straight-line toward the pre-selected target
 - RCS: ~0.1 m² [est]
 - **HP: 60** (hardened but control surfaces are fragile)
 - **No fuel system** — gravity/kinetic-driven. Maneuvers bleed speed aggressively.
-- Speed bleed formula: `speed_loss_per_s = bleed_rate * (current_G / max_G)²` [tunable, ~50 m/s/s at max G]
-- When speed < 500 m/s → HGV can no longer generate sufficient lift → crashes
+- Runtime speed bleed (`entities.py`): `speed_loss_per_s = _HGV_BLEED_RATE * (G_applied / max_G)²` with `_HGV_BLEED_RATE = 120 m/s/s` at max G
+- When speed < `_HGV_STALL_SPEED` (500 m/s) → HGV can no longer generate sufficient lift → crashes
 - Launcher: 1 per carrier (MiG-31 analog)
 - Cost: ~$10,000,000 [est] — Kinzhal ~$10M+ reported
 - **Hardest target**: speed + maneuverability combination

@@ -32,10 +32,11 @@ This follows Session 0: logical ownership first, physical extraction later.
 | Active runtime | `backend/`, `frontend/` | Current runnable game shells |
 | Active navigation and rules | `common-info/` | Repo structure, ownership, archive, source-data, and onboarding authority |
 | Active progress tracking | `progress/` | Current status and roadmap |
-| Active product/design docs | `REPORT.md`, `PLAN.md`, `GAME_DESIGN.md`, `WEAPON_SPECS.md` | Historical build log and design/reference docs |
+| Active product/design docs | `REPORT.md`, `GAME_DESIGN.md`, `WEAPON_SPECS.md` | Historical build log and design/reference docs |
 | Active docs-first ownership packages | `ai/`, `math-validation/`, `maps/`, `models/`, `game-core/` | Teammate module homes before runtime extraction |
 | Active archive | `archive/` | Frozen historical material kept for traceability |
 | Archived | `archive/xingyi-rts/` | Provenance only, not default working area |
+| Archived | `archive/pre-milestone-plans/` | `DEMO_PLAN.md`, `PLAN.md`, `NOTES_MODEL_AND_PORT.md` — retired 2026-04-19; superseded by `progress/` + `common-info/` + `RUNNING_TEAM_MISSILE_INTERCEPT.md` |
 
 ## Active Source Data
 

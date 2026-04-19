@@ -38,8 +38,8 @@ them with the same "nose forward = local +Y" convention.
 
 ### Fin and wing convention
 
-`NOTES_MODEL_AND_PORT.md` documents the current geometry convention for
-four-fin bodies:
+`archive/pre-milestone-plans/NOTES_MODEL_AND_PORT.md` (archived
+2026-04-19 but retained for this geometry convention) documents:
 
 - `X` = radial extent
 - `Y` = chord along the body

@@ -195,7 +195,11 @@ Log anything broken as a bug before moving on.
 
 ---
 
-### Route 2 — Visual Packaging (recommended next)
+### Route 2 — Visual Packaging — ✅ CLOSED (Milestone E)
+
+> ⚠️ **This section is kept for historical reference only.** All five
+> sub-tasks shipped in Milestone E / F / G. See the top-of-file "What
+> Milestone E Did" summary for the mapping. Skip ahead to Route 3.
 
 **Effort:** 2–4 hours (one to two delegate sessions)
 **Impact:** Highest for demo-day perception
@@ -316,7 +320,12 @@ Current Red AI is Level 1 (pre-programmed waves). Adding adaptive behaviour:
 
 ---
 
-### Route 7 — New: Base HP + Economy
+### Route 7 — Base HP + Economy — ✅ CLOSED (Milestone I)
+
+> ⚠️ **This section is kept for historical reference only.** Milestone I
+> shipped per-site HP + Blue budget + `Scenario.winner` + end-of-match
+> overlay. See the "What Milestone I Did" summary at the top for the live
+> state. Skip to Milestone J or the other open routes.
 
 **Effort:** 1–2 hours
 **Impact:** Medium — turns the sim from watch-only into a game with win/loss stakes

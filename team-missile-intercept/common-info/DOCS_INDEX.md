@@ -49,9 +49,16 @@
 
 ## Product And Design References
 
-- [../PLAN.md](../PLAN.md) - full implementation vision
 - [../GAME_DESIGN.md](../GAME_DESIGN.md) - mechanics and design rules
 - [../WEAPON_SPECS.md](../WEAPON_SPECS.md) - reference weapon/spec table
+- [../REPORT.md](../REPORT.md) - running implementation log, Milestone B → I
+
+## Archived (provenance only)
+
+- [../archive/pre-milestone-plans/ARCHIVE_NOTE.md](../archive/pre-milestone-plans/ARCHIVE_NOTE.md) -
+  points to the archived `DEMO_PLAN.md`, `PLAN.md`, `NOTES_MODEL_AND_PORT.md`
+  (superseded by `progress/STATUS.md` + `progress/ROADMAP.md` +
+  `RUNNING_TEAM_MISSILE_INTERCEPT.md`)
 
 ## Drift And Safety
 
