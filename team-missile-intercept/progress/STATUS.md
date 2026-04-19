@@ -68,6 +68,22 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
    and `backend/BALANCE_BASELINE_README.md` 2026-04-20 entry for the
    post-W5 numbers. 20-match sweep Blue win rate went 1/20 → 14/20;
    no budget tune per operator rule (Blue over target = good problem).
+0.6 **M-TIER2.6-AUDIT — overnight code-quality audit + safe fixes.**
+   Landed 2026-04-19 (commits `947396c` audit, `5bed3fe` dead code,
+   `87a537c` stale comments, `05cf91e` verdict-raising tests,
+   `2290dd2` seam docstrings, plus Phase 3 docs close).
+   Phase 2 fix classes: (1) dead code — `World.misses`, dead zombie
+   sweep loop, `_burnout_flagged` slot all removed; (2) stale
+   comments in `scenarios.step` + `test_ballistic_cep`; (3)
+   verdict-only tests (`test_hgv_impact`, `test_ballistic_cep`)
+   now `sys.exit(1)` on FAIL; (4) docstrings on public seams
+   (`World.spawn_threat`, `spawn_interceptor`, `step`, `prune_dead`,
+   `snapshot`, `Scenario.__init__`, `Scenario.snapshot`,
+   `Threat.__init__`, `Interceptor.__init__`). Phase 3 landed
+   `game-core/CONTRACT_SEAMS.md` (cross-subsystem reference for
+   Boyu / Oskar / Milestone J workers) and added Issues 13-17 to
+   `ISSUES_2026-04-19.md` for operator decisions surfaced during
+   the audit. Full findings in `game-core/AUDIT_2026-04-19.md`.
 1. **Milestone J — Deployment UI** (3-4 hours). Pre-game phase letting AI or a human player pick Blue launcher positions. Drag-drop on the map, land-only constraint, AI-auto button. Range rings already parented to launcher Groups in Milestone H, so they'll follow drags automatically. The `setup` phase exposed by M-TIER2-PHASE is the hook point.
 2. **Red AI Level 5 HGV control** — `Threat.override_maneuver` hook is in place; needs a per-tick decision layer (nearest-interceptor scan, geometry, KE budget) to drive the hook.
 3. **Smarter Red AI target selection** — currently weighted-random across sites; wave-specific targeting (wave 5 prioritises capital) would feel more tactical.

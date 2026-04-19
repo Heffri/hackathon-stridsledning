@@ -154,6 +154,12 @@ Landed seams available to Oskar / Boyu:
   pre-M-TIER2.5 behaviour. Full contract in
   `./ENGAGEMENT_MODE_DESIGN.md` (landed M-TIER2.5, 2026-04-19).
 
+Cross-subsystem reference doc (Phase + WS command table, spawn
+contracts, event schema, snapshot additive rule, silent-no-op risk
+register): `./CONTRACT_SEAMS.md` (landed M-TIER2.6-AUDIT,
+2026-04-19). Audit findings driving the current seam state:
+`./AUDIT_2026-04-19.md`.
+
 Likely touchpoints:
 
 - `backend/sim/scenarios.py`
