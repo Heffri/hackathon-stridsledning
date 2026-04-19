@@ -114,6 +114,38 @@ class World:
         target_xy,
         intermediate_waypoints=None,
     ) -> int:
+        """Construct a Threat and register it with the world.
+
+        Primary call sites: `red_ai.RedAI.step` during wave spawn,
+        plus `test_balance_baseline` / `test_ballistic_cep` /
+        `test_hgv_impact` for headless trials.
+
+        Args:
+          kind: `ThreatType` enum member.
+          start_xy: 2- or 3-tuple in world metres. If length-2, z
+            defaults to `spec.cruise_alt` (set inside the Threat
+            constructor). Length-3 wins over the spec default.
+          target_xy: 2-tuple (site position in metres). z=0 is added
+            inside the constructor — every threat aims at ground.
+          intermediate_waypoints: optional list of (x, y[, z])
+            tuples. Cruise / drone kinds walk this list to the
+            final target; ballistic ignores it (solver path only
+            uses spawn + target).
+
+        Returns:
+          Entity id (positive int) for lookup in `self.threats`.
+
+        Side effects:
+          Appends to `self.threats`, bumps `self.threats_spawned`,
+          and emits a `threat_spawn` event with `{id, kind}`.
+
+        Caller rules:
+          Do not mutate the returned Threat's internal fields
+          directly (`waypoint`, `_wp_queue`, pos, vel). Use
+          `Threat.override_maneuver(dir, g)` for per-tick HGV
+          lateral control. Spawn position and target cannot be
+          changed after construction — spawn a new Threat.
+        """
         eid = self._new_id()
         t = Threat(
             eid,
@@ -136,6 +168,44 @@ class World:
         target_id: int,
         engagement_mode: Optional[str] = None,
     ) -> int:
+        """Construct an Interceptor and register it with the world.
+
+        Primary call sites: `blue_ai.BlueAI._fire` during engagement,
+        plus `test_engagement_mode` for unit tests. A future learned
+        Blue AI (Oskar) is the main planned additional caller.
+
+        Args:
+          kind: `InterceptorType` enum member.
+          launch_pos: 3-tuple / np.ndarray launch position in world
+            metres (the Interceptor constructor forces a np.array
+            copy of shape 3).
+          initial_dir: 3-vector pointing at the target at launch.
+            Only the horizontal component is used for the VLS boost
+            lean — the z component is ignored for SAMs. CIWS (only
+            non-VLS kind) uses the full 3-vector for its ballistic
+            lofted burst.
+          target_id: id of the live Threat this interceptor will
+            track via PN guidance.
+          engagement_mode: optional `'prox' | 'htk'` override.
+            `None` → the interceptor uses its spec's
+            `default_engagement_mode` (prox for every SAM, htk for
+            pac_3). Explicit strings must appear in
+            `spec.engagement_mode_choices` or the Interceptor
+            constructor raises `ValueError`.
+
+        Returns:
+          Entity id (positive int) for lookup in `self.interceptors`.
+
+        Side effects:
+          Appends to `self.interceptors` and emits a `launch` event
+          with `{id, kind, target}`.
+
+        Caller rules:
+          Pair with `Launcher.fire(t_now, engagement_mode=X)` which
+          returns the resolved mode string — pass that through so
+          ammo / CD bookkeeping and the Interceptor's mode field
+          agree. Contract in `ENGAGEMENT_MODE_DESIGN.md`.
+        """
         eid = self._new_id()
         # `engagement_mode=None` → Interceptor uses the spec default.
         # Legal callers (BlueAI._fire) pass the value resolved by
@@ -153,9 +223,35 @@ class World:
 
     # --- tick ---
     def step(self, dt: float) -> None:
-        # Note: events are cleared by Scenario.step at the start of the
-        # tick, not here — otherwise launch events appended by blue_ai
-        # (via spawn_interceptor) get wiped before they reach the client.
+        """Advance the world by `dt` seconds. Five phases in order:
+
+          1. Threat step (physics integration per kind).
+          2. Interceptor step (PN guidance + CPA update) + timeout
+             check against `config.INTERCEPT_TIMEOUT`.
+          3. CPA-based interceptor-vs-threat damage resolution.
+             Interceptor is consumed regardless of damage dealt;
+             threat only dies when hp drops to 0.
+          4. Site-disc leak detection (horizontal radius
+             `BASE_HIT_RADIUS`, gated by `requires_ground_impact`).
+             A threat inside any site's disc + near ground leaks
+             to that site and subtracts `SITE_LEAK_DAMAGE[kind]`
+             from its hp.
+          4b. Unified ground-impact collision for any remaining
+             live threat / interceptor that touches the ground.
+             Threats landing inside a site disc leak; outside, a
+             `ground_crash` event fires.
+          5. `self.t += dt` — advance sim time.
+
+        Not phase-gated: the phase gate lives at `Scenario.step`
+        only. Callers that construct a raw `World()` and drive
+        `world.step(dt)` directly (several tests do this) bypass
+        the FSM and always advance. If a future change moves phase
+        gating down here, update those tests.
+
+        Events are cleared by `Scenario.step` at the start of its
+        tick, not here — otherwise launch events appended by
+        `blue_ai.step` before `world.step` would get wiped.
+        """
 
         # 1) advance threats. HGV needs world access to scan for nearby
         # interceptors (Level-5 evasion); other threats ignore the arg.
@@ -361,6 +457,13 @@ class World:
         self.t += dt
 
     def prune_dead(self) -> None:
+        """Drop entities marked `state.alive = False` and expired
+        explosions. Called at the end of every RUNNING tick in
+        `Scenario.step`. Entities that die during `world.step` stay
+        in the dict for one extra tick so the next snapshot publishes
+        their final pose + kind (client renders the terminal
+        explosion frame) before they vanish.
+        """
         for tid in [k for k, v in self.threats.items() if not v.state.alive]:
             del self.threats[tid]
         for iid in [k for k, v in self.interceptors.items() if not v.state.alive]:
@@ -372,6 +475,12 @@ class World:
 
     # --- snapshot for streaming ---
     def snapshot(self) -> dict:
+        """World-level snapshot: live entities, active explosions,
+        this-tick events, and numeric stats. `Scenario.snapshot`
+        wraps this with AI logs, launcher state, site HP, winner,
+        and phase. Consumed by the frontend via `server.py` once
+        per `config.STREAM_HZ` tick.
+        """
         ents: List[dict] = []
         for t in self.threats.values():
             ents.append(t.state.to_dict())

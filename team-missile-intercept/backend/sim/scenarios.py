@@ -10,6 +10,13 @@ from .world import World
 
 class Scenario:
     def __init__(self):
+        """Assemble a fresh demo scenario: new World (lands in SETUP
+        phase), fresh RedAI driving `build_demo_waves()`, fresh
+        BlueAI. Calls `sites.reset_leaks()` because `SOUTH_SITES` is
+        a module-level singleton that would otherwise carry leak /
+        HP state across scenarios in the same process (tests that
+        construct multiple scenarios per-process rely on this).
+        """
         # Clear per-site leak counters from any previous scenario
         # instance — SOUTH_SITES is a module-level singleton (the HUD
         # and Red AI both need a single source of truth for targetable
@@ -96,6 +103,15 @@ class Scenario:
         return self.winner is not None
 
     def snapshot(self) -> dict:
+        """Full snapshot broadcast every `1/config.STREAM_HZ` seconds
+        by `server.py`. Extends `world.snapshot()` with AI log tails,
+        launcher state, site HP, winner, `max_sim_time`, and the
+        current Match Phase. Keys: see `RUNTIME_MAP.md` + this
+        file for the live shape. Runtime shell rule (see
+        `common-info/RUNTIME_STABILITY_RULES.md`): prefer additive
+        changes; only rename existing keys via a dedicated
+        integration change.
+        """
         snap = self.world.snapshot()
         snap["wave"] = self.red._next_wave
         snap["total_waves"] = len(self.red.waves)

@@ -94,6 +94,31 @@ class Threat:
         t_now: float,
         intermediate_waypoints=None,
     ):
+        """Construct a Threat at `start_xy`, aimed at `target_xy`.
+
+        Per-kind initial velocity resolution:
+          * HGV: glide-path pitch chosen so a straight glide from
+            (start, spawn_z) reaches z=0 at target (x, y). Red AI
+            can override per-tick via `override_maneuver`.
+          * Ballistic: trajectory-solver picks a launch angle below
+            horizontal that puts the gravity + drag re-entry arc
+            on the target (projectile-motion quadratic in tan θ).
+          * Cruise / drone: head toward first waypoint, altitude
+            held by `_cruise_alt_override`; cruise_sub pops up +
+            down near target, drone dives in the final 2 km.
+
+        `start_xy` may be length-2 (z defaults to `spec.cruise_alt`)
+        or length-3 (actual spawn altitude). `target_xy` is always
+        length-2 (z=0 forced for ground target).
+
+        `intermediate_waypoints` is a list of (x, y[, z]) tuples
+        prepended to the target. Cruise / drone walk it; ballistic
+        ignores it.
+
+        Post-construction mutation is not supported — the waypoint
+        queue, spawn position, and initial velocity are part of the
+        trajectory solver's initial conditions.
+        """
         self.spec: ThreatSpec = THREAT_SPECS[kind]
         # start_xy may be (x, y) or (x, y, z). When Z is supplied it is the
         # actual spawn altitude; otherwise we fall back to spec.cruise_alt.
@@ -544,6 +569,27 @@ class Interceptor:
         t_now: float,
         engagement_mode: Optional[str] = None,
     ):
+        """Construct an Interceptor.
+
+        Launch profile per kind:
+          * VLS SAMs (every kind except CIWS): near-vertical boost
+            with a small horizontal lean derived from the XY
+            component of `initial_dir`. PN guidance takes over at
+            `t_now + _VLS_BOOST_DURATION` (1.5 s).
+          * CIWS: ballistic lofted burst along the full 3-vector
+            `initial_dir` at 50 % max_speed. No boost phase.
+
+        `engagement_mode` resolution (M-TIER2.5):
+          * `None` → uses `spec.default_engagement_mode` (prox for
+            every SAM, htk for pac_3).
+          * Explicit string → must be in `spec.engagement_mode_choices`
+            or `ValueError` is raised immediately. Legal callers
+            (BlueAI._fire → Launcher.fire → spawn_interceptor) all
+            pre-validate via `Launcher.fire`, so a well-formed
+            caller never hits this raise.
+
+        See `ENGAGEMENT_MODE_DESIGN.md` for the full mode contract.
+        """
         self.spec: InterceptorSpec = INTERCEPTOR_SPECS[kind]
         # M-TIER2.5: validate + resolve engagement_mode. `None` → spec
         # default; explicit values must be in the spec's choices or the
