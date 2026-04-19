@@ -33,7 +33,7 @@ class Scenario:
         """Milestone I win-condition resolver.
 
         Returns:
-          'red'  — any Site HP <= 0, or Blue budget exhausted.
+          'red'  — all military sites destroyed, or Blue budget exhausted.
           'blue' — all Red waves spawned AND no Red threats still alive.
           'draw' — 3600 s safety cap reached (should basically never fire).
           None   — match still in progress.
@@ -42,12 +42,21 @@ class Scenario:
         last Blue HP AND was the final threat on the map resolves as a
         Red win rather than a Blue one. This matches operator intent:
         "if Blue is down to a dying site, Red got through."
+
+        Interim multi-site rule (Issue #9, tracked in ISSUES_2026-04-19):
+        partial base loss no longer ends the match — Red only wins when
+        every military site is at HP 0. Military = subtypes 'air_base'
+        and 'base'. Capital short-circuit is deferred to Tier 4 (arena
+        rescale needed to re-include Meridia).
         """
         if self.world.blue_budget <= 0:
             return "red"
-        for s in sites.SOUTH_SITES:
-            if s.hp <= 0:
-                return "red"
+        military = [
+            s for s in sites.SOUTH_SITES
+            if s.subtype in ("air_base", "base")
+        ]
+        if military and all(s.hp <= 0 for s in military):
+            return "red"
         if self.red.done and all(
             not t.state.alive for t in self.world.threats.values()
         ):
