@@ -78,6 +78,11 @@ class Threat:
         # commanded lateral acceleration in m/s². Consumed + cleared in
         # Threat.step. None = no external override this tick.
         "_override_accel",
+        # M-TIER1.5 (Issue #10 subtask): horizontal distance from spawn
+        # to target, used to compute the constant glide-path pitch
+        # (tan = _base_alt / _glide_initial_dh). HGV-only; other kinds
+        # keep it at 1.0. Stored once at spawn.
+        "_glide_initial_dh",
     )
 
     def __init__(
@@ -104,6 +109,10 @@ class Threat:
             [float(target_xy[0]), float(target_xy[1]), 0.0], dtype=np.float64
         )
 
+        # HGV glide-path horizontal distance, overridden below for HGV
+        # spawn. Left at 1.0 for non-HGV kinds (unused by their paths).
+        self._glide_initial_dh = 1.0
+
         # Build the waypoint sequence: [intermediate..., final_target].
         # For cruise/drone the queue's final element is the base (target).
         # For ballistic intermediate_waypoints is ignored.
@@ -117,18 +126,28 @@ class Threat:
         all_wps.append(target.copy())
 
         if kind == ThreatType.HGV:
-            # Milestone I: straight-line glide toward the pre-selected
-            # target. No scripted S-weave, no evasion. Red AI can
-            # override per-tick via `override_maneuver` to insert a
-            # commanded lateral accel.
+            # Milestone I + M-TIER1.5 (Issue #10 subtask):
+            # constant glide-path dive toward the pre-selected target.
+            # Flight-path angle chosen at spawn so a straight glide from
+            # `spawn_z` lands at z = 0 at the target's (x, y). Red AI's
+            # per-tick `override_maneuver(dir, g)` still wins over the
+            # default when set.
             to_target_h = np.array([target[0] - start[0], target[1] - start[1], 0.0])
             norm_h = float(np.linalg.norm(to_target_h))
             if norm_h < 1e-6:
                 to_target_h = np.array([0.0, -1.0, 0.0])
                 norm_h = 1.0
             horiz_unit = to_target_h / norm_h
-            vel = horiz_unit * self.spec.cruise_speed
-            vel[2] = -80.0
+            # tan_pitch = spawn_z / initial_dh. For the Milestone I
+            # spawn strip (z=30-40 km, dh=150-240 km) this is ~0.12-0.27
+            # i.e. 7-15° shallow dive. Spawn with velocity already on
+            # the glide line so the PD controller only has to correct
+            # small integration drift during flight.
+            self._glide_initial_dh = max(1.0, norm_h)
+            tan_pitch = spawn_z / self._glide_initial_dh
+            denom = float(np.sqrt(1.0 + tan_pitch * tan_pitch))
+            vel = horiz_unit * (self.spec.cruise_speed / denom)
+            vel[2] = -self.spec.cruise_speed * tan_pitch / denom
             self.waypoint = target.copy()
             self._wp_queue = []
         elif kind == ThreatType.BALLISTIC:
@@ -262,8 +281,13 @@ class Threat:
             else:
                 h_dir = np.array([0.0, -1.0, 0.0])
 
-            # Terminal 3D aim vs cruise horizontal+altitude hold.
-            terminal_dive = dh < 30_000.0
+            # M-TIER1.5 (Issue #10): default is a constant glide-path
+            # dive from spawn — target_alt descends linearly with
+            # horizontal travel so a straight glide reaches z=0 exactly
+            # at (x_target, y_target). Sharp 3D aim kicks in only for
+            # the final 3 km or below 2 km altitude to clean up the
+            # terminal impact.
+            terminal_dive = dh < 3_000.0 or pos[2] < 2_000.0
             if terminal_dive:
                 to_base_3d = wp - pos
                 n3 = float(np.linalg.norm(to_base_3d)) or 1.0
@@ -278,13 +302,28 @@ class Threat:
                     + physics.drag_accel_at(vel, self.spec.drag_k, float(pos[2]))
                 )
             else:
+                # Horizontal steering: same cruise-speed target as before.
                 desired_h_vel = h_dir * self.spec.cruise_speed
                 cur_h_vel = np.array([vel[0], vel[1], 0.0])
                 steer_h = (desired_h_vel - cur_h_vel) / max(dt, 1e-3)
                 horiz_accel = physics.cap_accel(steer_h, self.spec.max_g)
-                target_alt = self._base_alt
+
+                # Glide-path reference: target_alt = _base_alt * dh /
+                # initial_dh, clamped to [0, _base_alt]. Reaches 0 at
+                # target (x, y). target_vz feeds forward the descent
+                # rate needed to stay on the line (−tan_pitch ×
+                # horizontal_speed). PD on (alt_err, vz_err) handles
+                # small drift; spawn `vel` is already on the glide
+                # line so steady-state is reached immediately.
+                tan_pitch = self._base_alt / self._glide_initial_dh
+                glide_ratio = max(0.0, min(1.0, dh / self._glide_initial_dh))
+                target_alt = self._base_alt * glide_ratio
+                cur_h_speed = float(np.linalg.norm(cur_h_vel))
+                target_vz = -tan_pitch * cur_h_speed
                 alt_err = target_alt - pos[2]
-                alt_accel = np.array([0.0, 0.0, alt_err * 0.3 - vel[2] * 0.5])
+                vz_err = target_vz - vel[2]
+                alt_accel = np.array([0.0, 0.0, alt_err * 0.3 + vz_err * 0.5])
+
                 # Aerodynamic lift cancels gravity during the glide.
                 lift = np.array([0.0, 0.0, config.GRAVITY])
                 base_cmd = horiz_accel + alt_accel + lift
