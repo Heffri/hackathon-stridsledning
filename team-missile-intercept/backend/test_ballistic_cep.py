@@ -126,12 +126,14 @@ def main() -> None:
     n_alive = n_spawned - n_impacted
     misses = np.array([r["miss"] for r in results if r["miss"] is not None])
 
-    # Flyover artifact: ballistic does NOT have requires_ground_impact,
-    # so it can be counted as hitting any site whose horizontal disc
-    # it crosses in-air. This produces huge miss values when the leak
-    # site doesn't match the targeted site. Track it explicitly so the
-    # "targeting is wrong" vs "site-rule caught it mid-flight" readings
-    # stay separable for Issue #11 verification.
+    # Flyover artifact: pre-M-TIER2.5, ballistic did NOT have
+    # requires_ground_impact, so it could be counted as hitting any
+    # site whose horizontal disc it crossed mid-flight — producing
+    # huge miss values when the leak site didn't match the targeted
+    # site. Post-M-TIER2.5 (commit b06fd11) every non-nuclear threat
+    # has `requires_ground_impact=True`, so this bucket should be 0
+    # for every trial today. The split is retained as a regression
+    # guard: any future flag-flip surfaces here immediately.
     flyover = [
         r for r in results
         if r["leak_site"] is not None

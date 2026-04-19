@@ -35,12 +35,13 @@ class Scenario:
         frontend can render the end-of-match overlay without the
         Scenario doing any extra bookkeeping.
         """
+        # Events are cleared here (before both the phase gate and the
+        # AI / world.step calls) rather than inside `world.step` — doing
+        # it mid-tick would wipe launch events that `blue_ai.step` just
+        # appended.
         self.world.events = []
         if self.world.phase != MatchPhase.RUNNING:
             return
-        # Clear last tick's events before anyone appends new ones. Doing
-        # this at world.step's start would wipe launch events that
-        # blue_ai.step just appended.
         self.red.step(self.world.t, self.world)
         self.blue.step(self.world.t, self.world)
         self.world.step(dt)
