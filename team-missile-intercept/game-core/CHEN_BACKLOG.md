@@ -4,25 +4,11 @@ This backlog is for the base game package, not for AI policy depth or art polish
 
 ## 1. Align Speed Control With Runtime Capability
 
-Priority: High
-
-Why it belongs to Chen:
-
-- speed semantics are part of the base game loop
-- `backend/server.py` already accepts up to `20.0x`
-- `frontend/index.html` and `frontend/js/hud.js` currently expose only `0.5x` to `5.0x`
-
-Target outcome:
-
-- one clear speed contract across backend and frontend
-- support for practical demo speeds such as `5x`, `10x`, and `20x`
-- HUD always shows the real active speed multiplier
-
-Likely touchpoints:
-
-- `backend/server.py`
-- `frontend/index.html`
-- `frontend/js/hud.js`
+Priority: High — **Landed 2026-04-19 (M-TIER1-SPEED, extended
+M-TIER2.7 to 50× for demo pacing)**. Slider + backend validation
+both run 0.5 / 0.1× to 50.0×. HUD label reads the real active
+multiplier. No spec change needed — backend was already
+constant-`dt`, step-count-scaled before M-TIER1-SPEED.
 
 ## 2. Add Explicit Match Phase State
 

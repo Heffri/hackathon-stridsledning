@@ -84,6 +84,19 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
    Boyu / Oskar / Milestone J workers) and added Issues 13-17 to
    `ISSUES_2026-04-19.md` for operator decisions surfaced during
    the audit. Full findings in `game-core/AUDIT_2026-04-19.md`.
+0.7 **M-TIER2.7-CRUISE-DIVE — cruise_sub terminal dive + speed slider
+   50× + WS typed-frame routing.** Landed 2026-04-19 (commits
+   `fd6fdfe` cruise dive + test, `dc08a52` slider 20× → 50×,
+   `6247663` WS typed-frame handler for `phase_change` + `error`).
+   Cruise_sub's old pop-up terminal was replaced by an HGV-style 3D
+   aim triggered at `dh < 5 km` on the final waypoint so cruise
+   reaches z=0 under M-TIER2.5's `requires_ground_impact=True` rule
+   (test_cruise_impact.py: 20/20 ground-impact, median CEP 38.5 m;
+   20-match sweep: cruise leaks 0 → 1). Slider ceiling raised so
+   the operator can fast-forward scouting. W6 audit-E follow-up
+   closed: `error` frames now flash the phase chip red for 3 s with
+   the reason as a tooltip. Also captured Issue #18 (cruise terrain-
+   following, blocked on `maps/` elevation API).
 1. **Milestone J — Deployment UI** (3-4 hours). Pre-game phase letting AI or a human player pick Blue launcher positions. Drag-drop on the map, land-only constraint, AI-auto button. Range rings already parented to launcher Groups in Milestone H, so they'll follow drags automatically. The `setup` phase exposed by M-TIER2-PHASE is the hook point.
 2. **Red AI Level 5 HGV control** — `Threat.override_maneuver` hook is in place; needs a per-tick decision layer (nearest-interceptor scan, geometry, KE budget) to drive the hook.
 3. **Smarter Red AI target selection** — currently weighted-random across sites; wave-specific targeting (wave 5 prioritises capital) would feel more tactical.
