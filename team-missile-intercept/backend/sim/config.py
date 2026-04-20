@@ -168,6 +168,23 @@ SITE_LEAK_DAMAGE = {
 # headroom but a wave-5 saturation can visibly tighten the bar.
 BLUE_BUDGET_START = 120_000_000
 
+# M-TIER3-RED-BUDGET (Issue #8, 2026-04-20): Red now has a finite
+# spending pool, symmetric with Blue. Deducted from `world.red_budget`
+# per-threat at spawn time in `red_ai.step`. Default waves
+# (`build_demo_waves`) total spawn cost is ≈ $54.3 M (11 drones +
+# 8 cruise + 4 ballistic + 3 hgv, see THREAT_SPECS.usd_cost), so
+# $100 M gives the current wave spawner real headroom — default demo
+# never hits the budget ceiling and spawn behavior is bit-for-bit
+# identical to pre-Tier-3 runs. Sized loose deliberately: the future
+# Red AI (Boyu) will make tactical spawn decisions against this pool,
+# so the runtime just needs to expose + deduct + gate. Future-ready
+# Blue-win path fires when `red_budget <= 0 AND no threats alive` — a
+# no-op under the current wave spawner (red.done already fires first),
+# but live for the AI-driven regime.
+# TODO: tune once Boyu's Red AI lands. Balance target is "Red must
+# play an efficient budget game to win".
+RED_BUDGET_START = 100_000_000
+
 # Per-launcher base cost (M-TIER2-J Part 2, Issue #6). Deducted from
 # `world.blue_budget` when `add_launcher` places a new launcher during
 # SETUP, refunded (clamped at BLUE_BUDGET_START) when `remove_launcher`

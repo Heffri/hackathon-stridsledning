@@ -367,6 +367,25 @@ html, body {
   background: #ff5060;
 }
 
+/* --- Red budget bar (M-TIER3, Issue #8) --- */
+.hud-block.red-budget {
+  border-color: rgba(255, 100, 100, 0.28);
+}
+.hud-block.red-budget .ammo-title { color: #ffb0b0; }
+.hud-block.red-budget #red-budget-current { color: #ff7066; font-size: 14px; }
+.hud-block.red-budget .budget-amount { color: #f7c6c6; }
+.budget-bar-inner.red-bar {
+  background: linear-gradient(90deg, #ff5060 0%, #ff8a52 60%, #ffd86b 100%);
+}
+.budget-bar-inner.red-bar.low { background: #ffd86b; }
+.budget-bar-inner.red-bar.critical {
+  background: #8adc7f;
+  animation: ammoFlash 0.6s ease-in-out infinite alternate;
+}
+.budget-bar-inner.red-bar.empty {
+  background: #5fe39a;
+}
+
 /* --- SETUP ribbon (M-TIER2-J Part 1) ---
    Thin non-blocking top bar surfaced only during SETUP phase. Keeps the
    3D canvas fully visible so the operator can drag launchers to

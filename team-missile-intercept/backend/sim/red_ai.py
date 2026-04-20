@@ -13,7 +13,7 @@ import numpy as np
 
 from . import config, sites
 from .launcher import RedLauncherFleet
-from .types import ThreatType, WaveSpec
+from .types import THREAT_SPECS, ThreatType, WaveSpec
 
 
 # --- Target selection weights (Milestone G) ---
@@ -239,7 +239,20 @@ class RedAI:
             and self.waves[self._next_wave].time <= t_now
         ):
             w = self.waves[self._next_wave]
+            spawned = 0
+            skipped_budget = 0
             for kind in w.threats:
+                # M-TIER3-RED-BUDGET (Issue #8): gate individual
+                # spawns on world.red_budget. Skip if the threat's
+                # cost would take the budget negative. Current demo
+                # starts with $100M vs ~$54M default-wave cost so
+                # this gate is inactive under default waves; the
+                # check exists for the future Boyu Red AI regime
+                # where budget becomes a real tactical constraint.
+                cost = THREAT_SPECS[kind].usd_cost
+                if world.red_budget < cost:
+                    skipped_budget += 1
+                    continue
                 spawn = self._spawn_point(kind, base_x, base_y)
                 target_xy = _pick_target(self.rng)
                 if kind == ThreatType.CRUISE_SUB:
@@ -249,8 +262,14 @@ class RedAI:
                     )
                 else:
                     world.spawn_threat(kind, spawn, target_xy)
+                world.red_budget = max(0, world.red_budget - cost)
+                spawned += 1
+            note = (
+                f" (skipped {skipped_budget} — insufficient Red budget)"
+                if skipped_budget else ""
+            )
             self.log.append(
-                f"[{t_now:6.1f}s] {w.label} launched ({len(w.threats)} threats)"
+                f"[{t_now:6.1f}s] {w.label} launched ({spawned} threats){note}"
             )
             self._next_wave += 1
 

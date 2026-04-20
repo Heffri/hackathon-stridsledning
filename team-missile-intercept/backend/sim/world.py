@@ -73,10 +73,23 @@ class World:
         self.intercepts: int = 0
         self.leaked: int = 0  # threats that hit the base
 
-        # Milestone I: Blue spends USD per interceptor launch. Budget
-        # exhaustion = Red wins. BlueAI._fire deducts spec.usd_cost.
+        # Milestone I: Blue spends USD per interceptor launch.
+        # BlueAI._fire deducts spec.usd_cost. Issue #21 (M-TIER2.8)
+        # removed budget-as-loss — budget is an economic HUD indicator.
         self.blue_budget: int = config.BLUE_BUDGET_START
         self.blue_budget_max: int = config.BLUE_BUDGET_START
+
+        # M-TIER3-RED-BUDGET (Issue #8, 2026-04-20): Red side
+        # symmetric pool. Deducted per-threat at spawn time in
+        # `red_ai.step` (THREAT_SPECS[kind].usd_cost). Spawn is gated —
+        # if world.red_budget < cost of the next threat, that threat
+        # is skipped and logged. Scenario.winner adds a future-ready
+        # Blue-win path on budget exhaustion + no-threats-alive; a
+        # no-op under the current wave spawner because red.done fires
+        # first, but live once Boyu's Red AI spawns on a budget
+        # decision rather than a wave schedule.
+        self.red_budget: int = config.RED_BUDGET_START
+        self.red_budget_max: int = config.RED_BUDGET_START
 
         # M-TIER2-PHASE: Match lifecycle phase. A freshly constructed
         # World sits in SETUP until someone (server `start` command, a
@@ -501,5 +514,7 @@ class World:
                 ),
                 "blue_budget": self.blue_budget,
                 "blue_budget_max": self.blue_budget_max,
+                "red_budget": self.red_budget,
+                "red_budget_max": self.red_budget_max,
             },
         }

@@ -67,7 +67,10 @@ class Scenario:
 
         Returns:
           'red'  — all military sites destroyed.
-          'blue' — all Red waves spawned AND no Red threats still alive.
+          'blue' — Red can't spawn any more threats AND no Red threats
+                   still alive. "Can't spawn more" = either every wave
+                   has been processed (`red.done`) or Red's budget is
+                   exhausted (`world.red_budget <= 0`, M-TIER3 Issue #8).
           'draw' — 3600 s safety cap reached (should basically never fire).
           None   — match still in progress.
 
@@ -91,6 +94,16 @@ class Scenario:
         where Blue spends its last dollar on a mid-air interceptor that
         then kills the last remaining drone now resolve as a Blue win
         (as they should — base intact, threats resolved, waves done).
+
+        Issue #8 (M-TIER3-RED-BUDGET, 2026-04-20): Red now has a finite
+        pool too. The Blue-victory clause extends to fire when Red is
+        effectively done spawning — either `red.done` (all scheduled
+        waves processed) or `world.red_budget <= 0` (bankrupt Red
+        can't afford more threats). Under the current wave-driven Red
+        AI `red.done` fires first because default waves cost $54.3 M
+        vs $100 M RED_BUDGET_START; the budget disjunct is live for
+        the future Boyu Red AI that spawns against a tactical budget
+        rather than a wave schedule.
         """
         military = [
             s for s in sites.SOUTH_SITES
@@ -101,9 +114,11 @@ class Scenario:
         # Issue #21: budget depletion is NOT an auto-loss anymore. The
         # old `if self.world.blue_budget <= 0: return "red"` block was
         # removed here — see the winner docstring above for rationale.
-        if self.red.done and all(
+        red_cant_spawn_more = self.red.done or self.world.red_budget <= 0
+        no_threats_alive = all(
             not t.state.alive for t in self.world.threats.values()
-        ):
+        )
+        if red_cant_spawn_more and no_threats_alive:
             return "blue"
         if self.world.t >= config.MAX_SIM_TIME:
             return "draw"

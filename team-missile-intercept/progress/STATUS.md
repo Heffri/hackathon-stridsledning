@@ -156,10 +156,36 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
    entry); 20-match sweep not re-run this session. Neither fix
    touches guidance, physics, or threat behaviour so per-kind CEP
    numbers are unchanged.
-1. **Tier 3 — Red budget pool** (Issue #8). Expose `world.red_budget`,
-   deduct `threat_spec.usd_cost` at spawn, add Blue-win path on
-   budget exhaustion, HUD Red-budget bar. Runtime only (Boyu
-   consumes later).
+0.96 **M-TIER3-RED-BUDGET — Red spending pool (runtime only).** Landed
+   2026-04-20 (single commit). Symmetrises Red with Blue economically:
+   - `config.RED_BUDGET_START = $100M` — sized loose so default waves
+     ($54.33M total spend across 11 drones + 8 cruise + 4 ballistic +
+     3 HGV) fit without touching the floor. Future-tune once Boyu's
+     Red AI lands and the budget becomes a real tactical constraint.
+   - `world.red_budget` + `red_budget_max` fields; exposed in
+     `stats` block of every snapshot.
+   - `red_ai.step` deducts `THREAT_SPECS[kind].usd_cost` per threat
+     spawn. Spawn is gated — if `world.red_budget < cost` the threat
+     is silently skipped and the wave's log line appends
+     `(skipped N — insufficient Red budget)`. Budget floor clamps
+     at 0.
+   - `Scenario.winner` extends the Blue-victory path to fire on
+     `(red.done OR red_budget <= 0) AND no threats alive` — a no-op
+     under the current wave spawner (red.done always fires first
+     under default budget) but live for the future AI regime.
+   - HUD: mirror budget bar panel beside the existing Blue one. Red
+     gradient #ff5060 → #ff8a52 → #ffd86b; classes mirror Blue's
+     low/critical/empty states with inverse colour cues.
+   - End-of-match overlay "RED WINS" subtitle updated — no longer
+     mentions "budget exhausted" (Issue #21 removed that path; this
+     tier doesn't reintroduce it for Red either).
+   `test_red_budget.py` (9 cases) covers config + world init +
+   snapshot + deduction arithmetic + per-wave spawn gating + budget
+   clamp + winner path activation + Red-victory regression guard.
+   Full regression suite still green.
+1. **Tier 3 — Red budget pool** — Done above (0.96). Boyu's Red AI
+   will consume this pool for tactical spawn decisions; runtime hook
+   is in place.
 2. **Red AI Level 5 HGV control** — `Threat.override_maneuver` hook is in place; needs a per-tick decision layer (nearest-interceptor scan, geometry, KE budget) to drive the hook.
 3. **Smarter Red AI target selection** — currently weighted-random across sites; wave-specific targeting (wave 5 prioritises capital) would feel more tactical.
 4. **Placement AI** (post-Milestone J) — deployment UI is done; now let an AI pick positions + roster based on incoming threat direction, wave composition, and coverage optimisation. AI Auto stub is the hook point.

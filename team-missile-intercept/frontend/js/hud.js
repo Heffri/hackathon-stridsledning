@@ -256,12 +256,24 @@ function formatMoney(n) {
 }
 
 function renderBudget(stats) {
-  const curEl = document.getElementById('budget-current');
-  const maxEl = document.getElementById('budget-max');
-  const barEl = document.getElementById('budget-bar-inner');
+  _renderBudgetBar(
+    stats.blue_budget, stats.blue_budget_max,
+    'budget-current', 'budget-max', 'budget-bar-inner',
+  );
+  // M-TIER3-RED-BUDGET (Issue #8): mirror bar for Red's spending pool.
+  // Fields are null-safe — legacy snapshots without red_budget render
+  // the em-dash placeholder instead of crashing.
+  _renderBudgetBar(
+    stats.red_budget, stats.red_budget_max,
+    'red-budget-current', 'red-budget-max', 'red-budget-bar-inner',
+  );
+}
+
+function _renderBudgetBar(cur, max, curId, maxId, barId) {
+  const curEl = document.getElementById(curId);
+  const maxEl = document.getElementById(maxId);
+  const barEl = document.getElementById(barId);
   if (!curEl || !maxEl || !barEl) return;
-  const cur = stats.blue_budget;
-  const max = stats.blue_budget_max;
   if (cur == null || max == null) {
     curEl.textContent = '—';
     maxEl.textContent = '—';
@@ -280,7 +292,7 @@ function renderBudget(stats) {
 
 const OVERLAY_TEXT = {
   blue: { title: 'BLUE WINS', sub: 'Red force neutralised — all waves defeated.' },
-  red:  { title: 'RED WINS',  sub: 'Blue defence collapsed — site destroyed or budget exhausted.' },
+  red:  { title: 'RED WINS',  sub: 'Blue defence collapsed — all military sites destroyed.' },
   draw: { title: 'DRAW',      sub: 'Safety time cap reached.' },
 };
 
