@@ -55,6 +55,16 @@ export function initLauncherDrag({
   const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const hitPoint = new THREE.Vector3();
 
+  // Issue #23: suppress browser-default behaviours that leak into the
+  // 3D canvas.
+  //   - contextmenu: right-click would otherwise pop the browser menu
+  //     (Copy / Reload / Back), which is never useful on a WebGL surface.
+  //   - selectstart: belt-and-braces against the left-drag text-selection
+  //     box, in addition to the CSS `user-select: none` rule.
+  // Installed once at setup, never per-frame.
+  canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  canvas.addEventListener('selectstart', (ev) => ev.preventDefault());
+
   // Pointer-down state. `armed` holds the info needed to tell click
   // apart from drag on pointer-up / pointer-move. `dragging` holds the
   // active drag once the threshold is exceeded. Mutually exclusive.
@@ -67,29 +77,30 @@ export function initLauncherDrag({
     pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
   }
 
-  function groupsForHitTest() {
-    const groups = [];
+  // Issue #23: raycast only against launcher box meshes, never the range
+  // rings. The previous recursive intersect walked the whole Group
+  // (box + THREE.Line arc); on glancing pointer paths the arc could be
+  // the first hit and confuse the picker. Boxes are the sole selectable
+  // affordance — return a flat list of them.
+  function boxesForHitTest() {
+    const boxes = [];
     for (const mesh of launchers.byId.values()) {
-      groups.push(mesh.group);
+      boxes.push(mesh.box);
     }
-    return groups;
+    return boxes;
   }
 
   function findLauncherIdUnderPointer() {
-    const groups = groupsForHitTest();
-    if (groups.length === 0) return null;
+    const boxes = boxesForHitTest();
+    if (boxes.length === 0) return null;
     raycaster.setFromCamera(pointer, camera);
-    // Recursive intersectObjects walks through each Group's children
-    // (box mesh + arc line). The arc is a THREE.Line which does hit-test
-    // only along the line itself, not as a disc, so we rely on the box
-    // for click targeting.
-    const hits = raycaster.intersectObjects(groups, true);
+    // Non-recursive: `boxes` is already the authoritative candidate list.
+    // The box's parent is the launcher Group whose userData carries the
+    // stable launcherId stamped at construction in launchers.js.
+    const hits = raycaster.intersectObjects(boxes, false);
     if (!hits.length) return null;
-    let obj = hits[0].object;
-    while (obj && !obj.userData?.launcherId) {
-      obj = obj.parent;
-    }
-    return obj?.userData?.launcherId ?? null;
+    const group = hits[0].object.parent;
+    return group?.userData?.launcherId ?? null;
   }
 
   canvas.addEventListener('pointermove', (ev) => {

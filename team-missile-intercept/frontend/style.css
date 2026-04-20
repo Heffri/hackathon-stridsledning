@@ -6,11 +6,22 @@ html, body {
   background: #050810;
   color: #e8eef8;
   font-family: 'Segoe UI', 'SF Pro Display', system-ui, sans-serif;
+  /* Issue #23: suppress the browser's default left-drag text-selection
+     box that was painting over the 3D canvas. Applied at the top-level
+     containers so cascade prevents re-entry via any child element. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 #view {
   position: fixed; inset: 0;
   width: 100%; height: 100%;
   display: block;
+  /* Issue #23: the WebGL canvas is never selectable content; disable
+     selection + browser gesture handling so pointer drags stay inside
+     our OrbitControls / launcher-drag handlers. */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
 #hud {
   position: fixed; inset: 0;
