@@ -5,6 +5,7 @@ import { LauncherRegistry, RedLauncherRegistry } from './launchers.js';
 import { SiteRegistry } from './sites.js';
 import { wireHud, updateHud, setWsStatus, showWsError } from './hud.js';
 import { initStatusPanel, updateStatusPanel } from './status_panel.js';
+import { initLauncherDrag } from './drag_launchers.js';
 
 const canvas = document.getElementById('view');
 const { scene, camera, renderer, controls } = createScene(canvas);
@@ -53,6 +54,17 @@ function sendCmd(obj) {
 }
 
 wireHud(sendCmd);
+// M-TIER2-J Part 1: launcher drag-drop is SETUP-phase-only. `getPhase`
+// reads from the most recent snapshot so the drag handler can gate
+// itself without a dedicated WS subscription.
+initLauncherDrag({
+  renderer,
+  camera,
+  controls,
+  launchers,
+  sendCmd,
+  getPhase: () => latestSnap?.phase || 'setup',
+});
 openWs();
 
 // --- Render loop ---

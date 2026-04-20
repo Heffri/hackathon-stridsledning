@@ -50,8 +50,9 @@ const ARC_OPACITY_READY = 0.4;
 const ARC_OPACITY_RELOAD = 0.15;
 
 class LauncherMesh {
-  constructor(scene, kind, sx, sz) {
+  constructor(scene, kind, sx, sz, launcherId) {
     this.kind = kind;
+    this.launcherId = launcherId;
     const color = LAUNCHER_COLORS[kind] ?? 0xffffff;
 
     // Milestone H Part 4: every launcher is a Group positioned at
@@ -61,6 +62,13 @@ class LauncherMesh {
     // (Milestone I deployment UI), the ring follows automatically.
     this.group = new THREE.Group();
     this.group.position.set(sx, 0, sz);
+    // M-TIER2-J Part 1: id is stamped on userData so the drag handler
+    // (drag_launchers.js) can walk from a raycast hit up to the Group
+    // and emit a `place_launcher` command addressed by stable string.
+    // `dragging` flag suppresses snapshot-driven position updates while
+    // the operator holds the pointer so the drag stays smooth.
+    this.group.userData.launcherId = launcherId;
+    this.group.userData.dragging = false;
 
     // Box body: 1.5 x 0.8 x 1.0 (X x Y x Z) scene units. Bottom sits
     // at local y=0 — the extruded terrain (y=0..0.3) hides the lower
@@ -145,14 +153,22 @@ export class LauncherRegistry {
     for (const lch of list) {
       const idx = perKindCount[lch.kind] ?? 0;
       perKindCount[lch.kind] = idx + 1;
-      const id = `${lch.kind}_${idx}`;
+      // Prefer the server-provided id (M-TIER2-J Part 1, Subtask A);
+      // fall back to the local `${kind}_${idx}` computation for
+      // snapshots from older backends.
+      const id = lch.id || `${lch.kind}_${idx}`;
       seen.add(id);
 
+      const [sx, sz] = worldToSceneXY(lch.pos[0], lch.pos[1]);
       let mesh = this.byId.get(id);
       if (!mesh) {
-        const [sx, sz] = worldToSceneXY(lch.pos[0], lch.pos[1]);
-        mesh = new LauncherMesh(this.scene, lch.kind, sx, sz);
+        mesh = new LauncherMesh(this.scene, lch.kind, sx, sz, id);
         this.byId.set(id, mesh);
+      } else if (!mesh.group.userData.dragging) {
+        // Snapshot carries the authoritative committed position — apply
+        // it unless the operator is currently dragging this launcher
+        // (drag handler owns the Group transform during that window).
+        mesh.group.position.set(sx, 0, sz);
       }
       mesh.setReloading(Boolean(lch.reloading));
     }
