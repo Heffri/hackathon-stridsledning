@@ -17,7 +17,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from sim import config
+from sim import config, terrain
 from sim.scenarios import build_default_scenario
 from sim.types import MatchPhase
 
@@ -147,6 +147,107 @@ class SimRunner:
             except (TypeError, ValueError):
                 pass
             return None
+        if kind == "place_launcher":
+            return self._place_launcher_cmd(cmd)
+        if kind == "ai_auto":
+            return self._ai_auto_cmd()
+        return None
+
+    # --- M-TIER2-J Part 1: deployment-phase placement API ---
+    def _place_launcher_cmd(self, cmd: dict) -> dict:
+        """Handle `{cmd: 'place_launcher', launcher_id, pos: [x, y]}`.
+
+        Only legal during SETUP. Position must satisfy
+        `terrain.point_on_south_land`. Success updates the launcher's
+        position in-place; the next snapshot carries the new value. No
+        ack is emitted on success (client reads the authoritative
+        position from the next snapshot).
+
+        Error responses are typed frames consumed by the W6-audit-E
+        typed-frame router on the frontend → red phase-chip flash with
+        the reason as tooltip.
+        """
+        phase = self.scenario.world.phase
+        if phase != MatchPhase.SETUP:
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": f"phase is {phase.value}, must be setup",
+            }
+        launcher_id = cmd.get("launcher_id")
+        pos = cmd.get("pos")
+        if not isinstance(launcher_id, str) or not launcher_id:
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": "missing or empty launcher_id",
+            }
+        if (
+            not isinstance(pos, (list, tuple))
+            or len(pos) != 2
+        ):
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": "pos must be [x, y]",
+            }
+        try:
+            x = float(pos[0])
+            y = float(pos[1])
+        except (TypeError, ValueError):
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": "pos components must be numeric",
+            }
+        lch = self._find_launcher(launcher_id)
+        if lch is None:
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": f"unknown launcher_id {launcher_id!r}",
+            }
+        if not terrain.point_on_south_land(x, y):
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": "position not on south land",
+            }
+        lch.pos = (x, y)
+        return None
+
+    def _ai_auto_cmd(self) -> dict:
+        """Handle `{cmd: 'ai_auto'}`. Stub heuristic: reset every
+        launcher to its default position from
+        `config.BLUE_LAUNCHER_POSITIONS`. A real placement AI (Oskar) is
+        deferred to future work — the button's current purpose is to
+        surface the hook point and give the operator a one-click
+        "revert placements" affordance during setup.
+        """
+        phase = self.scenario.world.phase
+        if phase != MatchPhase.SETUP:
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": f"phase is {phase.value}, must be setup",
+            }
+        fleet = self.scenario.blue.launchers
+        # Same walk order LauncherFleet.__init__ used when assigning ids:
+        # iterate per kind, per within-kind index. A dict counter mirrors
+        # that order without parsing the id strings.
+        counters: dict[str, int] = {}
+        for lch in fleet.launchers:
+            kind_str = lch.kind.value
+            idx = counters.get(kind_str, 0)
+            counters[kind_str] = idx + 1
+            default = config.BLUE_LAUNCHER_POSITIONS[kind_str][idx]
+            lch.pos = (float(default[0]), float(default[1]))
+        return None
+
+    def _find_launcher(self, launcher_id: str):
+        for lch in self.scenario.blue.launchers.launchers:
+            if lch.id == launcher_id:
+                return lch
         return None
 
     def _phase_cmd(self, to: MatchPhase) -> dict:
