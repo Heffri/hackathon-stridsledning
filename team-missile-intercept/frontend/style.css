@@ -472,6 +472,17 @@ html, body {
   from { opacity: 0.55; }
   to   { opacity: 1.0; }
 }
+/* M-TIER2.7 (W6 audit E): red flash on a rejected phase transition.
+   Dot/label keep their phase-specific styling; only border/bg flash. */
+.phase-chip.error-flash {
+  border-color: rgba(255, 80, 80, 0.95) !important;
+  box-shadow: 0 0 12px rgba(255, 80, 80, 0.55);
+  animation: phaseChipErrorFlash 0.4s ease-in-out 3;
+}
+@keyframes phaseChipErrorFlash {
+  0%, 100% { background: transparent; }
+  50%      { background: rgba(255, 80, 80, 0.22); }
+}
 .mo-sub {
   font-size: 14px;
   opacity: 0.85;

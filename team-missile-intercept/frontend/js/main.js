@@ -3,7 +3,7 @@ import { createScene } from './scene.js';
 import { EntityRegistry } from './entities.js';
 import { LauncherRegistry, RedLauncherRegistry } from './launchers.js';
 import { SiteRegistry } from './sites.js';
-import { wireHud, updateHud, setWsStatus } from './hud.js';
+import { wireHud, updateHud, setWsStatus, showWsError } from './hud.js';
 import { initStatusPanel, updateStatusPanel } from './status_panel.js';
 
 const canvas = document.getElementById('view');
@@ -32,11 +32,18 @@ function openWs() {
     try {
       msg = JSON.parse(ev.data);
     } catch (_) { return; }
-    // M-TIER2-PHASE: typed frames carry a `type` field (phase_change,
-    // error). Snapshots are untyped. Full UI handling of phase_change
-    // / error lands in Subtask D; guard here so a typed message can't
-    // get mistaken for a snapshot and crash the HUD.
-    if (msg && typeof msg.type === 'string') return;
+    // M-TIER2.7 (W6 audit E follow-up): route typed frames. Snapshots
+    // are untyped; typed frames skip latestSnap. phase_change ignored
+    // here — snapshot path's `snap.phase` already covers transitions.
+    if (msg && typeof msg.type === 'string') {
+      if (msg.type === 'error') {
+        console.warn('ws error:', msg);
+        showWsError(msg.reason || 'unknown');
+      } else if (msg.type !== 'phase_change') {
+        console.warn('ws unknown typed frame:', msg);
+      }
+      return;
+    }
     latestSnap = msg;
   });
 }

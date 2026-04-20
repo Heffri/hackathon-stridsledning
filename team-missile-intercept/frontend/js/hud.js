@@ -244,6 +244,22 @@ function renderPhaseChip(phase) {
   labelEl.textContent = PHASE_LABEL[phase] || String(phase).toUpperCase();
 }
 
+// M-TIER2.7 (W6 audit E): brief red-flash + tooltip on a WS `error`.
+// Non-blocking, self-clearing; stacked errors reuse the single timer.
+let _errorFlashTimer = null;
+export function showWsError(reason) {
+  const el = document.getElementById('phase-chip');
+  if (!el) return;
+  el.classList.add('error-flash');
+  el.title = `WS error: ${reason}`;
+  if (_errorFlashTimer !== null) clearTimeout(_errorFlashTimer);
+  _errorFlashTimer = setTimeout(() => {
+    el.classList.remove('error-flash');
+    el.title = '';
+    _errorFlashTimer = null;
+  }, 3000);
+}
+
 // Bottom-bar Pause button: only surfaced in RUNNING. Setup / paused /
 // finished states have their own centre-screen call-to-action and
 // don't need a secondary Pause affordance.
