@@ -31,7 +31,7 @@ account was suspended over ambiguous framing — this is non-negotiable.
 ## Git state (snapshot at handoff time)
 
 - **Active branch**: `new-teamwork-split-V1` (= head of PR #4 on GitHub).
-- **HEAD**: `2252367` — `docs(worker-prompts): W8 Milestone J Part 1 + pause UX + SETUP ribbon`.
+- **HEAD**: `be1858c` — `docs(common-info): PM continuation handoff for laptop session`.
 - **PR #4**: open, title `Teamwork split V1: modularization + Tier 1 through 2.6 demo polish`, body lists Phases 0–7 covering commits `cd1a40c` through `2252367`.
 - **Uncommitted / untracked**: none at handoff time. Verify with `git status`.
 
@@ -45,6 +45,7 @@ git log --oneline -12
 Expected top 12 commits (newest first):
 
 ```
+be1858c docs(common-info): PM continuation handoff for laptop session
 2252367 docs(worker-prompts): W8 Milestone J Part 1 + pause UX + SETUP ribbon
 934a3da docs: W7 close — ISSUES #13 done + #15 accepted + #18 captured + STATUS
 6247663 fix(frontend): route WS typed frames (phase_change, error) — W6 audit E follow-up
@@ -56,10 +57,9 @@ bee3025 docs(worker-prompts): W7 Subtask D adds Issue #18 capture
 2290dd2 docs(game-core): docstrings on contract seams
 05cf91e test(game-core): verdict-raising in hgv_impact + ballistic_cep
 87a537c fix(game-core): stale comments in scenarios.step + ballistic_cep test
-5bed3fe fix(game-core): remove dead code — misses counter, zombie sweep, burnout flag
 ```
 
-If HEAD is older than `2252367`, git pull failed — investigate before
+If HEAD is older than `be1858c`, git pull failed — investigate before
 proceeding.
 
 ## Authoritative documents (read in this order on boot)
@@ -190,10 +190,10 @@ Before replying to Chen:
 
 1. Verify repo and environment:
    - `git pull --ff-only origin new-teamwork-split-V1`
-   - `git log --oneline -12` — confirm HEAD is `2252367` or newer. If HEAD is older and git pull didn't advance it, STOP and ask Chen about repo state.
+   - `git log --oneline -12` — confirm HEAD is `be1858c` or newer. If HEAD is older and git pull didn't advance it, STOP and ask Chen about repo state.
    - `git status` — must be clean.
 2. Read the authoritative documents listed above (at minimum: ISSUES.md, STATUS.md, CONTRACT_SEAMS.md, W8 prompt).
 3. Reply in one short Chinese message, template:
-   `"PM 在 laptop 上线，同步到 \`2252367\`，W7 已落地（cruise 20/20 ground-impact，CEP 38.5 m），W8 (Milestone J Part 1 + pause UX + SETUP ribbon) prompt 已就绪等你起跑。Subtask C/D/E 需你盯浏览器 smoke。要现在起吗？"`
+   `"PM 在 laptop 上线，同步到 \`be1858c\`，W7 已落地（cruise 20/20 ground-impact，CEP 38.5 m），W8 (Milestone J Part 1 + pause UX + SETUP ribbon) prompt 已就绪等你起跑。Subtask C/D/E 需你盯浏览器 smoke。要现在起吗？"`
 
 If Chen's first message after your greeting is something other than "kick W8", handle that request first (a redirect is allowed — e.g. he might want to smoke-test W7 fully on the laptop first).
