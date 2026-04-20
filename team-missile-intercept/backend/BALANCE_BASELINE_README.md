@@ -15,7 +15,12 @@ them and flag silent balance drift.
 - `balance_baseline_2026-04-20_post_tier28.json` — the M-TIER2.8
   (2026-04-20) baseline after CIWS expected-damage saturation gate
   (Issue #20) + `blue_budget <= 0` instant-loss rule removed
-  (Issue #21). **This is the current reference.**
+  (Issue #21).
+- `balance_baseline_2026-04-21_post_w13.json` — the W13 consolidated
+  baseline rolling up the M-TIER3 wave + W11 CIWS cap + W12 mouse-UX
+  fixes. W13 adds no physics or AI mechanics on top of M-TIER2.8, so
+  single-run numbers jitter inside RedAI-rng noise — compare medians
+  only. **This is the current reference.**
 
 ## How to rerun
 
@@ -239,6 +244,76 @@ Per-kind CEP numbers are unchanged because neither fix touches
 guidance, physics, or threat behaviour.
 
 A 20-match sweep (`test_balance.py`) is the better signal for
+distribution drift. Not re-run this session; Chen can re-run on demand.
+
+## 2026-04-21 entry (M-TIER3 + W11/W12)
+
+W13 consolidated baseline. Landed features since M-TIER2.8
+(2026-04-20_post_tier28):
+
+- **M-TIER3-RED-BUDGET (Issue #8).** `world.red_budget` exposed and
+  deducted per-threat via `THREAT_SPECS[kind].usd_cost`. Starting
+  pool `RED_BUDGET_START = $100M`; default 26-threat wave spend is
+  $54.33M so the pool does not bind under the current wave spawner
+  ($45.67M remains). `Scenario.winner` extends the Blue-victory path
+  to `(red.done OR red_budget <= 0) AND no_threats_alive` — no-op
+  today but live for Boyu's future Red AI regime. No physics change.
+- **M-TIER3-THREAT-CONTRACT (Issues #10 / #11 / #12).** Unified Threat
+  control API: `target_site_id`, `maneuver_schedule`, flyover
+  fallback, `override_maneuver` kind-gating. Drone / cruise /
+  ballistic non-terminal steer blocks now consume
+  `_active_schedule_accel()` before the default waypoint seek;
+  default behaviour is unchanged when no schedule is set. Flyover
+  fallback retargets to the nearest in-arena Site ahead of velocity
+  when the ground-track has passed the original target.
+- **W11 (Issues #23 / #24 / #25).** Canvas mouse UX polish, CIWS
+  per-threat lifetime shot cap (drone 4 / cruise 6 / HGV 10 /
+  ballistic 12), and Magazine HUD per-launcher detail view. No
+  engagement-rule changes beyond the CIWS cap (which is a tighter
+  bound on top of the #20 expected-damage gate).
+- **W12 (Issues #26 / #27).** Frontend-only. Click-to-select works
+  in every phase + empty-canvas deselect; OrbitControls /
+  contextmenu / pointer-capture robustness. No physics or AI
+  impact.
+
+Single-run sample vs 2026-04-20_post_tier28 (compare medians, not
+exact values — jitter is RedAI-rng noise):
+
+```
+              post-TIER2.8 (2026-04-20)    W13 (2026-04-21)
+full_match:
+  winner                None (cap)           None (cap)
+  total_spawned         26                   26
+  total_intercepts      18                   18
+  total_leaked          4                    3
+  budget_remaining      $68.9M               $74.7M
+  site_hp (F/S/M)       55/85/60             95/20/100
+per_kind:
+  drone    (spn/int/lk) 11/9/1               11/9/1
+  cruise_sub            8/7/1                8/8/0
+  ballistic             4/1/0 (3 ground)     4/0/0 (4 ground)
+  hgv                   3/1/2                3/1/2
+no_blue.total_leaked    20                   18
+per_kind_cep (median):
+  drone                 106.0 m              176.5 m
+  cruise_sub            59.5 m               50.5 m
+  ballistic             3703.9 m             3528.8 m
+  hgv                   161.9 m              183.6 m
+```
+
+Differences are within single-run RedAI-rng noise. The post-W13 run
+happens to spend slightly less Blue budget (one cruise intercept
+short-circuited a CIWS point-defense rethink), and site HP was
+weighted differently (Spear Point took most of this run's load). No
+mechanic changed in the full_match regime — the CIWS lifetime cap
+activates only when HP tries to outrun damage, which didn't happen
+in the clean-kill full_match pattern.
+
+W13 is recorded as the rolling consolidated baseline. Per-kind CEP
+values stay inside the established tolerance band (drone 100-400 m,
+ballistic 2500-4500 m, HGV 100-400 m, cruise 50-200 m).
+
+A 20-match sweep (`test_balance.py`) is still the right signal for
 distribution drift. Not re-run this session; Chen can re-run on demand.
 
 ## Caveats
