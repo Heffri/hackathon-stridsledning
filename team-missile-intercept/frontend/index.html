@@ -102,32 +102,14 @@
           <div id="red-budget-bar-inner" class="budget-bar-inner red-bar"></div>
         </div>
       </div>
+      <!-- Issue #25 (W11): Magazine panel now shows the currently
+           selected launcher's detailed status (ammo, reload/cooldown
+           countdown, base cost) rather than an aggregate per-kind view.
+           hud.js renders the body dynamically from snap.launchers
+           filtered by launcher_selection.getSelectedLauncherId(). -->
       <div class="hud-block ammo" id="ammo-panel">
-        <div class="ammo-title">Magazine</div>
-        <div class="ammo-row" data-kind="ciws">
-          <span class="ammo-name">Lvkv 90</span>
-          <span class="ammo-count" id="ammo-ciws">∞</span>
-        </div>
-        <div class="ammo-row" data-kind="rbs_70">
-          <span class="ammo-name">RBS 70 NG</span>
-          <span class="ammo-count" id="ammo-rbs_70">∞</span>
-        </div>
-        <div class="ammo-row" data-kind="iris_t_sls">
-          <span class="ammo-name">IRIS-T SLS (RBS 98)</span>
-          <span class="ammo-count" id="ammo-iris_t_sls">∞</span>
-        </div>
-        <div class="ammo-row" data-kind="iris_t_slm">
-          <span class="ammo-name">IRIS-T SLM</span>
-          <span class="ammo-count" id="ammo-iris_t_slm">∞</span>
-        </div>
-        <div class="ammo-row" data-kind="pac_2">
-          <span class="ammo-name">Patriot PAC-2</span>
-          <span class="ammo-count" id="ammo-pac_2">∞</span>
-        </div>
-        <div class="ammo-row" data-kind="pac_3">
-          <span class="ammo-name">Patriot PAC-3 MSE</span>
-          <span class="ammo-count" id="ammo-pac_3">∞</span>
-        </div>
+        <div class="ammo-title" id="ammo-panel-title">Magazine</div>
+        <div id="ammo-panel-body"></div>
       </div>
     </div>
 

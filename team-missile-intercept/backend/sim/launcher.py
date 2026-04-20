@@ -234,6 +234,18 @@ class LauncherFleet:
             # reads it for roster-summary + tooltip strings.
             from . import config  # local import avoids top-level cycle
             base_cost = config.LAUNCHER_BASE_COSTS.get(lch.kind.value, 0)
+            # Issue #25 (W11): cooldown_remaining — seconds until this
+            # launcher's inter-shot gate reopens. 0 when either ready or
+            # reloading (caller distinguishes via the `reloading` flag).
+            # Additive field; the Magazine HUD uses it to surface a
+            # "Cooldown X.Xs" status between shots so the operator can
+            # tell a launcher that's about to fire apart from one that
+            # just emptied its magazine.
+            cd_remaining = 0.0
+            if not lch.reloading:
+                cd_remaining = max(
+                    0.0, lch.inter_shot_cd - (t_now - lch.last_shot_t)
+                )
             per_launcher.append({
                 "id": lch.id,
                 "kind": lch.kind.value,
@@ -242,6 +254,7 @@ class LauncherFleet:
                 "capacity": lch.magazine_capacity,
                 "reloading": lch.reloading,
                 "reload_remaining": lch.reload_remaining(t_now),
+                "cooldown_remaining": cd_remaining,
                 "base_cost_usd": base_cost,
             })
 

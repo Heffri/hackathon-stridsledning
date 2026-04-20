@@ -206,9 +206,12 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
-/* --- Ammo / magazine panel (top-right area) --- */
+/* --- Magazine panel (top-right area) ---
+   Issue #25 (W11): per-launcher detail view replacing the old per-kind
+   aggregate. Two states: placeholder (nothing selected) + detail (a
+   launcher is click-selected during SETUP or RUNNING). */
 .hud-block.ammo {
-  min-width: 180px;
+  min-width: 220px;
   font-size: 12px;
   padding: 8px 12px;
 }
@@ -220,35 +223,52 @@ html, body {
   margin-bottom: 4px;
   text-transform: uppercase;
 }
-.ammo-row {
+.ammo-placeholder {
+  color: #8295ad;
+  font-size: 11px;
+  font-style: italic;
+  line-height: 1.45;
+  padding: 2px 0 1px;
+}
+.ammo-detail-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   font-variant-numeric: tabular-nums;
   color: #cfe0f5;
+  padding: 2px 0;
 }
-.ammo-row .ammo-name { opacity: 0.85; }
-.ammo-row .ammo-count {
-  color: #ffd86b;
+.ammo-detail-label {
+  color: #9fb8d4;
+  opacity: 0.85;
+}
+.ammo-detail-val {
+  color: #eaf3ff;
+}
+.ammo-bar-outer {
+  height: 5px;
+  background: rgba(120, 180, 255, 0.08);
+  border-radius: 3px;
+  margin: 2px 0 4px;
+  overflow: hidden;
+}
+.ammo-bar-inner {
+  height: 100%;
+  background: linear-gradient(90deg, #5fe39a 0%, #ffd86b 60%, #ff5060 100%);
+  transition: width 0.25s ease-out;
+}
+.ammo-status {
   font-weight: 600;
+  letter-spacing: 0.3px;
 }
-.ammo-row[data-kind="pac_2"] .ammo-count { color: #ff69b4; }
-.ammo-row[data-kind="iris_t_slm"] .ammo-count { color: #ff8c1a; }
-.ammo-row[data-kind="iris_t_sls"] .ammo-count { color: #ff9944; }
-.ammo-row[data-kind="rbs_70"] .ammo-count { color: #5fb84a; }
-.ammo-row[data-kind="ciws"] .ammo-count { color: #d9b36a; }
-.ammo-row[data-kind="pac_3"] .ammo-count { color: #a855f7; }
-.ammo-row.low .ammo-count { color: #ffdd44; }
-.ammo-row.empty .ammo-count {
-  color: #ff5060;
-  animation: ammoFlash 0.6s ease-in-out infinite alternate;
-}
-.ammo-row.reloading .ammo-count {
+.ammo-status.ready    { color: #5fe39a; }
+.ammo-status.cooldown { color: #ffa85a; }
+.ammo-status.reloading {
   color: #9dd0ff;
-  font-size: 11px;
+  animation: ammoFlash 0.8s ease-in-out infinite alternate;
 }
 @keyframes ammoFlash {
-  from { opacity: 0.4; }
+  from { opacity: 0.5; }
   to   { opacity: 1.0; }
 }
 

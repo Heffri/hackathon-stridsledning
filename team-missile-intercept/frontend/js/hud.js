@@ -5,7 +5,8 @@ import {
   setSelectedLauncherId,
 } from './launcher_selection.js';
 
-// Real-world names for interceptor kinds, shown in the launch banner.
+// Real-world names for interceptor kinds, shown in the launch banner
+// and in the Magazine HUD title when a launcher is selected.
 const INTERCEPTOR_NAMES = {
   ciws: 'Lvkv 90',
   rbs_70: 'RBS 70 NG',
@@ -13,6 +14,19 @@ const INTERCEPTOR_NAMES = {
   iris_t_slm: 'IRIS-T SLM',
   pac_2: 'Patriot PAC-2 GEM+',
   pac_3: 'Patriot PAC-3 MSE',
+};
+
+// Issue #25 (W11): static per-kind max-range table for the Magazine
+// HUD detail row. Mirrors INTERCEPTOR_SPECS.max_range (m) / 1000 on the
+// backend and the RANGE_KM table in launchers.js. Duplicated here to
+// avoid importing through the scene module.
+const RANGE_KM = {
+  ciws: 4,
+  rbs_70: 9,
+  iris_t_sls: 12,
+  iris_t_slm: 40,
+  pac_2: 70,
+  pac_3: 60,
 };
 
 // Mesh-colour swatch per interceptor kind (mirrors scene.js range arcs
@@ -165,39 +179,89 @@ export function updateHud(snap) {
     if (!stillPresent) setSelectedLauncherId(null);
   }
 
-  // Ammo rows (falls back to ∞ when server omits the field, e.g. legacy runs)
-  const ammo = snap.ammo || {};
-  for (const kind of ['ciws', 'rbs_70', 'iris_t_sls', 'iris_t_slm', 'pac_2', 'pac_3']) {
-    const el = document.getElementById(`ammo-${kind}`);
-    if (!el) continue;
-    const info = ammo[kind];
-    if (!info) {
-      el.textContent = '∞';
-      el.classList.remove('low', 'empty', 'reloading');
-      continue;
-    }
-    const { current, capacity, reloading, reload_remaining } = info;
-    const row = el.closest('.ammo-row');
-    if (reloading) {
-      el.textContent = `RELOAD ${reload_remaining.toFixed(0)}s`;
-      row?.classList.add('reloading');
-      row?.classList.remove('low');
-    } else {
-      el.textContent = `${current}/${capacity}`;
-      row?.classList.remove('reloading');
-      const ratio = capacity > 0 ? current / capacity : 1;
-      if (current === 0) {
-        row?.classList.add('empty');
-      } else {
-        row?.classList.remove('empty');
-      }
-      if (ratio < 0.25 && current > 0) {
-        row?.classList.add('low');
-      } else {
-        row?.classList.remove('low');
-      }
-    }
+  // Issue #25 (W11): Magazine panel now shows the selected launcher's
+  // detail, not a per-kind aggregate. The aggregate view was ambiguous
+  // once the roster went dynamic (W9 Part 2) — "PAC-3: 4" could be 1×4
+  // or 4×1 launchers. Per-selection detail is unambiguous and also
+  // communicates reload / cooldown state per instance.
+  renderMagazinePanel(snap);
+}
+
+function renderMagazinePanel(snap) {
+  const titleEl = document.getElementById('ammo-panel-title');
+  const bodyEl = document.getElementById('ammo-panel-body');
+  if (!titleEl || !bodyEl) return;
+
+  const selectedId = getSelectedLauncherId();
+  const lch = selectedId
+    ? (snap.launchers || []).find((l) => l.id === selectedId)
+    : null;
+
+  if (!lch) {
+    // No selection (or selection no longer in the snapshot — the
+    // existing auto-deselect in updateHud handles the latter).
+    titleEl.textContent = 'Magazine';
+    bodyEl.innerHTML =
+      '<div class="ammo-placeholder">Click a launcher to inspect its ' +
+      'magazine and reload state.</div>';
+    return;
   }
+
+  const name = INTERCEPTOR_NAMES[lch.kind] || lch.kind;
+  titleEl.textContent = `Magazine — ${name}`;
+
+  const capacity = lch.capacity ?? 0;
+  const current = lch.current ?? 0;
+  const ammoPct = capacity > 0 ? Math.max(0, Math.min(100, (current / capacity) * 100)) : 0;
+
+  // Status: reloading > cooldown > ready. cooldown_remaining is 0 when
+  // reloading (backend sets it that way) so the precedence is explicit.
+  let statusCls, statusLabel;
+  if (lch.reloading) {
+    const rr = lch.reload_remaining ?? 0;
+    statusCls = 'reloading';
+    statusLabel = `Reloading ${rr.toFixed(1)}s`;
+  } else if ((lch.cooldown_remaining ?? 0) > 0.05) {
+    statusCls = 'cooldown';
+    statusLabel = `Cooldown ${lch.cooldown_remaining.toFixed(1)}s`;
+  } else {
+    statusCls = 'ready';
+    statusLabel = 'Ready';
+  }
+
+  const baseCost = lch.base_cost_usd ?? 0;
+  const baseCostStr = baseCost > 0
+    ? `$${(baseCost / 1_000_000).toFixed(1)}M`
+    : '—';
+  const rangeKm = RANGE_KM[lch.kind];
+  const rangeStr = rangeKm != null ? `${rangeKm} km` : '—';
+  const posX = (lch.pos?.[0] ?? 0) / 1000;
+  const posY = (lch.pos?.[1] ?? 0) / 1000;
+
+  bodyEl.innerHTML =
+    `<div class="ammo-detail-row">` +
+      `<span class="ammo-detail-label">Ammo</span>` +
+      `<span class="ammo-detail-val">${current} / ${capacity}</span>` +
+    `</div>` +
+    `<div class="ammo-bar-outer">` +
+      `<div class="ammo-bar-inner" style="width:${ammoPct}%"></div>` +
+    `</div>` +
+    `<div class="ammo-detail-row">` +
+      `<span class="ammo-detail-label">Status</span>` +
+      `<span class="ammo-status ${statusCls}">${escapeHtml(statusLabel)}</span>` +
+    `</div>` +
+    `<div class="ammo-detail-row">` +
+      `<span class="ammo-detail-label">Range</span>` +
+      `<span class="ammo-detail-val">${rangeStr}</span>` +
+    `</div>` +
+    `<div class="ammo-detail-row">` +
+      `<span class="ammo-detail-label">Base cost</span>` +
+      `<span class="ammo-detail-val">${baseCostStr}</span>` +
+    `</div>` +
+    `<div class="ammo-detail-row">` +
+      `<span class="ammo-detail-label">Position</span>` +
+      `<span class="ammo-detail-val">(${posX.toFixed(1)}, ${posY.toFixed(1)}) km</span>` +
+    `</div>`;
 }
 
 // Site subtype → dot-colour + badge label. Keeps the HUD colour coding
