@@ -10,6 +10,7 @@ Run with `python test_match_phase_integration.py`.
 """
 import numpy as np
 
+from sim import sites
 from sim.scenarios import Scenario, build_default_scenario
 from sim.types import MatchPhase
 
@@ -18,10 +19,18 @@ DT = 0.05
 
 
 def _force_red_win(scn: Scenario) -> None:
-    """Deterministically trigger a Red win by zeroing the Blue budget.
-    `Scenario.winner` returns 'red' as soon as `blue_budget <= 0`, so
-    the next RUNNING step auto-transitions RUNNING → FINISHED."""
-    scn.world.blue_budget = 0
+    """Deterministically trigger a Red win by zeroing every military
+    site's HP. `Scenario.winner` returns 'red' when all military sites
+    (subtype 'air_base' / 'base') are at hp <= 0, so the next RUNNING
+    step auto-transitions RUNNING → FINISHED.
+
+    Issue #21 (M-TIER2.8, 2026-04-20): this helper used to zero
+    `blue_budget` instead, but budget depletion is no longer a loss
+    trigger. Switched to the sites-HP path, which is the other
+    surviving Red-victory branch."""
+    for s in sites.SOUTH_SITES:
+        if s.subtype in ("air_base", "base"):
+            s.hp = 0
 
 
 # --- Lifecycle: happy path ---------------------------------------

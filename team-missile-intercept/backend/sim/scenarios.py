@@ -66,12 +66,12 @@ class Scenario:
         """Milestone I win-condition resolver.
 
         Returns:
-          'red'  — all military sites destroyed, or Blue budget exhausted.
+          'red'  — all military sites destroyed.
           'blue' — all Red waves spawned AND no Red threats still alive.
           'draw' — 3600 s safety cap reached (should basically never fire).
           None   — match still in progress.
 
-        Red-victory checks fire first so that a leak that both drops the
+        Red-victory check fires first so that a leak that both drops the
         last Blue HP AND was the final threat on the map resolves as a
         Red win rather than a Blue one. This matches operator intent:
         "if Blue is down to a dying site, Red got through."
@@ -81,15 +81,26 @@ class Scenario:
         every military site is at HP 0. Military = subtypes 'air_base'
         and 'base'. Capital short-circuit is deferred to Tier 4 (arena
         rescale needed to re-include Meridia).
+
+        Issue #21 (M-TIER2.8, 2026-04-20): `blue_budget <= 0` no longer
+        auto-ends the match as a Red win. Budget is an economic HUD
+        indicator; the match continues with Blue defending using its
+        remaining in-flight interceptors and magazine reserve. If Blue
+        truly can't fight back, remaining Red threats will deplete site
+        HP and the military-site HP loss path fires naturally. Scenarios
+        where Blue spends its last dollar on a mid-air interceptor that
+        then kills the last remaining drone now resolve as a Blue win
+        (as they should — base intact, threats resolved, waves done).
         """
-        if self.world.blue_budget <= 0:
-            return "red"
         military = [
             s for s in sites.SOUTH_SITES
             if s.subtype in ("air_base", "base")
         ]
         if military and all(s.hp <= 0 for s in military):
             return "red"
+        # Issue #21: budget depletion is NOT an auto-loss anymore. The
+        # old `if self.world.blue_budget <= 0: return "red"` block was
+        # removed here — see the winner docstring above for rationale.
         if self.red.done and all(
             not t.state.alive for t in self.world.threats.values()
         ):

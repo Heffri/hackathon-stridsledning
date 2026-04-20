@@ -135,6 +135,27 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
    pointerdown/pointerup travel. Issue #6 Done; Issue #7 Milestone J
    scope now fully complete. Browser smoke pending Chen's supervised
    session.
+0.95 **M-TIER2.8 — CIWS saturation gate + budget-as-loss removed.**
+   Landed 2026-04-20 (two commits). Operator-surfaced fixes from
+   manual play-testing:
+   - Issue #20: CIWS point-defense now respects `_expected_damage`
+     gate (still exempt from `MAX_SIMULTANEOUS_PER_THREAT` — cannon
+     class). Single 10-HP drone now dies in 2 CIWS rounds ($4k vs
+     $30k target) instead of 20-30 rounds ($40-$60k, net economic
+     loss). `test_ciws_saturation.py` locks the cap.
+   - Issue #21: removed `if blue_budget <= 0: return 'red'` from
+     `Scenario.winner`. Budget is an economic HUD indicator only;
+     match ends via military-sites-HP-zero / all-waves-done-no-threats
+     / max_sim_time. Chen's scenario (budget spent on in-flight
+     interceptor that kills last drone, base intact) now correctly
+     resolves as Blue win. `test_winner_budget_not_loss.py` locks the
+     5-case truth table. `test_match_phase_integration.py`
+     `_force_red_win` helper rewritten to use the sites-HP path.
+   Balance baseline single-run sample shifted within RedAI-rng noise
+   (see `backend/BALANCE_BASELINE_README.md` 2026-04-20 M-TIER2.8
+   entry); 20-match sweep not re-run this session. Neither fix
+   touches guidance, physics, or threat behaviour so per-kind CEP
+   numbers are unchanged.
 1. **Tier 3 — Red budget pool** (Issue #8). Expose `world.red_budget`,
    deduct `threat_spec.usd_cost` at spawn, add Blue-win path on
    budget exhaustion, HUD Red-budget bar. Runtime only (Boyu

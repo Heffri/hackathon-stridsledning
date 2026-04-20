@@ -11,8 +11,11 @@ them and flag silent balance drift.
 - `balance_baseline_2026-04-19.json` — the M-TIER1.5 (Worker 3)
   baseline. Kept intact for historical diffing.
 - `balance_baseline_2026-04-20.json` — the M-TIER2.5 (Worker 5) post-
-  broad-flyover-fix + engagement_mode infrastructure baseline. This
-  is the current reference.
+  broad-flyover-fix + engagement_mode infrastructure baseline.
+- `balance_baseline_2026-04-20_post_tier28.json` — the M-TIER2.8
+  (2026-04-20) baseline after CIWS expected-damage saturation gate
+  (Issue #20) + `blue_budget <= 0` instant-loss rule removed
+  (Issue #21). **This is the current reference.**
 
 ## How to rerun
 
@@ -182,6 +185,61 @@ Updated known-sensible ranges (W5):
 | `per_kind_cep.ballistic.miss_median_m` | 3313 | 2500–4500 |
 | `per_kind_cep.hgv.miss_median_m` | 161 | 100–400 |
 | `per_kind_cep.cruise_sub.miss_median_m` | None | None until cruise dives |
+
+## 2026-04-20 entry (M-TIER2.8, post CIWS saturation + budget-loss removed)
+
+Changes since W5/W7:
+
+- **Issue #20 — CIWS expected-damage saturation gate.** CIWS was
+  bypassing the `_expected_damage` gate and firing every tick while a
+  threat sat inside its 4 km envelope. Against a 10-HP drone that
+  meant 20–30 rounds at $2k each — $40–$60k of ammo on a $30k target.
+  Fix: CIWS still bypasses `MAX_SIMULTANEOUS_PER_THREAT` (rapid-fire
+  is the whole point of a cannon) but now respects expected_damage,
+  summed across every assigned interceptor (CIWS + non-CIWS). Typical
+  rounds-per-drone-kill drops to 2–4 (drone hp 10 / CIWS damage_prox 8
+  = 2 rounds ceiling). `test_ciws_saturation.py` locks the cap.
+- **Issue #21 — removed `blue_budget <= 0` instant-loss rule.**
+  `Scenario.winner` no longer returns `'red'` just because Blue spent
+  its last dollar. Budget is an economic HUD indicator. Match ends
+  via the surviving paths: military-sites HP = 0 (Red), all waves
+  done + no threats alive (Blue), or max_sim_time (Draw). Chen's
+  2026-04-20 scenario — budget spent on a mid-air interceptor that
+  kills the last drone, base intact — now resolves correctly as a
+  Blue win instead of Red. `test_winner_budget_not_loss.py` locks the
+  5-case table.
+
+Direct consequences for the baseline numbers (single-run sample —
+compare medians, not exact values):
+
+```
+              pre-TIER2.8 (2026-04-20.json)   post-TIER2.8 (2026-04-20_post_tier28.json)
+full_match:
+  winner                None (cap)             None (cap)
+  total_spawned         26                     26
+  total_intercepts      17                     18
+  total_leaked          3                      4
+  budget_remaining      $78.8M                 $68.9M
+  site_hp (F/S/M)       95/20/100              55/85/60
+per_kind:
+  drone    (spn/int/lk) 11/8/1                 11/9/1
+  cruise_sub            8/8/0                  8/7/1
+  ballistic             4/0/0 (4 ground)       4/1/0 (3 ground)
+  hgv                   3/1/2                  3/1/2
+```
+
+Differences are mostly within RedAI-rng jitter (fresh entropy per
+run), not deterministic drift. The post-TIER2.8 run happens to spend
+slightly more budget because CIWS-rounds saved got redirected via
+primary/fallback AI into additional SAM launches on other threats,
+and one site (Firewatch) took more damage while another (Spear Point)
+took much less. Net total HP 215 → 200 — noise-level.
+
+Per-kind CEP numbers are unchanged because neither fix touches
+guidance, physics, or threat behaviour.
+
+A 20-match sweep (`test_balance.py`) is the better signal for
+distribution drift. Not re-run this session; Chen can re-run on demand.
 
 ## Caveats
 

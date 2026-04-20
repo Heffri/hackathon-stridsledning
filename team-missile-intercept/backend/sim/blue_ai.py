@@ -450,10 +450,15 @@ class BlueAI:
             kind, launch_pos, tuple(initial_dir), tid, engagement_mode=mode,
         )
         # Milestone I: Blue pays spec.usd_cost per launch. Budget floor
-        # at 0; Scenario.winner treats budget <= 0 as a Red win. We
-        # deduct regardless of whether the launch was rational (the
-        # engagement-decision layer already gates via PRIMARY / FALLBACK
-        # / LAST_RESORT; this just wires the cost).
+        # at 0. Issue #21 (M-TIER2.8, 2026-04-20): budget depletion is
+        # no longer an instant Red win — Scenario.winner only ends the
+        # match on military-site HP=0 / all-waves-done-no-threats /
+        # max_sim_time, so running out of money just means "no more
+        # shots this match"; in-flight interceptors and magazine
+        # reserve can still resolve the fight. We deduct regardless of
+        # whether the launch was rational (the engagement-decision
+        # layer already gates via PRIMARY / FALLBACK / LAST_RESORT;
+        # this just wires the cost).
         world.blue_budget = max(
             0, world.blue_budget - INTERCEPTOR_SPECS[kind].usd_cost
         )
