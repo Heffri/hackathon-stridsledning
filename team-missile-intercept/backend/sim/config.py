@@ -168,6 +168,29 @@ SITE_LEAK_DAMAGE = {
 # headroom but a wave-5 saturation can visibly tighten the bar.
 BLUE_BUDGET_START = 120_000_000
 
+# Per-launcher base cost (M-TIER2-J Part 2, Issue #6). Deducted from
+# `world.blue_budget` when `add_launcher` places a new launcher during
+# SETUP, refunded (clamped at BLUE_BUDGET_START) when `remove_launcher`
+# takes one off the map. The default roster built from
+# `BLUE_LAUNCHER_POSITIONS` is pre-paid: scenario construction does NOT
+# charge base_cost, so the operator starts with the full $120 M for
+# interceptors + optional roster tweaks. Default roster total base cost
+# = $41.5 M (1 ciws + 2 rbs_70 + 2 iris_t_sls + 2 iris_t_slm + 1 pac_2 +
+# 1 pac_3 — 9 launchers total) — net refund equals cost on removing-then-
+# re-adding, so a "sell the default pac_3, buy two slm" roster edit stays
+# inside budget. These are arcade game-balance numbers ("unit stats") —
+# see CLAUDE.md framing note. Keys are the wire-format InterceptorType
+# values. Invariant locked by `test_launcher_base_cost.py`.
+# TODO: tune against balance sweep post-Hack-Day
+LAUNCHER_BASE_COSTS: dict = {
+    "ciws":         500_000,
+    "rbs_70":     1_000_000,
+    "iris_t_sls": 2_000_000,
+    "iris_t_slm": 5_000_000,
+    "pac_2":     10_000_000,
+    "pac_3":     15_000_000,
+}
+
 # --- Strait / threat-origin geometry (Milestone G) ---
 # Threats spawn *north of the strait centerline*, not relative to the
 # base. Derivation: the southern mainland's north coast sits around

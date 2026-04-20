@@ -228,6 +228,12 @@ class LauncherFleet:
                 slot["reload_remaining"] = max(
                     slot["reload_remaining"], lch.reload_remaining(t_now)
                 )
+            # base_cost_usd (M-TIER2-J Part 2): per-kind base cost the
+            # operator pays at `add_launcher` / gets refunded at
+            # `remove_launcher`. Additive snapshot field — frontend ribbon
+            # reads it for roster-summary + tooltip strings.
+            from . import config  # local import avoids top-level cycle
+            base_cost = config.LAUNCHER_BASE_COSTS.get(lch.kind.value, 0)
             per_launcher.append({
                 "id": lch.id,
                 "kind": lch.kind.value,
@@ -236,6 +242,7 @@ class LauncherFleet:
                 "capacity": lch.magazine_capacity,
                 "reloading": lch.reloading,
                 "reload_remaining": lch.reload_remaining(t_now),
+                "base_cost_usd": base_cost,
             })
 
         by_kind: Dict[str, dict] = {}
