@@ -153,12 +153,45 @@ Push to origin.
 **STOP conditions:**
 - If the change would require restructuring main.js's frame router (more than trivial), STOP and note "scope exceeded — defer to Milestone J worker who reworks main.js anyway."
 
-## Subtask D — ISSUES close + STATUS + CHEN_BACKLOG (~15 min)
+## Subtask D — ISSUES close + #18 add + STATUS + CHEN_BACKLOG (~20 min)
 
 1. **`team-missile-intercept/game-core/ISSUES_2026-04-19.md`:**
-   - Issue **#13 cruise_sub**: change `**State:**` to `Done (M-TIER2.7, option a). Cruise gains drone-style terminal dive triggered by dh<Nkm; no-blue baseline impact: <N> leaked / <N> ground-impacted (from <0 / 0>).` Fill in your numbers.
-   - Issue **#15 pac_3 default flipped prox→htk**: change `**State:**` to `Accepted (operator decision 2026-04-19). Rationale: pac_3 is physically HTK-class; the default flip is semantically correct. Balance drift (+4 HGV / +14 drone leaks per 20-match) will be recovered by Oskar's future Blue AI using lead-prediction to exploit pac_3's 60 m radius_direct. No revert planned.`
-   - Append a new entry in "Tier execution order": `M-TIER2.7-CRUISE-DIVE: cruise_sub terminal dive + slider 50× + WS typed-frame routing. Landed 2026-04-19.` Renumber following items if needed.
+
+   a. **Issue #13 cruise_sub**: change `**State:**` to `Done (M-TIER2.7, option a). Cruise gains drone-style terminal dive triggered by dh<Nkm; no-blue baseline impact: <N> leaked / <N> ground-impacted (from <0 / 0>).` Fill in your numbers.
+
+   b. **Issue #15 pac_3 default flipped prox→htk**: change `**State:**` to `Accepted (operator decision 2026-04-19). Rationale: pac_3 is physically HTK-class; the default flip is semantically correct. Balance drift (+4 HGV / +14 drone leaks per 20-match) will be recovered by Oskar's future Blue AI using lead-prediction to exploit pac_3's 60 m radius_direct. No revert planned.`
+
+   c. **Add new Issue #18** (new section after Issue #17, before the "Merge map — how the 12 raw items collapse" closing section). Use this text verbatim:
+
+   ```
+   ## Issue 18 — Cruise missile terrain-following (future, blocked on maps/ elevation API)
+
+   - **State:** Open (blocked on maps/ publishing a terrain height API)
+   - **Category:** New feature / cross-team dependency
+   - **Owner:** Chen (cruise_sub consumer) + Sebastijan (maps/ elevation data + API)
+   - **Merges with:** Issue 13 (cruise_sub terminal dive) — this is the follow-up that lands when terrain ships
+   - **Tier:** 3 (post terrain landing; not Hack Day critical)
+
+   **What:** Real-world cruise missiles use terrain contour matching to avoid flying into mountains. Currently the game has no elevation terrain — only 2D land/sea polygons — so cruise_sub flies at a fixed low altitude with no obstacle awareness. Once Sebastijan lands 3D terrain, cruise_sub needs obstacle-avoidance.
+
+   **Design target:**
+
+   1. `maps/` publishes `terrain.height_at(x, y) -> float` (elevation above sea level in metres) as a stable public API. Sebastijan owns the data + implementation. Out-of-bounds return value and unit convention (metres above sea level) agreed on Chen ↔ Sebastijan at publish time.
+   2. cruise_sub's update block in `entities.py` samples terrain height `N` metres ahead of the flight path each tick, compares against the cruise's current altitude + safety margin, and:
+      - **Simple (Tier 3 target):** pitch up smoothly to clear the obstacle; resume sea-skimming after the obstacle passes.
+      - **Later (Tier 4):** lateral bank + maneuver around the obstacle for a stealthier flight profile.
+   3. Drone / ballistic / HGV are exempt — drone is intentionally "dumb / cheap / expendable"; ballistic arcs over terrain; HGV flies at 35 km cruise altitude so terrain is irrelevant.
+
+   **Touchpoints (future):** `backend/sim/terrain.py` (new `height_at` function), `backend/sim/entities.py` (cruise_sub update block adds terrain lookahead), `maps/` package data + `TERRAIN_PIPELINE.md` contract doc.
+
+   **Cross-team coordination:** Sebastijan commits to a stable `terrain.height_at(x, y)` signature before Chen consumes it. Both sides agree on units (metres above sea level) and out-of-bounds behaviour (return 0.0? raise? document).
+
+   **Not doing now:** no cruise changes this week beyond W7's terminal dive (Issue #13). This issue waits for maps/ to publish elevation.
+   ```
+
+   d. **Cross-team coordination table**: add a new row for Issue #18 terrain-following, referencing Chen (cruise consumer) and Sebastijan (maps/ elevation publisher) as the two owners. Keep the existing rows untouched.
+
+   e. Append a new entry under "Tier execution order": `M-TIER2.7-CRUISE-DIVE: cruise_sub terminal dive + slider 50× + WS typed-frame routing + Issue #18 future-cruise-terrain-following captured. Landed 2026-04-19.` Renumber following items if needed.
 
 2. **`team-missile-intercept/progress/STATUS.md`:** add a short entry "M-TIER2.7-CRUISE-DIVE landed" with the commit range (Subtask A + B + C).
 
@@ -166,7 +199,7 @@ Push to origin.
 
 4. **`team-missile-intercept/game-core/AUDIT_2026-04-19.md`:** optional — add a one-line "Follow-up" note under Section E saying the main.js typed-frame gap was addressed in commit `<hash>`.
 
-**Commit:** `docs: W7 close — ISSUES #13 / #15 resolved + STATUS update`
+**Commit:** `docs: W7 close — ISSUES #13 done + #15 accepted + #18 captured + STATUS`
 
 Push to origin.
 
