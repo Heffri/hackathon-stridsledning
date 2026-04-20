@@ -1,15 +1,15 @@
-// Launcher drag-drop + click-to-select handler (M-TIER2-J Part 1 / 2).
+// Launcher drag-drop + click-to-select handler (M-TIER2-J Part 1 / 2
+// + Issue #26 W12).
 //
-// Pointer-down on a launcher Group in SETUP phase arms a potential
-// drag; pointer-move past a pixel-distance threshold promotes it to a
-// real drag (updates the Group position via a ground-plane raycast),
-// pointer-up emits a `place_launcher` WS command. If the pointer-up
-// arrives without the threshold being exceeded, the event is
-// interpreted as a click — the launcher is selected (Subtask D) and
-// the Remove button in the SETUP ribbon enables.
-//
-// Click on empty scene space in SETUP clears the selection. Pointer-
-// up outside SETUP does nothing.
+// Click-to-select works in every phase (SETUP / RUNNING / PAUSED /
+// FINISHED): pointer-up under the pixel-distance threshold on a
+// launcher box selects it; pointer-up under threshold on empty canvas
+// deselects. Drag-to-reposition remains SETUP-only — pointer-move past
+// threshold on a launcher in SETUP promotes to a drag that updates the
+// Group via a ground-plane raycast and emits `place_launcher` on
+// pointer-up. Pointer-move past threshold outside SETUP (or on empty
+// canvas) is interpreted as an OrbitControls orbit: we clear the armed
+// state and let OrbitControls have the gesture.
 //
 // The server validates land-only placement
 // (terrain.point_on_south_land) — on rejection the next snapshot
@@ -18,7 +18,8 @@
 //
 // OrbitControls is disabled for the duration of an actual drag so the
 // camera doesn't move under the operator. Cursor flips to `grab` on
-// hover and `grabbing` during drag.
+// hover and `grabbing` during drag (SETUP only — non-SETUP hover leaves
+// the cursor alone so the OrbitControls default applies).
 import * as THREE from 'three';
 import { SCALE } from './scene.js';
 import { setSelectedLauncherId } from './launcher_selection.js';
@@ -115,30 +116,41 @@ export function initLauncherDrag({
       }
       return;
     }
-    // Armed pointer — promote to a real drag once the pointer travels
-    // past the click threshold. Uses absolute pixel delta against the
-    // pointer-down position (not NDC) so the threshold is resolution-
+    // Armed pointer — decide what the gesture becomes once the pointer
+    // travels past the click threshold. Uses absolute pixel delta against
+    // the pointer-down position (not NDC) so the threshold is resolution-
     // independent.
+    //
+    // Issue #26 (W12): drag is SETUP-only. In any other phase, or when
+    // the pointer-down landed on empty canvas, a past-threshold move is
+    // an OrbitControls orbit — drop the armed state and let OrbitControls
+    // take over. No selection change on pointer-up in that case.
     if (armed) {
       const dx = ev.clientX - armed.downX;
       const dy = ev.clientY - armed.downY;
       if (dx * dx + dy * dy >= CLICK_DRAG_THRESHOLD_PX * CLICK_DRAG_THRESHOLD_PX) {
-        const { mesh, id } = armed;
-        armed = null;
-        dragging = { mesh, id };
-        mesh.group.userData.dragging = true;
-        if (controls) controls.enabled = false;
-        canvas.style.cursor = 'grabbing';
-        // Snap Group position to pointer on the first drag tick so the
-        // launcher doesn't jump from its old pose.
-        raycaster.setFromCamera(pointer, camera);
-        if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
-          mesh.group.position.set(hitPoint.x, 0, hitPoint.z);
+        if (getPhase() === 'setup' && armed.mesh) {
+          const { mesh, id } = armed;
+          armed = null;
+          dragging = { mesh, id };
+          mesh.group.userData.dragging = true;
+          if (controls) controls.enabled = false;
+          canvas.style.cursor = 'grabbing';
+          // Snap Group position to pointer on the first drag tick so the
+          // launcher doesn't jump from its old pose.
+          raycaster.setFromCamera(pointer, camera);
+          if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
+            mesh.group.position.set(hitPoint.x, 0, hitPoint.z);
+          }
+        } else {
+          armed = null;
         }
       }
       return;
     }
-    // Idle hover state (not armed, not dragging).
+    // Idle hover state (not armed, not dragging). Grab cursor is SETUP-
+    // only (there is no drag affordance outside SETUP); let OrbitControls'
+    // default cursor show in RUNNING / PAUSED / FINISHED.
     if (getPhase() === 'setup') {
       const id = findLauncherIdUnderPointer();
       canvas.style.cursor = id ? 'grab' : '';
@@ -148,24 +160,31 @@ export function initLauncherDrag({
   });
 
   canvas.addEventListener('pointerdown', (ev) => {
-    if (getPhase() !== 'setup') return;
     if (ev.button !== 0) return; // left button only
     updatePointerNDC(ev);
     const id = findLauncherIdUnderPointer();
+    const isSetup = getPhase() === 'setup';
     if (!id) {
-      // Pointer-down on empty scene: remember the position so a click
-      // on empty space (no drag) can clear the selection on pointer-up.
+      // Pointer-down on empty canvas: remember the start position so a
+      // click under threshold on empty space clears the selection.
+      // Works in every phase (Issue #26).
       armed = { mesh: null, id: null, downX: ev.clientX, downY: ev.clientY };
       return;
     }
     const mesh = launchers.byId.get(id);
     if (!mesh) return;
-    // Arm a potential click or drag. We don't commit to either yet —
-    // pointermove promotes to drag past threshold; pointerup without
-    // promotion is a click.
+    // Arm a potential click or drag. Drag only promotes in SETUP; click-
+    // to-select promotes in every phase on pointer-up under threshold.
     armed = { mesh, id, downX: ev.clientX, downY: ev.clientY };
-    canvas.setPointerCapture?.(ev.pointerId);
-    ev.preventDefault();
+    // Only capture the pointer + preventDefault in SETUP — owning the
+    // gesture guarantees the drag discriminator gets a consistent event
+    // sequence even if the pointer leaves the canvas mid-drag. Outside
+    // SETUP we deliberately leave the gesture to OrbitControls so a
+    // drag-past-threshold orbits the camera without fighting our capture.
+    if (isSetup) {
+      canvas.setPointerCapture?.(ev.pointerId);
+      ev.preventDefault();
+    }
   });
 
   function endDrag(commit, ev) {
@@ -196,15 +215,18 @@ export function initLauncherDrag({
       endDrag(true, ev);
       return;
     }
-    // Armed without being promoted = click. Select (or deselect on
-    // empty space).
+    // Armed without being promoted = click. Select (or deselect on empty
+    // space). Issue #26: works in every phase, not just SETUP. The re-
+    // raycast here (rather than trusting armed.id from pointerdown) lets
+    // the final-intent interpretation survive tiny camera drift between
+    // down and up — if the operator sub-threshold shifts the pointer off
+    // the launcher, the final pixel decides.
     if (armed) {
-      const { id } = armed;
       armed = null;
       if (ev.pointerId != null) canvas.releasePointerCapture?.(ev.pointerId);
-      if (getPhase() === 'setup') {
-        setSelectedLauncherId(id || null);
-      }
+      updatePointerNDC(ev);
+      const hitId = findLauncherIdUnderPointer();
+      setSelectedLauncherId(hitId || null);
     }
   });
   canvas.addEventListener('pointercancel', (ev) => {
