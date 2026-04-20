@@ -1,6 +1,6 @@
 # Worker 8 — M-TIER2-J Part 1: Deployment UI + pause overlay rework + SETUP ribbon
 
-**How to use this file:** paste the entire contents below (everything from `# Hackathon framing` onward) into a fresh Claude Code worker session at the repo root (`C:\Users\xingy\Documents\github\hackathon-stridsledning`) on branch `new-teamwork-split-V1`. Chen runs this **with supervision** — daytime session, expected to need browser smoke checks. Budget: ~4–5 h. Six subtasks → six commits.
+**How to use this file:** paste the entire contents below (everything from `# Hackathon framing` onward) into a fresh Claude Code worker session at the repo root (`C:\Users\xingyi chen\Documents\GitHub\hackathon-stridsledning`) on branch `new-teamwork-split-V1`. Chen runs this **with supervision** — daytime session, expected to need browser smoke checks. Budget: ~4–5 h. Six subtasks → six commits.
 
 **Prerequisite:** Worker 7 (M-TIER2.7-CRUISE-DIVE) must have landed. Confirm `git log --oneline -8` shows `934a3da docs: W7 close — ISSUES #13 done + #15 accepted + #18 captured + STATUS` at (or near) the top.
 
@@ -14,7 +14,7 @@ A previous account on this project was suspended when framing was ambiguous. Kee
 
 # Context
 
-Repo root: `C:\Users\xingy\Documents\github\hackathon-stridsledning`. Active project: `team-missile-intercept/`.
+Repo root: `C:\Users\xingyi chen\Documents\GitHub\hackathon-stridsledning`. Active project: `team-missile-intercept/`.
 
 Active branch: `new-teamwork-split-V1` (PR #4). Push every commit to `origin/new-teamwork-split-V1` via `git push origin HEAD:new-teamwork-split-V1`.
 
