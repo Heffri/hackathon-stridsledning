@@ -30,6 +30,12 @@ class Launcher:
     # with callers that pre-date Milestone F; LauncherFleet always sets
     # this from config.BLUE_LAUNCHER_POSITIONS.
     pos: Tuple[float, float] = (0.0, 0.0)
+    # Stable string ID of the form `f"{kind}_{within_kind_idx}"` (e.g.
+    # "ciws_0", "pac_3_0", "iris_t_sls_1"). Assigned by
+    # `LauncherFleet.__init__`; addresses this launcher across the
+    # WebSocket `place_launcher` protocol (M-TIER2-J Part 1). Default
+    # is empty for legacy tests that construct a raw Launcher.
+    id: str = ""
     current_ammo: int = 0
     last_shot_t: float = -999.0
     reload_start_t: float = -999.0
@@ -156,9 +162,15 @@ class LauncherFleet:
                 tmpl = LAUNCHER_TEMPLATES.get(kind)
                 if tmpl is None:
                     continue
-                for (x, y) in pos_list:
+                for idx, (x, y) in enumerate(pos_list):
+                    lid = f"{kind.value}_{idx}"
                     self.launchers.append(
-                        Launcher(kind=kind, pos=(float(x), float(y)), **tmpl)
+                        Launcher(
+                            kind=kind,
+                            pos=(float(x), float(y)),
+                            id=lid,
+                            **tmpl,
+                        )
                     )
             return
 
@@ -170,8 +182,11 @@ class LauncherFleet:
             tmpl = LAUNCHER_TEMPLATES.get(kind)
             if tmpl is None:
                 continue
-            for _ in range(n):
-                self.launchers.append(Launcher(kind=kind, **tmpl))
+            for idx in range(n):
+                lid = f"{kind.value}_{idx}"
+                self.launchers.append(
+                    Launcher(kind=kind, id=lid, **tmpl)
+                )
 
     def tick(self, t_now: float) -> None:
         for lch in self.launchers:
@@ -214,6 +229,7 @@ class LauncherFleet:
                     slot["reload_remaining"], lch.reload_remaining(t_now)
                 )
             per_launcher.append({
+                "id": lch.id,
                 "kind": lch.kind.value,
                 "pos": [float(lch.pos[0]), float(lch.pos[1])],
                 "current": lch.current_ammo,
