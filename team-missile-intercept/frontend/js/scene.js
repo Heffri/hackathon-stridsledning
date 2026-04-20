@@ -79,13 +79,28 @@ export function createScene(canvas) {
   // and above the base so the battle volume fills the view.
   // Camera pulled further back + aimed deeper into the 250 km arena so
   // HGV / ballistic spawn borders at Z ≈ -175 are in the frame.
-  camera.position.set(30, 50, 110);
-  camera.lookAt(0, 12, -70);
+  // W13 Phase 7: pulled out into named constants so `resetCameraView`
+  // (exposed below) can restore the demo-default framing after the
+  // operator pans / zooms during the 4-minute presentation window.
+  const DEFAULT_CAMERA_POS = [30, 50, 110];
+  const DEFAULT_CONTROLS_TARGET = [0, 12, -70];
+  camera.position.set(...DEFAULT_CAMERA_POS);
+  camera.lookAt(...DEFAULT_CONTROLS_TARGET);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
-  controls.target.set(0, 12, -70);
+  controls.target.set(...DEFAULT_CONTROLS_TARGET);
+
+  // W13 Phase 7: demo-recovery helper. `R` keybinding + HUD button both
+  // call this to snap the camera + OrbitControls target back to the
+  // starting pose. Safe to invoke mid-match — OrbitControls picks up
+  // the new state on the next `controls.update()` tick.
+  function resetCameraView() {
+    camera.position.set(...DEFAULT_CAMERA_POS);
+    controls.target.set(...DEFAULT_CONTROLS_TARGET);
+    controls.update();
+  }
 
   // Lighting
   const amb = new THREE.AmbientLight(0x5577aa, 0.5);
@@ -314,7 +329,7 @@ export function createScene(canvas) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  return { scene, camera, renderer, controls };
+  return { scene, camera, renderer, controls, resetCameraView };
 }
 
 // Backend coords: X=east, Y=north, Z=up (meters).

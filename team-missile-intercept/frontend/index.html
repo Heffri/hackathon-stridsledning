@@ -28,6 +28,7 @@
        readout here. -->
   <div id="setup-ribbon" class="setup-ribbon hidden">
     <span class="setup-ribbon-text">MATCH SETUP — drag, add/remove launchers, then Start Match</span>
+    <span class="setup-ribbon-hint">Click launcher to inspect · Drag to reposition · R to reset camera</span>
     <label class="setup-ribbon-roster">
       <select id="roster-kind" class="setup-ribbon-select">
         <option value="ciws">CIWS ($0.5M)</option>
@@ -116,6 +117,7 @@
     <div id="hud-bottom">
       <button id="btn-pause" class="hidden">Pause</button>
       <button id="btn-reset">Reset</button>
+      <button id="btn-reset-camera" title="Recenter the 3D camera (keyboard: R)">Reset Camera</button>
       <label class="speed">
         Speed
         <input id="speed" type="range" min="0.5" max="50" step="0.5" value="1" />

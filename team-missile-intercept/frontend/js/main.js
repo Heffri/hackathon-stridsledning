@@ -9,7 +9,7 @@ import { initLauncherDrag } from './drag_launchers.js';
 import { onSelectionChange } from './launcher_selection.js';
 
 const canvas = document.getElementById('view');
-const { scene, camera, renderer, controls } = createScene(canvas);
+const { scene, camera, renderer, controls, resetCameraView } = createScene(canvas);
 const registry = new EntityRegistry(scene);
 const launchers = new LauncherRegistry(scene);
 const redLaunchers = new RedLauncherRegistry(scene);
@@ -67,6 +67,21 @@ initLauncherDrag({
   getPhase: () => latestSnap?.phase || 'setup',
 });
 openWs();
+
+// W13 Phase 7: demo-recovery camera reset. `R` keydown (window-level)
+// + the bottom-bar "Reset Camera" button both call resetCameraView.
+// Keydown ignores the event when a form control has focus so operator
+// typing into the roster dropdown doesn't snap the camera mid-edit.
+window.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'r' && ev.key !== 'R') return;
+  if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+  const t = ev.target;
+  if (t && t.matches?.('input, select, textarea')) return;
+  resetCameraView();
+});
+document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
+  resetCameraView();
+});
 
 // --- Render loop ---
 // W13 perf: only the registries that carry per-frame animations

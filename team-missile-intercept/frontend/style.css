@@ -447,6 +447,16 @@ html, body {
 .setup-ribbon-text {
   color: #9fb8d4;
 }
+/* W13 Phase 7: secondary hint line inside the SETUP ribbon. Dimmer
+   than the primary MATCH SETUP text so the eye reads it as guidance,
+   not a call to action. */
+.setup-ribbon-hint {
+  color: #6a809b;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: none;
+  margin-left: 12px;
+}
 .setup-ribbon-btn {
   background: #153560;
   color: #cfe1ff;
