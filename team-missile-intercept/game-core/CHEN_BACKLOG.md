@@ -50,9 +50,10 @@ tests (`test_match_phase_integration.py`); `test_full_scenario`,
 
 ## 3. Deployment Phase And Launcher Placement Support
 
-Priority: High — **Landed Part 1 2026-04-20 (M-TIER2-J Part 1).**
-Part 2 (buy vehicle / roster add-remove) remains Open — tracked in
-Issue #6.
+Priority: High — **Landed in full 2026-04-20.**
+Part 1 (M-TIER2-J Part 1, move-only) and Part 2 (M-TIER2-J Part 2,
+buy vehicle / roster add-remove) are both Done. See Issue #6 and
+Issue #7 in `ISSUES_2026-04-19.md` for the issue-level close notes.
 
 Commits (Part 1): `bf6373c` (Launcher.id + snapshot exposure),
 `04affc0` (place_launcher + ai_auto WS commands + 8-case test),
@@ -96,10 +97,16 @@ Delivered (Part 1):
   match-phase, integration, engagement-mode, cruise-impact,
   HGV-impact, ballistic-CEP — all still pass.
 
-Part 2 (Open): per-launcher base cost deducted from `world.blue_budget`
-at placement time, roster add/remove UI, launcher-type dropdown in
-the ribbon. Touchpoints — `backend/sim/launcher.py`,
-`backend/sim/world.py`, frontend ribbon DOM + drag_launchers extension.
+Part 2 (Done): per-launcher base cost table
+(`config.LAUNCHER_BASE_COSTS`), `add_launcher` + `remove_launcher`
+WS commands with budget deduction/refund, ribbon roster dropdown +
+Add/Remove buttons, launcher click-to-select with emissive visual,
+and `ai_auto` extended to restore the full config-default roster.
+Commits: `0113041` (LAUNCHER_BASE_COSTS config + snapshot
+`base_cost_usd` field + 5-case test), `29653c6` (server
+add/remove/ai_auto + 17-case roster API test), `5d194f9` (SETUP
+ribbon dropdown + Add/Remove buttons), `95ea59e` (launcher click-
+to-select with emissive visual).
 
 ## 4. Game-Loop Polish
 

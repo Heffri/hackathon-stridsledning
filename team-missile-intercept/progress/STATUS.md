@@ -112,14 +112,36 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
    frozen battlefield. Two new tests: `test_launcher_id.py` (id
    shape + snapshot field), `test_placement_api.py` (phase-gate,
    strait reject, unknown id, RUNNING/PAUSED reject, ai_auto reset).
-   Part 2 (buy vehicle, Issue #6) remains Open.
-1. **Milestone J Part 2 — "buy vehicle" per-launcher roster.** Issue
-   #6. Extends the landed drag-drop placement with per-launcher-type
-   pricing and roster add/remove during SETUP; per-launcher magazine
-   is already in place.
+0.9 **M-TIER2-J Part 2 — buy vehicle / roster add-remove.** Landed
+   2026-04-20 (commits `0113041` LAUNCHER_BASE_COSTS config +
+   snapshot `base_cost_usd` field + 5-case test, `29653c6` server
+   `add_launcher` + `remove_launcher` + `ai_auto` roster restore +
+   17-case test, `5d194f9` SETUP ribbon roster dropdown + Add /
+   Remove buttons + auto-deselect hook, `95ea59e` launcher click-to-
+   select with emissive visual feedback). Operator can now pick a
+   launcher kind from the ribbon dropdown, click Add to spawn a new
+   launcher at the south-mainland default pos (then drag via W8
+   handler), and click a placed launcher to select it + click Remove
+   to sell it back. Budget deducts on Add, refunds on Remove
+   (clamped at `BLUE_BUDGET_START = $120M` for individual removes to
+   prevent abuse; `ai_auto` is atomic so its internal refund step is
+   uncapped and the remove-and-re-add cycle is net-zero on a
+   pristine default state). AI Auto now restores the full config-
+   default roster (not just positions). Base costs: ciws $0.5 M /
+   rbs_70 $1 M / iris_t_sls $2 M / iris_t_slm $5 M / pac_2 $10 M /
+   pac_3 $15 M — default 9-launcher roster totals $41.5 M (pre-paid;
+   scenario construction does not charge). Click-vs-drag
+   discriminator uses a 5 px pixel-distance threshold on
+   pointerdown/pointerup travel. Issue #6 Done; Issue #7 Milestone J
+   scope now fully complete. Browser smoke pending Chen's supervised
+   session.
+1. **Tier 3 — Red budget pool** (Issue #8). Expose `world.red_budget`,
+   deduct `threat_spec.usd_cost` at spawn, add Blue-win path on
+   budget exhaustion, HUD Red-budget bar. Runtime only (Boyu
+   consumes later).
 2. **Red AI Level 5 HGV control** — `Threat.override_maneuver` hook is in place; needs a per-tick decision layer (nearest-interceptor scan, geometry, KE budget) to drive the hook.
 3. **Smarter Red AI target selection** — currently weighted-random across sites; wave-specific targeting (wave 5 prioritises capital) would feel more tactical.
-4. **Placement AI** (post-Milestone J) — once the deployment UI exists, let an AI pick positions based on incoming threat direction, wave composition, and coverage optimisation.
+4. **Placement AI** (post-Milestone J) — deployment UI is done; now let an AI pick positions + roster based on incoming threat direction, wave composition, and coverage optimisation. AI Auto stub is the hook point.
 5. **Route 3: PN precision upgrade** (2-4 hours) — RK4 + sub-tick guidance + ZEM feedback. Closes the ballistic leak rate without compromising realism.
 6. **Route 5: Radar / sensor model** (2-3 hours) — Blue AI omniscience removed; detection depends on radar state and RCS-dependent burn-through.
 7. **Route 4: Overnight self-play tuning** — 20k-50k headless matches, randomise Red / Blue parameters, analyse what wins. Pitch material: "AI tuned via N self-play matches".
