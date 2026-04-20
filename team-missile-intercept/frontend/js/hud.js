@@ -23,14 +23,23 @@ const WEAPON_COLORS = {
 };
 
 export function wireHud(sendCmd) {
-  // Pause lives in the bottom bar; Start / Resume / Restart live inside
-  // the centre-screen match overlay (phase-specific content).
-  document.getElementById('btn-pause')?.addEventListener('click', () => {
-    sendCmd({ cmd: 'pause' });
+  // Pause lives in the bottom bar. Its click dispatches via the
+  // `data-mode` attribute so the same element flips between "Pause"
+  // (RUNNING) and "Resume" (PAUSED) — M-TIER2-J Part 1 removed the
+  // centre-screen PAUSED overlay so the operator can click-inspect the
+  // frozen battlefield; the Pause button flip is the new resume
+  // affordance. See renderPauseResumeButton below.
+  const pauseBtn = document.getElementById('btn-pause');
+  pauseBtn?.addEventListener('click', () => {
+    const mode = pauseBtn.dataset.mode || 'pause';
+    sendCmd({ cmd: mode });
   });
   document.getElementById('btn-start-match')?.addEventListener('click', () => {
     sendCmd({ cmd: 'start' });
   });
+  // Legacy btn-resume inside the match-overlay: no longer surfaced
+  // (paused overlay is hidden; Pause button flips label instead). Click
+  // handler kept for back-compat should the overlay ever re-expose it.
   document.getElementById('btn-resume')?.addEventListener('click', () => {
     sendCmd({ cmd: 'resume' });
   });
@@ -105,7 +114,7 @@ export function updateHud(snap) {
   // Phase chip + phase-gated overlay (M-TIER2-PHASE).
   renderPhaseChip(snap.phase || 'setup');
   renderPhaseOverlay(snap.phase || 'setup', snap.winner || null);
-  renderPauseButtonVisibility(snap.phase || 'setup');
+  renderPauseResumeButton(snap.phase || 'setup');
 
   // Ammo rows (falls back to ∞ when server omits the field, e.g. legacy runs)
   const ammo = snap.ammo || {};
@@ -260,13 +269,31 @@ export function showWsError(reason) {
   }, 3000);
 }
 
-// Bottom-bar Pause button: only surfaced in RUNNING. Setup / paused /
-// finished states have their own centre-screen call-to-action and
-// don't need a secondary Pause affordance.
-function renderPauseButtonVisibility(phase) {
+// Bottom-bar Pause/Resume button (M-TIER2-J Part 1). Visible in RUNNING
+// and PAUSED, hidden in SETUP and FINISHED. Text + data-mode flip so the
+// same DOM element acts as Pause (RUNNING → sends 'pause') or Resume
+// (PAUSED → sends 'resume'); wireHud's click handler reads dataset.mode.
+// Replaces the centre-screen PAUSED overlay so the operator can click-
+// inspect entities on a frozen battlefield.
+function renderPauseResumeButton(phase) {
   const btn = document.getElementById('btn-pause');
   if (!btn) return;
-  btn.classList.toggle('hidden', phase !== 'running');
+  if (phase === 'running') {
+    btn.classList.remove('hidden');
+    btn.textContent = 'Pause';
+    btn.dataset.mode = 'pause';
+    return;
+  }
+  if (phase === 'paused') {
+    btn.classList.remove('hidden');
+    btn.textContent = 'Resume';
+    btn.dataset.mode = 'resume';
+    return;
+  }
+  // SETUP / FINISHED — no pause/resume affordance.
+  btn.classList.add('hidden');
+  btn.textContent = 'Pause';
+  btn.dataset.mode = 'pause';
 }
 
 // Centre-screen match overlay — single element reused across three
@@ -302,13 +329,11 @@ function renderPhaseOverlay(phase, winner) {
     return;
   }
   if (phase === 'paused') {
-    if (titleEl) {
-      titleEl.textContent = 'PAUSED';
-      titleEl.className = 'mo-title mo-paused';
-    }
-    if (subEl) subEl.textContent = 'Sim-time is frozen. Resume when ready.';
-    btnResume?.classList.remove('hidden');
-    el.classList.remove('hidden');
+    // M-TIER2-J Part 1: PAUSED no longer surfaces the centre-screen
+    // overlay — operator needs the full canvas to click-inspect the
+    // frozen battlefield. The bottom-bar Pause button flips to Resume
+    // (see renderPauseResumeButton).
+    el.classList.add('hidden');
     return;
   }
   if (phase === 'finished') {
