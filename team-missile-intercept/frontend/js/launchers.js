@@ -18,6 +18,7 @@
 // no range ring since they're offensive (no defensive coverage to show).
 import * as THREE from 'three';
 import { worldToSceneXY } from './scene.js';
+import { getSelectedLauncherId } from './launcher_selection.js';
 
 // Mesh colours — matches entities.js body colours + scene.js range arc
 // colours so boxes, interceptor bodies, and arcs all read as "the same
@@ -127,6 +128,14 @@ class LauncherMesh {
     }
   }
 
+  // M-TIER2-J Part 2 (Issue #6): selection visual. Bumps the box's
+  // emissiveIntensity so the selected launcher glows noticeably but
+  // doesn't add a second mesh / outline pass. Called from
+  // drag_launchers.js click-to-select handler.
+  setSelected(selected) {
+    this.material.emissiveIntensity = selected ? 1.1 : 0.35;
+  }
+
   dispose(scene) {
     scene.remove(this.group);
     this.box.geometry.dispose();
@@ -173,12 +182,21 @@ export class LauncherRegistry {
       mesh.setReloading(Boolean(lch.reloading));
     }
     // Dispose any launcher that disappeared (e.g. on scenario reset with
-    // a different positions dict).
+    // a different positions dict, or operator-driven remove_launcher /
+    // ai_auto roster rebuild — M-TIER2-J Part 2).
     for (const [id, mesh] of this.byId) {
       if (!seen.has(id)) {
         mesh.dispose(this.scene);
         this.byId.delete(id);
       }
+    }
+    // M-TIER2-J Part 2: paint the currently selected launcher with
+    // the emissive boost every tick. Cheap — setSelected just flips
+    // one material field. Applied after the seen-set prune so a just-
+    // removed selection doesn't linger.
+    const selectedId = getSelectedLauncherId();
+    for (const [id, mesh] of this.byId) {
+      mesh.setSelected(id === selectedId);
     }
   }
 }
