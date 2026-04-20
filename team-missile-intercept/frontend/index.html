@@ -22,9 +22,24 @@
   <!-- M-TIER2-J Part 1: SETUP ribbon. Thin top bar so the 3D canvas
        stays visible for drag-drop launcher placement. Hidden in every
        phase other than SETUP; Start Match lives here instead of inside
-       the centre-screen match overlay. -->
+       the centre-screen match overlay. M-TIER2-J Part 2 adds the
+       roster dropdown + Add/Remove buttons for buy-vehicle (Issue #6).
+       Budget is shown in the existing HUD budget bar — no duplicate
+       readout here. -->
   <div id="setup-ribbon" class="setup-ribbon hidden">
-    <span class="setup-ribbon-text">MATCH SETUP — drag launchers to position, then Start Match</span>
+    <span class="setup-ribbon-text">MATCH SETUP — drag, add/remove launchers, then Start Match</span>
+    <label class="setup-ribbon-roster">
+      <select id="roster-kind" class="setup-ribbon-select">
+        <option value="ciws">CIWS ($0.5M)</option>
+        <option value="rbs_70">RBS-70 NG ($1M)</option>
+        <option value="iris_t_sls">IRIS-T SLS ($2M)</option>
+        <option value="iris_t_slm">IRIS-T SLM ($5M)</option>
+        <option value="pac_2">PAC-2 GEM+ ($10M)</option>
+        <option value="pac_3" selected>PAC-3 MSE ($15M)</option>
+      </select>
+    </label>
+    <button id="btn-add-launcher" class="setup-ribbon-btn">+ Add</button>
+    <button id="btn-remove-launcher" class="setup-ribbon-btn" disabled>− Remove</button>
     <button id="btn-ai-auto" class="setup-ribbon-btn">AI Auto</button>
     <button id="btn-start-match" class="setup-ribbon-btn">Start Match</button>
   </div>

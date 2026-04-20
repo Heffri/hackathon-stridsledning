@@ -409,7 +409,30 @@ html, body {
   letter-spacing: 1.2px;
   text-transform: uppercase;
 }
-.setup-ribbon-btn:hover { background: #1e4a82; }
+.setup-ribbon-btn:hover:not(:disabled) { background: #1e4a82; }
+.setup-ribbon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* M-TIER2-J Part 2: roster dropdown — compact, matches ribbon styling. */
+.setup-ribbon-roster {
+  display: flex;
+  align-items: center;
+}
+.setup-ribbon-select {
+  background: #0c1b30;
+  color: #cfe1ff;
+  border: 1px solid #2a5a9a;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.setup-ribbon-select:hover { border-color: #4a7acc; }
 /* Push HUD down by ribbon height while ribbon is visible. Sibling combinator
    works because #setup-ribbon precedes #hud in the DOM. */
 #setup-ribbon:not(.hidden) ~ #hud {

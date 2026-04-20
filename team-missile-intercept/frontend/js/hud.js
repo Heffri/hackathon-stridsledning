@@ -1,4 +1,9 @@
 // HUD controls + log rendering.
+import {
+  getSelectedLauncherId,
+  onSelectionChange,
+  setSelectedLauncherId,
+} from './launcher_selection.js';
 
 // Real-world names for interceptor kinds, shown in the launch banner.
 const INTERCEPTOR_NAMES = {
@@ -37,11 +42,38 @@ export function wireHud(sendCmd) {
   document.getElementById('btn-start-match')?.addEventListener('click', () => {
     sendCmd({ cmd: 'start' });
   });
-  // M-TIER2-J Part 1: AI Auto button on the SETUP ribbon. Stub heuristic
-  // server-side — resets every launcher to its config default slot. A
-  // real placement AI (Oskar) lives behind the same command.
+  // M-TIER2-J Part 1: AI Auto button on the SETUP ribbon. M-TIER2-J
+  // Part 2 extended the backend handler to also restore the full
+  // config-default roster (not just positions). Same WS command;
+  // frontend just triggers it.
   document.getElementById('btn-ai-auto')?.addEventListener('click', () => {
     sendCmd({ cmd: 'ai_auto' });
+  });
+  // M-TIER2-J Part 2 (Issue #6): roster Add button. Reads the kind
+  // dropdown + sends add_launcher at a safe south-mainland default pos
+  // (near Blue base). Operator drags afterward via the W8 drag handler.
+  document.getElementById('btn-add-launcher')?.addEventListener('click', () => {
+    const select = document.getElementById('roster-kind');
+    const kind = select?.value;
+    if (!kind) return;
+    // Default spawn pos: centre-south mainland. Matches
+    // config.BLUE_BASE_POS (75_000, 5_000) — asserted on-land at
+    // backend startup.
+    sendCmd({ cmd: 'add_launcher', kind, pos: [75000, 5000] });
+  });
+  // M-TIER2-J Part 2: roster Remove button. Only enabled when a
+  // launcher is click-selected (see launcher_selection.js, wired by
+  // drag_launchers.js click handler).
+  document.getElementById('btn-remove-launcher')?.addEventListener('click', () => {
+    const id = getSelectedLauncherId();
+    if (!id) return;
+    sendCmd({ cmd: 'remove_launcher', launcher_id: id });
+  });
+  // Keep the Remove button's disabled state in sync with selection.
+  onSelectionChange((id) => {
+    const btn = document.getElementById('btn-remove-launcher');
+    if (!btn) return;
+    btn.disabled = !id;
   });
   // Legacy btn-resume inside the match-overlay: no longer surfaced
   // (paused overlay is hidden; Pause button flips label instead). Click
@@ -122,6 +154,16 @@ export function updateHud(snap) {
   renderSetupRibbon(snap.phase || 'setup');
   renderPhaseOverlay(snap.phase || 'setup', snap.winner || null);
   renderPauseResumeButton(snap.phase || 'setup');
+
+  // M-TIER2-J Part 2: if the currently selected launcher id is no
+  // longer in the snapshot (server confirmed the Remove, or ai_auto
+  // rebuilt the roster), clear the selection so the Remove button
+  // disables and no stale outline is applied.
+  const selectedId = getSelectedLauncherId();
+  if (selectedId) {
+    const stillPresent = (snap.launchers || []).some((l) => l.id === selectedId);
+    if (!stillPresent) setSelectedLauncherId(null);
+  }
 
   // Ammo rows (falls back to ∞ when server omits the field, e.g. legacy runs)
   const ammo = snap.ammo || {};
