@@ -186,6 +186,47 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
 1. **Tier 3 — Red budget pool** — Done above (0.96). Boyu's Red AI
    will consume this pool for tactical spawn decisions; runtime hook
    is in place.
+1.0 **W13 overnight batch — W12 + paper cuts + baseline + perf + demo
+   recovery.** Landed 2026-04-20 / 2026-04-21 as a single 8-phase
+   autonomous worker run (zero human pairing, Chen asleep) on branch
+   `new-teamwork-split-V1`. Closes Issues #26 / #27 (W12 content),
+   Issue #17 (reset-leaks paper cut), refreshes the post-M-TIER3 +
+   W11/W12 balance baseline, lands a Phase 6 perf investigation +
+   one low-risk frontend easy win + `backend/tools/perf_probe.py`,
+   and ships a demo-recovery camera reset (R key + HUD button +
+   SETUP ribbon hint).
+
+   Commits (branch `new-teamwork-split-V1`):
+   - `f878fe3` — Phase 1: click-to-select in every phase + empty-
+     canvas deselect (Issue #26).
+   - `b233fb3` — Phase 2: OrbitControls lifecycle + contextmenu
+     coverage + pointer-capture cleanup (Issue #27). Root cause:
+     incomplete drag termination on off-paths (tab switch, focus
+     loss, lostpointercapture, right-click-mid-left-drag). Five
+     fix branches applied.
+   - `752ab86` — Phase 3: W12 docs close — Issues #26 / #27 filed;
+     STATUS 0.99 block; CONTRACT_SEAMS §7 pointer-handler
+     invariants subsection.
+   - `14ac024` — Phase 4: `test_threat_impact` resets sites between
+     trials (Issue #17, option (a) — one-liner).
+   - `3f9e64f` — Phase 5: `balance_baseline_2026-04-21_post_w13.json`
+     + README "2026-04-21 entry (M-TIER3 + W11/W12)".
+   - `076da10` — Phase 6: cProfile harness + PERF_NOTES + frontend
+     animate() gating low-risk win. Issue #28 filed.
+   - `90e2a02` — Phase 7: R-to-reset-camera + Reset Camera button
+     + SETUP ribbon hint. Issue #29 filed.
+   - `{W13_DOCS_CLOSE_HASH}` (this commit) — Phase 8: grand docs
+     close.
+
+   15-test preflight baseline (match_phase / match_phase_integration
+   / engagement_mode / launcher_id / placement_api /
+   launcher_base_cost / roster_api / ciws_saturation / ciws_shot_cap
+   / winner_budget_not_loss / red_budget / threat_contract /
+   cruise_impact / hgv_impact / ballistic_cep) stays green end-to-
+   end; no backend behaviour / physics / AI logic changed by any
+   W13 phase. Server-port discipline respected: 5174 freed between
+   phases and at session end.
+
 0.99 **W12 bugfixes — mouse robustness + click-to-select scope.**
    Landed 2026-04-20 (commits `f878fe3`, `b233fb3`, docs close after).
    Closes two 2026-04-20 post-W11 smoke items, both in the frontend

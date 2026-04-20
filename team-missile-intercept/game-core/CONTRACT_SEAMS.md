@@ -272,6 +272,22 @@ auto-transitions RUNNING → FINISHED once `winner` fires.
   same pattern per `ENGAGEMENT_MODE_DESIGN.md` §Forward
   compatibility.
 
+### Frontend keyboard-shortcut namespace (W13 Phase 7)
+
+The demo currently claims one window-level keyboard shortcut:
+
+- **`R` / `r`** (no modifiers) — snap OrbitControls back to the
+  starting pose via `resetCameraView()` exposed by
+  `scene.js::createScene`. Handler lives in
+  `frontend/js/main.js`. Skipped when any of ctrl / alt / meta is
+  held (Ctrl+R = browser reload — do not hijack) and when a form
+  control (`input`, `select`, `textarea`) has focus so operator
+  typing does not snap the camera mid-edit.
+
+If a future worker adds more shortcuts, list them here and respect
+the same form-control + modifier guards so the 4-minute Hack Day
+demo stays forgiving.
+
 ### Frontend pointer-handler invariants (W12, Issues #26 / #27)
 
 `frontend/js/drag_launchers.js` is the sole owner of the
@@ -417,3 +433,7 @@ Patterns that have bitten us; keep an eye out:
   single `restoreIdle()` cleanup path, and the
   window-level `contextmenu` guard. No backend or WS contract
   change. Scope is advisory for future frontend workers.
+- **2026-04-20 (W13 Phase 7, Issue #29)** — §7 adds "Frontend
+  keyboard-shortcut namespace" subsection. `R` is now claimed
+  for camera reset; future shortcuts should honour the form-
+  control + modifier guards. Advisory only.
