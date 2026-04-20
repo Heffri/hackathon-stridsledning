@@ -277,6 +277,11 @@ class BlueAI:
     def __init__(self):
         # threat_id -> list of interceptor_ids currently in flight at it
         self.assignments: Dict[int, List[int]] = {}
+        # Issue #24: cumulative CIWS rounds fired at each threat (alive +
+        # dead). Separate from `assignments` which only counts LIVING
+        # interceptors — the lifetime cap needs to remember rounds that
+        # already died of fuel-exhaustion so we don't re-fire forever.
+        self.ciws_fired_count: Dict[int, int] = {}
         self.log: List[str] = []
         self.launchers = LauncherFleet()
 
@@ -296,6 +301,14 @@ class BlueAI:
                 self.assignments[tid] = live
             else:
                 self.assignments.pop(tid, None)
+
+        # Issue #24: drop lifetime CIWS counters for threats that are no
+        # longer in the world (killed, leaked off-arena, or scenario
+        # reset). Matches the assignments-purge timing so the counter
+        # entry disappears in the same tick the threat does.
+        for tid in list(self.ciws_fired_count.keys()):
+            if tid not in world.threats:
+                self.ciws_fired_count.pop(tid, None)
 
         base = np.array(config.BLUE_BASE_POS, dtype=np.float64)
 
@@ -344,7 +357,27 @@ class BlueAI:
                 ciws_spec.max_range * config.LAUNCH_RANGE_MARGIN
             ) ** 2
             ciws_expected_dmg = _expected_damage(assigned_iids, world)
-            if ciws_expected_dmg < threat.state.hp:
+            # Issue #24 (W11, refinement of #20): per-threat lifetime cap
+            # on CIWS rounds fired. The expected-damage gate above stops
+            # CIWS once enough live damage is inbound, but because each
+            # CIWS round self-destructs at fuel_s=4 the gate reopens and
+            # the launcher sprays again. Against a threat that takes
+            # longer to cross the envelope than a CIWS fuel cycle, this
+            # can still dump many rounds over time. The lifetime cap
+            # bounds total expenditure per threat regardless of how many
+            # previous rounds missed.
+            #
+            # Formula: ceil(threat_spec.hp / ciws.damage_prox) + 2. The
+            # first term is the nominal kill count assuming every round
+            # lands a prox hit; the +2 is slack for CPA-miss tail cases.
+            # Per-kind values: DRONE=4, CRUISE=6, HGV=10, BALLISTIC=12.
+            threat_spec = THREAT_SPECS[threat_kind]
+            ciws_shot_cap = (
+                math.ceil(threat_spec.hp / ciws_spec.damage_prox) + 2
+            )
+            ciws_already_fired = self.ciws_fired_count.get(tid, 0)
+            ciws_cap_reached = ciws_already_fired >= ciws_shot_cap
+            if ciws_expected_dmg < threat.state.hp and not ciws_cap_reached:
                 for lch in self.launchers.launchers:
                     if lch.kind != InterceptorType.CIWS:
                         continue
@@ -357,6 +390,9 @@ class BlueAI:
                             world, t_now, tid, threat, InterceptorType.CIWS,
                             lch, base, dist_to_base, tag=" [CIWS]",
                         )
+                        # Increment the lifetime counter; `self._fire`
+                        # already appended the iid to assignments.
+                        self.ciws_fired_count[tid] = ciws_already_fired + 1
                         break  # one CIWS launcher per tick per threat
 
             # --- Main saturation gate (excludes CIWS rounds) ---
