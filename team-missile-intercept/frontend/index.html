@@ -19,11 +19,20 @@
 
   <div id="launch-banner" class="hidden"></div>
 
+  <!-- M-TIER2-J Part 1: SETUP ribbon. Thin top bar so the 3D canvas
+       stays visible for drag-drop launcher placement. Hidden in every
+       phase other than SETUP; Start Match lives here instead of inside
+       the centre-screen match overlay. -->
+  <div id="setup-ribbon" class="setup-ribbon hidden">
+    <span class="setup-ribbon-text">MATCH SETUP — drag launchers to position, then Start Match</span>
+    <button id="btn-ai-auto" class="setup-ribbon-btn">AI Auto</button>
+    <button id="btn-start-match" class="setup-ribbon-btn">Start Match</button>
+  </div>
+
   <div id="match-overlay" class="hidden">
     <div class="mo-inner">
       <div id="mo-title" class="mo-title">BLUE WINS</div>
       <div id="mo-sub" class="mo-sub"></div>
-      <button id="btn-start-match" class="mo-action hidden">Start Match</button>
       <button id="btn-resume" class="mo-action hidden">Resume</button>
       <button id="btn-restart" class="mo-action hidden">Restart</button>
     </div>

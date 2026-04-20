@@ -37,6 +37,12 @@ export function wireHud(sendCmd) {
   document.getElementById('btn-start-match')?.addEventListener('click', () => {
     sendCmd({ cmd: 'start' });
   });
+  // M-TIER2-J Part 1: AI Auto button on the SETUP ribbon. Stub heuristic
+  // server-side — resets every launcher to its config default slot. A
+  // real placement AI (Oskar) lives behind the same command.
+  document.getElementById('btn-ai-auto')?.addEventListener('click', () => {
+    sendCmd({ cmd: 'ai_auto' });
+  });
   // Legacy btn-resume inside the match-overlay: no longer surfaced
   // (paused overlay is hidden; Pause button flips label instead). Click
   // handler kept for back-compat should the overlay ever re-expose it.
@@ -113,6 +119,7 @@ export function updateHud(snap) {
 
   // Phase chip + phase-gated overlay (M-TIER2-PHASE).
   renderPhaseChip(snap.phase || 'setup');
+  renderSetupRibbon(snap.phase || 'setup');
   renderPhaseOverlay(snap.phase || 'setup', snap.winner || null);
   renderPauseResumeButton(snap.phase || 'setup');
 
@@ -296,21 +303,28 @@ function renderPauseResumeButton(phase) {
   btn.dataset.mode = 'pause';
 }
 
-// Centre-screen match overlay — single element reused across three
-// non-running phases. Button visibility swaps per phase so only one
-// call-to-action is ever active. RUNNING hides the overlay entirely.
+// Top SETUP ribbon — non-blocking, shown only during SETUP phase so the
+// 3D canvas stays visible for launcher drag-drop (M-TIER2-J Part 1).
+// Replaces the old centre-screen MATCH SETUP overlay.
+function renderSetupRibbon(phase) {
+  const el = document.getElementById('setup-ribbon');
+  if (!el) return;
+  el.classList.toggle('hidden', phase !== 'setup');
+}
+
+// Centre-screen match overlay — reused for FINISHED only (SETUP → ribbon
+// now, PAUSED → no overlay, see Subtasks C+D). RUNNING hides the overlay
+// entirely. Only Restart is surfaced in FINISHED.
 function renderPhaseOverlay(phase, winner) {
   const el = document.getElementById('match-overlay');
   if (!el) return;
   const titleEl = document.getElementById('mo-title');
   const subEl = document.getElementById('mo-sub');
-  const btnStart = document.getElementById('btn-start-match');
   const btnResume = document.getElementById('btn-resume');
   const btnRestart = document.getElementById('btn-restart');
 
-  // All three action buttons hidden by default; the phase branch
-  // re-shows exactly one.
-  btnStart?.classList.add('hidden');
+  // Action buttons hidden by default; the phase branch re-shows the
+  // single phase-appropriate one.
   btnResume?.classList.add('hidden');
   btnRestart?.classList.add('hidden');
 
@@ -319,13 +333,10 @@ function renderPhaseOverlay(phase, winner) {
     return;
   }
   if (phase === 'setup') {
-    if (titleEl) {
-      titleEl.textContent = 'MATCH SETUP';
-      titleEl.className = 'mo-title mo-setup';
-    }
-    if (subEl) subEl.textContent = 'Press Start Match when ready. Future: place Blue launchers here.';
-    btnStart?.classList.remove('hidden');
-    el.classList.remove('hidden');
+    // M-TIER2-J Part 1: SETUP uses the non-blocking top ribbon, not
+    // the centre-screen overlay — the 3D canvas must stay visible for
+    // launcher drag-drop (see renderSetupRibbon).
+    el.classList.add('hidden');
     return;
   }
   if (phase === 'paused') {
@@ -371,6 +382,9 @@ export function resetHudEventTracking() {
   _seenEvents.clear();
   document.getElementById('launch-banner')?.classList.add('hidden');
   document.getElementById('match-overlay')?.classList.add('hidden');
+  // Ribbon re-shows on the next SETUP snapshot; hiding it here avoids a
+  // stale-visible flash between Reset click and the first snapshot.
+  document.getElementById('setup-ribbon')?.classList.add('hidden');
 }
 
 export function setWsStatus(connected) {

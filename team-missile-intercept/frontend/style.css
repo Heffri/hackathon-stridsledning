@@ -367,6 +367,55 @@ html, body {
   background: #ff5060;
 }
 
+/* --- SETUP ribbon (M-TIER2-J Part 1) ---
+   Thin non-blocking top bar surfaced only during SETUP phase. Keeps the
+   3D canvas fully visible so the operator can drag launchers to
+   position. Replaces the centre-screen MATCH SETUP overlay. Sibling
+   selector pushes #hud down while visible so the phase chip / stats
+   row doesn't collide with the ribbon. Gray border + backdrop match
+   the SETUP phase chip colour scheme. */
+.setup-ribbon {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 0 24px;
+  background: rgba(10, 18, 32, 0.88);
+  border-bottom: 1px solid rgba(150, 170, 200, 0.45);
+  backdrop-filter: blur(6px);
+  color: #cfe0f5;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  z-index: 15;
+}
+.setup-ribbon.hidden { display: none; }
+.setup-ribbon-text {
+  color: #9fb8d4;
+}
+.setup-ribbon-btn {
+  background: #153560;
+  color: #cfe1ff;
+  border: 1px solid #2a5a9a;
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.setup-ribbon-btn:hover { background: #1e4a82; }
+/* Push HUD down by ribbon height while ribbon is visible. Sibling combinator
+   works because #setup-ribbon precedes #hud in the DOM. */
+#setup-ribbon:not(.hidden) ~ #hud {
+  padding-top: 62px;
+}
+
 /* --- Match-end overlay (Milestone I) --- */
 #match-overlay {
   position: fixed;
