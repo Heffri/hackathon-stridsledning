@@ -142,7 +142,7 @@ class SimRunner:
         if kind == "speed":
             try:
                 v = float(cmd.get("value", 1.0))
-                if 0.1 <= v <= 20.0:
+                if 0.1 <= v <= 50.0:
                     self.speed = v
             except (TypeError, ValueError):
                 pass

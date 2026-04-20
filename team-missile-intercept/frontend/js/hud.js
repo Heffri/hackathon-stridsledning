@@ -55,7 +55,7 @@ export function wireHud(sendCmd) {
 
   const speed = document.getElementById('speed');
   const speedVal = document.getElementById('speed-val');
-  // Reserve room for the widest label ("20.0x") so the slider row doesn't
+  // Reserve room for the widest label ("50.0x") so the slider row doesn't
   // reflow as the user drags between single- and two-digit speeds.
   speedVal.style.display = 'inline-block';
   speedVal.style.minWidth = '3.4em';
