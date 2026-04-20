@@ -61,6 +61,13 @@ _HGV_BLEED_RATE = 120.0         # m/s per second at max_g — higher than the
                                  # jinking = ~600 m/s loss (~10 % of peak).
 _HGV_STALL_SPEED = 500.0        # m/s floor below which the HGV crashes
 
+# M-TIER2.7 (Issue #13 option a): cruise_sub terminal-dive gate. Below
+# this horizontal distance to the final waypoint, cruise switches from
+# sea-skim altitude-hold to a 3D aim at the target so it actually
+# reaches z=0. 5 km leaves room for max_g=2 to rotate the velocity
+# downward from a 1-6 km spawn altitude without a jerky pop-down.
+_CRUISE_TERMINAL_DH = 5_000.0
+
 
 class Threat:
     __slots__ = (
@@ -461,20 +468,30 @@ class Threat:
                 )
             )
 
-        # --- Cruise-sub terminal pop-up (only on the final approach) ---
-        # Subsonic cruise missiles pop up at ~5 km from base then dive into
-        # the target from ~600 m. Trigger only when no more waypoints follow
-        # so intermediate S-pattern legs stay at base altitude.
+        # --- Cruise-sub terminal dive (M-TIER2.7, Issue #13 option a) ---
+        # Final-approach behaviour: cruise abandons sea-skim altitude-hold
+        # and points desired_vel straight at the target's (x, y, 0)
+        # position so it actually reaches ground impact. Pattern mirrors
+        # HGV's terminal_dive but simpler — no glide-path angle, cruise
+        # just aims directly at the 3D target. Only fires on the final
+        # waypoint; intermediate S-pattern legs stay sea-skimming.
         if self.spec.kind == ThreatType.CRUISE_SUB:
-            if not self._wp_queue:
-                if horiz_to_wp < 1_500.0:
-                    self._cruise_alt_override = 300.0
-                elif horiz_to_wp < 5_000.0:
-                    self._cruise_alt_override = 800.0
-                else:
-                    self._cruise_alt_override = self._base_alt
-            else:
-                self._cruise_alt_override = self._base_alt
+            if not self._wp_queue and horiz_to_wp < _CRUISE_TERMINAL_DH:
+                to_target_3d = self.waypoint - pos
+                n3 = float(np.linalg.norm(to_target_3d)) or 1.0
+                desired_vel = (to_target_3d / n3) * self.spec.cruise_speed
+                steer = (desired_vel - vel) / max(dt, 1e-3)
+                steer = physics.cap_accel(steer, self.spec.max_g)
+                accel = steer + physics.drag_accel(vel, self.spec.drag_k)
+                new_pos, new_vel = physics.integrate(pos, vel, accel, dt)
+                new_vel = physics.cap_speed(new_vel, self.spec.cruise_speed)
+                if new_pos[2] < config.GROUND_Z:
+                    new_pos[2] = config.GROUND_Z
+                self.state.pos = new_pos
+                self.state.vel = new_vel
+                return
+            # Pre-terminal / intermediate legs: sea-skim at spawn altitude.
+            self._cruise_alt_override = self._base_alt
 
         # Drones: hold steady at their spawn altitude during cruise, then
         # dive onto the base during the final 2 km so the drone enters the
