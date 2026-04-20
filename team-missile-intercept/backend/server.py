@@ -18,8 +18,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from sim import config, terrain
+from sim.launcher import LAUNCHER_TEMPLATES, Launcher
 from sim.scenarios import build_default_scenario
-from sim.types import MatchPhase
+from sim.types import InterceptorType, MatchPhase
 
 
 ROOT = Path(__file__).resolve().parent
@@ -149,6 +150,10 @@ class SimRunner:
             return None
         if kind == "place_launcher":
             return self._place_launcher_cmd(cmd)
+        if kind == "add_launcher":
+            return self._add_launcher_cmd(cmd)
+        if kind == "remove_launcher":
+            return self._remove_launcher_cmd(cmd)
         if kind == "ai_auto":
             return self._ai_auto_cmd()
         return None
@@ -217,12 +222,35 @@ class SimRunner:
         return None
 
     def _ai_auto_cmd(self) -> dict:
-        """Handle `{cmd: 'ai_auto'}`. Stub heuristic: reset every
-        launcher to its default position from
-        `config.BLUE_LAUNCHER_POSITIONS`. A real placement AI (Oskar) is
-        deferred to future work — the button's current purpose is to
-        surface the hook point and give the operator a one-click
-        "revert placements" affordance during setup.
+        """Handle `{cmd: 'ai_auto'}`. M-TIER2-J Part 2 extended this
+        beyond Part 1's position-only reset: now restores the full
+        config-default roster AND positions. Implementation: remove
+        every current launcher (refunding base_cost), then add one
+        launcher per `BLUE_LAUNCHER_POSITIONS` entry (deducting
+        base_cost).
+
+        Clamp policy: individual `remove_launcher` clamps refunds at
+        `BLUE_BUDGET_START` to prevent abuse (remove-for-money above
+        start). `ai_auto` is a single atomic operation — clamping in
+        the middle of its internal refund step would leave the net
+        balance off by the default-roster total, turning a "revert"
+        click on a pristine default layout into a $41.5 M budget
+        loss. So refunds inside ai_auto are *uncapped*, and we only
+        clamp the final budget at `BLUE_BUDGET_START` so the operator
+        can never end above the starting budget (e.g. after a weird
+        sequence of illegal but phase-accepted states).
+
+        Net effect: from a pristine default state, ai_auto is exactly
+        net-zero (budget unchanged, roster identical). From an
+        arbitrary state where operator added $X of extras and has
+        $Y spent on interceptors (Y=0 in SETUP since sim is frozen),
+        ai_auto restores the default roster and returns budget to
+        `BLUE_BUDGET_START - Y` (the operator's non-refundable sunk
+        cost).
+
+        A real placement AI (Oskar) is still deferred; the button's
+        purpose is to surface the hook point + one-click roster
+        revert.
         """
         phase = self.scenario.world.phase
         if phase != MatchPhase.SETUP:
@@ -231,18 +259,188 @@ class SimRunner:
                 "reason": "illegal_placement",
                 "detail": f"phase is {phase.value}, must be setup",
             }
+        world = self.scenario.world
         fleet = self.scenario.blue.launchers
-        # Same walk order LauncherFleet.__init__ used when assigning ids:
-        # iterate per kind, per within-kind index. A dict counter mirrors
-        # that order without parsing the id strings.
-        counters: dict[str, int] = {}
-        for lch in fleet.launchers:
-            kind_str = lch.kind.value
-            idx = counters.get(kind_str, 0)
-            counters[kind_str] = idx + 1
-            default = config.BLUE_LAUNCHER_POSITIONS[kind_str][idx]
-            lch.pos = (float(default[0]), float(default[1]))
+        # Step 1: remove every current launcher, refunding base_cost.
+        # No per-step clamp here — see clamp policy note above.
+        for lch in list(fleet.launchers):
+            cost = config.LAUNCHER_BASE_COSTS.get(lch.kind.value, 0)
+            world.blue_budget += cost
+        fleet.launchers.clear()
+        # Step 2: add one launcher per config default entry. Use the
+        # same construction the LauncherFleet __init__ uses so ids +
+        # templates stay consistent.
+        for kind_str, pos_list in config.BLUE_LAUNCHER_POSITIONS.items():
+            try:
+                kind = InterceptorType(kind_str)
+            except ValueError:
+                continue
+            tmpl = LAUNCHER_TEMPLATES.get(kind)
+            if tmpl is None:
+                continue
+            base_cost = config.LAUNCHER_BASE_COSTS.get(kind_str, 0)
+            for idx, (x, y) in enumerate(pos_list):
+                lid = f"{kind.value}_{idx}"
+                fleet.launchers.append(
+                    Launcher(
+                        kind=kind,
+                        pos=(float(x), float(y)),
+                        id=lid,
+                        **tmpl,
+                    )
+                )
+                world.blue_budget -= base_cost
+        # Final clamp at BLUE_BUDGET_START: operator should never end
+        # above the starting budget even under unusual entry paths.
+        world.blue_budget = min(
+            config.BLUE_BUDGET_START, world.blue_budget
+        )
         return None
+
+    # --- M-TIER2-J Part 2: buy-vehicle / roster add+remove ---
+    def _add_launcher_cmd(self, cmd: dict) -> "dict | None":
+        """Handle `{cmd: 'add_launcher', kind, pos: [x, y]}`. Only
+        legal during SETUP. Validates kind, position (south-land), and
+        budget. On success constructs a new `Launcher` (full magazine,
+        default reload state) with a unique id of the form
+        `f"{kind}_{next_idx}"` where next_idx is one past the current
+        max within-kind index. Deducts `LAUNCHER_BASE_COSTS[kind]` from
+        `world.blue_budget`.
+        """
+        phase = self.scenario.world.phase
+        if phase != MatchPhase.SETUP:
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": f"phase is {phase.value}, must be setup",
+            }
+        kind_str = cmd.get("kind")
+        if not isinstance(kind_str, str) or not kind_str:
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": "missing or empty kind",
+            }
+        try:
+            kind = InterceptorType(kind_str)
+        except ValueError:
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": f"unknown launcher kind {kind_str!r}",
+            }
+        tmpl = LAUNCHER_TEMPLATES.get(kind)
+        if tmpl is None:
+            # Every enum value has a template today, but keep the guard
+            # so a future enum addition without a template doesn't
+            # silently create an un-fireable launcher.
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": f"no template for kind {kind_str!r}",
+            }
+        pos = cmd.get("pos")
+        if not isinstance(pos, (list, tuple)) or len(pos) != 2:
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": "pos must be [x, y]",
+            }
+        try:
+            x = float(pos[0])
+            y = float(pos[1])
+        except (TypeError, ValueError):
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": "pos components must be numeric",
+            }
+        if not terrain.point_on_south_land(x, y):
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": "position not on south land",
+            }
+        world = self.scenario.world
+        base_cost = config.LAUNCHER_BASE_COSTS.get(kind_str, 0)
+        if world.blue_budget < base_cost:
+            return {
+                "type": "error",
+                "reason": "insufficient_budget",
+                "detail": (
+                    f"need ${base_cost}, have ${world.blue_budget}"
+                ),
+            }
+        # Next within-kind id: one past the max existing idx for this
+        # kind (parsing the trailing _N off the id string). A fresh
+        # kind with no existing launchers starts at 0.
+        next_idx = 0
+        for existing in self.scenario.blue.launchers.launchers:
+            if existing.kind != kind:
+                continue
+            suffix = existing.id[len(kind.value) + 1:]
+            try:
+                idx = int(suffix)
+            except ValueError:
+                continue
+            if idx >= next_idx:
+                next_idx = idx + 1
+        lid = f"{kind.value}_{next_idx}"
+        new_lch = Launcher(
+            kind=kind,
+            pos=(x, y),
+            id=lid,
+            **tmpl,
+        )
+        self.scenario.blue.launchers.launchers.append(new_lch)
+        world.blue_budget -= base_cost
+        return None
+
+    def _remove_launcher_cmd(self, cmd: dict) -> "dict | None":
+        """Handle `{cmd: 'remove_launcher', launcher_id}`. Only legal
+        during SETUP. Removes the launcher from the fleet and refunds
+        its base_cost to `world.blue_budget` (clamped at
+        BLUE_BUDGET_START so refunds never exceed the starting budget
+        — protects against repeated add/remove cycles after mid-setup
+        spend from producing a virtual surplus).
+        """
+        phase = self.scenario.world.phase
+        if phase != MatchPhase.SETUP:
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": f"phase is {phase.value}, must be setup",
+            }
+        launcher_id = cmd.get("launcher_id")
+        if not isinstance(launcher_id, str) or not launcher_id:
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": "missing or empty launcher_id",
+            }
+        lch = self._find_launcher(launcher_id)
+        if lch is None:
+            return {
+                "type": "error",
+                "reason": "illegal_placement",
+                "detail": f"unknown launcher_id {launcher_id!r}",
+            }
+        world = self.scenario.world
+        base_cost = config.LAUNCHER_BASE_COSTS.get(lch.kind.value, 0)
+        self._refund_budget(world, base_cost)
+        self.scenario.blue.launchers.launchers.remove(lch)
+        return None
+
+    @staticmethod
+    def _refund_budget(world, amount: int) -> None:
+        """Refund `amount` to `world.blue_budget`, clamped at
+        `config.BLUE_BUDGET_START` so the operator never accumulates
+        more than the starting budget via refund cycles. Extracted so
+        both `_remove_launcher_cmd` and the `_ai_auto_cmd` roster
+        reset share the identical clamp."""
+        world.blue_budget = min(
+            config.BLUE_BUDGET_START, world.blue_budget + amount
+        )
 
     def _find_launcher(self, launcher_id: str):
         for lch in self.scenario.blue.launchers.launchers:

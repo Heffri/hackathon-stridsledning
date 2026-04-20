@@ -142,9 +142,13 @@ def test_ai_auto_from_setup_resets_to_config_defaults() -> None:
 
     resp = runner.handle_command({"cmd": "ai_auto"})
     assert resp is None, f"expected None ack on success, got {resp!r}"
-    # ciws_0 restored to its config default.
-    assert abs(lch.pos[0] - default_x) < 1e-6
-    assert abs(lch.pos[1] - default_y) < 1e-6
+    # M-TIER2-J Part 2: ai_auto now restores the full roster by
+    # remove+re-add, so the stale `lch` reference points to a
+    # removed Launcher. Look the new ciws_0 up by id instead.
+    fresh = runner._find_launcher("ciws_0")
+    assert fresh is not None, "ai_auto did not re-create ciws_0"
+    assert abs(fresh.pos[0] - default_x) < 1e-6
+    assert abs(fresh.pos[1] - default_y) < 1e-6
     # Every launcher now matches the config slot identified by its id.
     counters: dict[str, int] = {}
     for each in runner.scenario.blue.launchers.launchers:
