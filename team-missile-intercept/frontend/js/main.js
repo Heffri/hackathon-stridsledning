@@ -6,6 +6,7 @@ import { SiteRegistry } from './sites.js';
 import { wireHud, updateHud, setWsStatus, showWsError } from './hud.js';
 import { initStatusPanel, updateStatusPanel } from './status_panel.js';
 import { initLauncherDrag } from './drag_launchers.js';
+import { onSelectionChange } from './launcher_selection.js';
 
 const canvas = document.getElementById('view');
 const { scene, camera, renderer, controls } = createScene(canvas);
@@ -68,16 +69,33 @@ initLauncherDrag({
 openWs();
 
 // --- Render loop ---
+// W13 perf: only the registries that carry per-frame animations
+// (EntityRegistry — thrust flame, propeller spin, seeker cone, trail,
+// explosion animations; SiteRegistry — HP pulse) need to run on every
+// requestAnimationFrame tick. HUD, launcher reload rings, and the
+// status panel are pure DOM-write renderers driven by the snapshot,
+// and the snapshot only arrives at ~15 Hz — running them on every
+// 60 Hz RAF frame re-renders the same values 3-4× per snapshot for
+// no visible benefit. Gate those paths on snapshot-reference change.
+let _lastSnapProcessed = null;
+// Selection is frontend-only state, not snapshot-driven. Clicking a
+// launcher mid-snapshot must still refresh the Magazine HUD within one
+// RAF tick — invalidate the cache so the next animate() frame re-runs
+// the gated HUD/launcher render with the current snapshot.
+onSelectionChange(() => { _lastSnapProcessed = null; });
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
   if (latestSnap) {
     registry.updateFromSnapshot(latestSnap);
-    launchers.updateFromSnapshot(latestSnap);
-    redLaunchers.updateFromSnapshot(latestSnap);
     sites.updateFromSnapshot(latestSnap);
-    updateHud(latestSnap);
-    updateStatusPanel(latestSnap);
+    if (latestSnap !== _lastSnapProcessed) {
+      launchers.updateFromSnapshot(latestSnap);
+      redLaunchers.updateFromSnapshot(latestSnap);
+      updateHud(latestSnap);
+      updateStatusPanel(latestSnap);
+      _lastSnapProcessed = latestSnap;
+    }
   }
   renderer.render(scene, camera);
 }
