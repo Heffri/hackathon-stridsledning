@@ -50,27 +50,56 @@ tests (`test_match_phase_integration.py`); `test_full_scenario`,
 
 ## 3. Deployment Phase And Launcher Placement Support
 
-Priority: High
+Priority: High — **Landed Part 1 2026-04-20 (M-TIER2-J Part 1).**
+Part 2 (buy vehicle / roster add-remove) remains Open — tracked in
+Issue #6.
 
-Why it belongs to Chen:
+Commits (Part 1): `bf6373c` (Launcher.id + snapshot exposure),
+`04affc0` (place_launcher + ai_auto WS commands + 8-case test),
+`c4a050f` (pause overlay removal + Resume button flip),
+`5f0d287` (SETUP central overlay → non-blocking top ribbon),
+`3b4e5e6` (launcher drag-drop frontend core).
 
-- launcher placement, land validation, and scenario start semantics are base game responsibilities
-- AI placement can only plug in cleanly after the base placement contract exists
+Delivered (Part 1):
 
-Target outcome:
+- Stable `Launcher.id` of the form `f"{kind}_{within_kind_idx}"`
+  assigned in `LauncherFleet.__init__`, exposed on
+  `snap['launchers'][*].id` for the place_launcher payload.
+- `place_launcher {launcher_id, pos:[x,y]}` + `ai_auto` WS commands
+  in `SimRunner.handle_command` with phase-gating (SETUP only),
+  `terrain.point_on_south_land` validation, unknown-id rejection.
+  Error frames use `{type:'error', reason:'illegal_placement',
+  detail}` — W6-audit-E router flashes the phase chip red with the
+  reason as a tooltip.
+- AI Auto button = stub heuristic (reset every launcher to its
+  `BLUE_LAUNCHER_POSITIONS` default slot). Real placement AI
+  deferred to Oskar / future Blue AI — same command will pick up
+  the real heuristic.
+- SETUP central overlay → thin 44 px top ribbon so the 3D canvas
+  stays visible during drag. PAUSED central overlay removed;
+  bottom-bar Pause button flips label + data-mode between 'Pause'
+  (RUNNING) and 'Resume' (PAUSED) so the operator can click-inspect
+  the frozen battlefield. FINISHED central overlay unchanged.
+- Frontend drag handler (`frontend/js/drag_launchers.js`):
+  pointerdown on a launcher Group, pointermove raycasts the ground
+  plane, pointerup emits place_launcher. OrbitControls disabled
+  during drag; cursor flips to `grab` / `grabbing`.
+  `userData.launcherId` + `userData.dragging` on each Group.
+- `LauncherRegistry.updateFromSnapshot` now re-applies `lch.pos`
+  on every tick (unless dragging) so AI Auto and server-driven
+  position changes reflect in the scene.
+- Tests: `test_launcher_id.py` (4 cases — well-formed ids, snapshot
+  exposure, within-kind index matches config order, legacy loadout
+  path), `test_placement_api.py` (8 cases — valid placement, strait
+  reject, unknown id, missing fields, RUNNING reject, PAUSED reject,
+  ai_auto reset, ai_auto RUNNING reject). Preflight regression:
+  match-phase, integration, engagement-mode, cruise-impact,
+  HGV-impact, ballistic-CEP — all still pass.
 
-- pre-match deployment phase before wave clock starts
-- placement payload schema for Blue launchers
-- validation path that keeps the runtime runnable even if AI placement is absent
-- default fallback layout remains the current config-driven one
-
-Likely touchpoints:
-
-- `backend/sim/config.py`
-- `backend/sim/launcher.py`
-- `backend/sim/scenarios.py`
-- `backend/server.py`
-- frontend shell files that send placement data
+Part 2 (Open): per-launcher base cost deducted from `world.blue_budget`
+at placement time, roster add/remove UI, launcher-type dropdown in
+the ribbon. Touchpoints — `backend/sim/launcher.py`,
+`backend/sim/world.py`, frontend ribbon DOM + drag_launchers extension.
 
 ## 4. Game-Loop Polish
 

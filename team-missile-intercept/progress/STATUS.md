@@ -97,7 +97,26 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
    closed: `error` frames now flash the phase chip red for 3 s with
    the reason as a tooltip. Also captured Issue #18 (cruise terrain-
    following, blocked on `maps/` elevation API).
-1. **Milestone J — Deployment UI** (3-4 hours). Pre-game phase letting AI or a human player pick Blue launcher positions. Drag-drop on the map, land-only constraint, AI-auto button. Range rings already parented to launcher Groups in Milestone H, so they'll follow drags automatically. The `setup` phase exposed by M-TIER2-PHASE is the hook point.
+0.8 **M-TIER2-J Part 1 — deployment UI (move-only).** Landed 2026-04-20
+   (commits `bf6373c` Launcher.id field + snapshot exposure + test,
+   `04affc0` place_launcher + ai_auto WS commands + 8-case test,
+   `c4a050f` pause overlay removal + Resume button flip,
+   `5f0d287` SETUP central overlay → non-blocking top ribbon,
+   `3b4e5e6` launcher drag-drop frontend core). Operator drags Blue
+   launchers in SETUP phase with server-side
+   `terrain.point_on_south_land` validation; rejections trigger the
+   W6-audit-E red phase-chip flash and the launcher snaps back via
+   the next snapshot. AI Auto resets to `BLUE_LAUNCHER_POSITIONS`
+   defaults (stub). PAUSED no longer surfaces a blocking overlay —
+   Pause button flips to Resume so click-inspect still works on the
+   frozen battlefield. Two new tests: `test_launcher_id.py` (id
+   shape + snapshot field), `test_placement_api.py` (phase-gate,
+   strait reject, unknown id, RUNNING/PAUSED reject, ai_auto reset).
+   Part 2 (buy vehicle, Issue #6) remains Open.
+1. **Milestone J Part 2 — "buy vehicle" per-launcher roster.** Issue
+   #6. Extends the landed drag-drop placement with per-launcher-type
+   pricing and roster add/remove during SETUP; per-launcher magazine
+   is already in place.
 2. **Red AI Level 5 HGV control** — `Threat.override_maneuver` hook is in place; needs a per-tick decision layer (nearest-interceptor scan, geometry, KE budget) to drive the hook.
 3. **Smarter Red AI target selection** — currently weighted-random across sites; wave-specific targeting (wave 5 prioritises capital) would feel more tactical.
 4. **Placement AI** (post-Milestone J) — once the deployment UI exists, let an AI pick positions based on incoming threat direction, wave composition, and coverage optimisation.
