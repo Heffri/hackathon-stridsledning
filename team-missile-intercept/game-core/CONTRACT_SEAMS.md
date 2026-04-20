@@ -272,6 +272,40 @@ auto-transitions RUNNING → FINISHED once `winner` fires.
   same pattern per `ENGAGEMENT_MODE_DESIGN.md` §Forward
   compatibility.
 
+### Frontend pointer-handler invariants (W12, Issues #26 / #27)
+
+`frontend/js/drag_launchers.js` is the sole owner of the
+`canvas.pointerdown / pointermove / pointerup / pointercancel`
+cycle in the scene. Any future worker adding input behaviour to
+the canvas must preserve these invariants or the OrbitControls
+wheel-zoom + orbit pipeline will break:
+
+- Drag gesture state is a single module-level `dragging` /
+  `armed` / `capturedPointerId` triple. There is exactly one
+  idle-restore path — `restoreIdle()` — and it is wired to
+  `lostpointercapture` on canvas, `visibilitychange → hidden`
+  on document, and `blur` on window. New terminators that can
+  interrupt a drag must also call `restoreIdle` (or the
+  explicit `endDrag(false, ev)` path when an event object is
+  available).
+- `setPointerCapture` fires only when the pointerdown lands on
+  a launcher box in SETUP. The captured id is stored in
+  `capturedPointerId` so the no-event safety nets can release
+  it. Any additional capturing code path must update the same
+  module variable.
+- `controls.enabled = false` is set only when promoting to a
+  drag. Restore via `endDrag` or `restoreIdle` — never directly
+  from an external module; the drag lifecycle owns the flag.
+- contextmenu listener lives at window level with a
+  `GAME_SURFACE_SELECTOR` guard. Canvas-level `contextmenu`
+  listeners should not be re-added — they miss events whose
+  target lands on an HUD overlay after the right-click travel.
+- Click-to-select (`setSelectedLauncherId`) fires on every
+  pointerup under the 5 px threshold in **every phase**. Drag-
+  to-reposition (`place_launcher` WS cmd) fires only in SETUP.
+  The two behaviours share the `armed` state machine but their
+  promotion paths are disjoint — preserve this when editing.
+
 ## 8. Planned contract evolutions
 
 Active issues that will extend these seams. Not yet landed; track
@@ -377,3 +411,9 @@ Patterns that have bitten us; keep an eye out:
   inter-shot CD reopens; 0 when ready or reloading). Additive
   field; existing keys unchanged. `base_cost_usd` was already
   landed by W9 Part 2.
+- **2026-04-20 (W12, Issues #26 / #27)** — §7 adds "Frontend
+  pointer-handler invariants" subsection documenting the
+  `dragging` / `armed` / `capturedPointerId` module state, the
+  single `restoreIdle()` cleanup path, and the
+  window-level `contextmenu` guard. No backend or WS contract
+  change. Scope is advisory for future frontend workers.

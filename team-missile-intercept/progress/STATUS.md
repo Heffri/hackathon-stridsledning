@@ -186,6 +186,52 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
 1. **Tier 3 — Red budget pool** — Done above (0.96). Boyu's Red AI
    will consume this pool for tactical spawn decisions; runtime hook
    is in place.
+0.99 **W12 bugfixes — mouse robustness + click-to-select scope.**
+   Landed 2026-04-20 (commits `f878fe3`, `b233fb3`, docs close after).
+   Closes two 2026-04-20 post-W11 smoke items, both in the frontend
+   pointer-handling layer:
+   - **Issue #26 — click-to-select works in every phase + empty-canvas
+     deselect** (`f878fe3`). W8's pointerdown handler early-returned
+     when `phase !== 'setup'`, so the operator could not click a
+     launcher during RUNNING / PAUSED to inspect its Magazine HUD.
+     Additionally, no code path cleared the selection on an empty-
+     canvas click — the selection persisted forever until the selected
+     launcher disappeared from the snapshot (W9 auto-deselect). Fix:
+     pointerdown arms click-vs-drag in every phase; pointermove only
+     promotes to drag when `phase === 'setup' && armed.mesh` (other
+     combos clear armed so OrbitControls can orbit); pointerup re-
+     raycasts at the final pointer position and hands `hitId || null`
+     to `setSelectedLauncherId` regardless of phase. Drag-to-reposition
+     stays SETUP-only. Selection deliberately persists across SETUP →
+     RUNNING so operator inspection can continue into a live match.
+   - **Issue #27 — OrbitControls + contextmenu + pointer-capture
+     robustness** (`b233fb3`). Chen's smoke surfaced "right-click menu
+     sometimes appears / wheel zoom dies / both buttons go dead /
+     click silently fails". Root cause: the drag lifecycle had
+     incomplete termination on off-paths (tab switch, focus loss,
+     browser-forced capture release, right-click-mid-left-drag),
+     leaving `controls.enabled=false` and stale pointer capture.
+     Five fix branches:
+     1. New `restoreIdle()` single-source-of-truth cleanup wired to
+        `lostpointercapture`, `visibilitychange → hidden`, and window
+        `blur` — three terminators W8/W11 missed.
+     2. contextmenu listener moved from canvas-only to window-level
+        with a `#view, #hud, #setup-ribbon, #match-overlay,
+        #status-panel, #launch-banner` guard; form controls
+        (`input, select, textarea`) still pass through.
+     3. `capturedPointerId` module var tracks the captured id from
+        setPointerCapture time so every termination path can release
+        capture even without an event object.
+     4. Raycast / OrbitControls coexistence confirmed — both handlers
+        already on the shared `renderer.domElement`. No change.
+     5. Wheel-listener audit: no custom wheel listeners anywhere in
+        `frontend/` — OrbitControls has exclusive wheel-zoom
+        ownership. No change.
+     Bonus: pointerup now gates on `ev.button === 0` so releasing the
+     right button mid-left-drag can't emit a spurious `place_launcher`.
+   Preflight (15 tests) clean on entry + postflight. Pure frontend —
+   WS schema untouched, no backend test additions.
+
 0.98 **W11 bugfixes + HUD rework — mouse UX + CIWS cap + Magazine
    detail view.** Landed 2026-04-20 (commits `dadf1c8`, `eba27d3`,
    `585815f`, docs close after). Closes three 2026-04-20 smoke-report
