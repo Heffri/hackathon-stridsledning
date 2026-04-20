@@ -186,6 +186,49 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
 1. **Tier 3 — Red budget pool** — Done above (0.96). Boyu's Red AI
    will consume this pool for tactical spawn decisions; runtime hook
    is in place.
+0.98 **W11 bugfixes + HUD rework — mouse UX + CIWS cap + Magazine
+   detail view.** Landed 2026-04-20 (commits `dadf1c8`, `eba27d3`,
+   `585815f`, docs close after). Closes three 2026-04-20 smoke-report
+   items on top of the M-TIER3 close:
+   - **Issue #23 — canvas mouse UX** (`dadf1c8`). Three browser
+     defaults were painting over the 3D scene during SETUP drag-drop:
+     text-selection rectangle on left-drag, browser context menu on
+     right-click, and a "can't grab launcher" ghost when glancing
+     rays over the range ring beat the box into the `intersectObjects`
+     hit list. Fix: `user-select: none` + `touch-action: none` in CSS
+     on `html/body/#view`; `contextmenu` + `selectstart`
+     `preventDefault` wired once in `drag_launchers.js`; raycast
+     switched from recursive groups to a flat candidate list of
+     launcher box meshes (approach (a) in the W11 spec — boxes are
+     the only selectable affordance, range-ring `THREE.Line`
+     mathematically excluded).
+   - **Issue #24 — CIWS lifetime shot cap** (`eba27d3`, refinement of
+     #20). The expected-damage gate from Issue #20 stopped "dump
+     30 rounds in one tick" but CIWS rounds die at `fuel_s=4` and
+     the gate reopens, letting the launcher spray slowly over the
+     entire envelope crossing. New per-threat counter
+     (`BlueAI.ciws_fired_count`) bounds cumulative launches per
+     threat at `ceil(threat_spec.hp / ciws.damage_prox) + 2`
+     (DRONE=4, CRUISE=6, HGV=10, BALLISTIC=12). Counter purged in
+     the same top-loop pass as assignments when a threat disappears.
+     `test_ciws_shot_cap.py` locks the HP-bump scenario (drone with
+     state.hp forced to 1000 can't trip the expected-damage gate →
+     cap must be sole stopper → result 4 fires at cap 4) and a
+     full-match bounds check. Pre-#20 `test_ciws_saturation.py`
+     still passes at 2 rounds / clean kill.
+   - **Issue #25 — Magazine HUD per-launcher detail** (`585815f`).
+     Post-W9 Part 2 the right-side Magazine panel showed a per-kind
+     aggregate ("PAC-3: 4") that was ambiguous once the roster went
+     dynamic. Rework to show the currently selected launcher's
+     detail — Ammo N/M + bar, Status (Ready / Cooldown X.Xs /
+     Reloading X.Xs with colour + flash cues), Range, Base cost,
+     Position. Placeholder when nothing selected. Backend snapshot
+     gains `cooldown_remaining` on each per-launcher record
+     (additive — all 11 launcher-sensitive preflight tests still
+     pass).
+   Preflight baseline (14 tests) was clean on entry and remained
+   clean at postflight; `test_ciws_shot_cap.py` added as test #15.
+
 0.97 **M-TIER3-THREAT-CONTRACT — unified Threat control contract
    (runtime).** Landed 2026-04-20 (single commit). Publishes the
    contract that Boyu's Red AI will consume for per-threat tactical

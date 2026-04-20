@@ -127,7 +127,8 @@ total_waves      total wave count
 red_log          tail of RedAI log lines (list[str])
 blue_log         tail of BlueAI log lines (list[str])
 ammo             per-kind aggregated launcher status
-launchers        per-launcher (kind, pos, ammo, reload) list
+launchers        per-launcher (kind, pos, ammo, reload,
+                  cooldown_remaining, base_cost_usd) list
 red_launchers    per-RedLauncher (kind, pos, team='red') list
 sites            per-site {name, subtype, pos, hp, hp_max, leaks}
 winner           'red' | 'blue' | 'draw' | null
@@ -371,3 +372,8 @@ Patterns that have bitten us; keep an eye out:
 - **2026-04-19** — created by M-TIER2.6-AUDIT (Worker 6). Initial
   cross-subsystem reference; pairs with `AUDIT_2026-04-19.md`
   Section H findings.
+- **2026-04-20 (W11, Issue #25)** — §3 snapshot shape gains
+  `cooldown_remaining` on each `launchers[]` entry (seconds until
+  inter-shot CD reopens; 0 when ready or reloading). Additive
+  field; existing keys unchanged. `base_cost_usd` was already
+  landed by W9 Part 2.
