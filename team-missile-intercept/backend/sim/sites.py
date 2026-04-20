@@ -48,6 +48,9 @@ def _saab_to_world(saab_x_km: float, saab_y_km: float) -> Tuple[float, float]:
 class Site:
     """One Red-targetable location on the Blue side of the strait."""
 
+    id: int                          # M-TIER3-THREAT-CONTRACT (Issue #10):
+                                      # stable integer id for Threat.target_site_id.
+                                      # Assigned in _build_south_sites by position.
     name: str
     subtype: str                    # 'air_base' | 'capital' | 'major_city' | 'base'
     pos: Tuple[float, float]         # world (x, y) metres
@@ -83,6 +86,10 @@ def _in_arena(wx: float, wy: float) -> bool:
 def _build_south_sites() -> List[Site]:
     sites: List[Site] = []
     dropped: List[str] = []
+    # M-TIER3-THREAT-CONTRACT (Issue #10): Site.id is the position in the
+    # final filtered list, assigned in insertion order. Stable across
+    # runs as long as _SAAB_SOUTH_LOCATIONS + arena crop don't change.
+    next_id = 0
     for name, subtype, sx, sy in _SAAB_SOUTH_LOCATIONS:
         wx, wy = _saab_to_world(sx, sy)
         if not _in_arena(wx, wy):
@@ -90,12 +97,13 @@ def _build_south_sites() -> List[Site]:
                 f"{name} (saab=({sx:.1f},{sy:.1f}) world=({wx:.0f},{wy:.0f}))"
             )
             continue
-        sites.append(Site(name=name, subtype=subtype, pos=(wx, wy)))
+        sites.append(Site(id=next_id, name=name, subtype=subtype, pos=(wx, wy)))
+        next_id += 1
     # Legacy base — retained as a site (subtype 'base') so the previous
     # leak geometry still has a named target in the list and weighted-
     # random target selection can still pick it.
     bx, by = config.BLUE_BASE_POS[0], config.BLUE_BASE_POS[1]
-    sites.append(Site(name="Main Base", subtype="base", pos=(bx, by)))
+    sites.append(Site(id=next_id, name="Main Base", subtype="base", pos=(bx, by)))
     if dropped:
         # One-line module-load notice so future placements or CSV
         # additions are visibly filtered. Not a warning — the filter is
@@ -108,6 +116,21 @@ def _build_south_sites() -> List[Site]:
 
 
 SOUTH_SITES: List[Site] = _build_south_sites()
+
+
+def find_site_by_id(site_id) -> "Site | None":
+    """M-TIER3-THREAT-CONTRACT (Issue #10): lookup helper for the
+    unified Threat control contract. Returns the Site whose `id` matches
+    `site_id`, or None if no match (out-of-bounds id, or None input).
+    O(N) scan — SOUTH_SITES is ≤ 10 entries so this is cheaper than
+    maintaining a dict.
+    """
+    if site_id is None:
+        return None
+    for s in SOUTH_SITES:
+        if s.id == site_id:
+            return s
+    return None
 
 
 def reset_leaks() -> None:

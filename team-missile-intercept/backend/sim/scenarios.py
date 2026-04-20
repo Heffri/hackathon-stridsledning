@@ -159,6 +159,7 @@ class Scenario:
         # Position is a list-of-2 for trivial JSON round-trip.
         snap["sites"] = [
             {
+                "id": s.id,
                 "name": s.name,
                 "subtype": s.subtype,
                 "pos": [s.pos[0], s.pos[1]],

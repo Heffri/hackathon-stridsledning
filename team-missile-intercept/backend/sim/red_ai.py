@@ -30,19 +30,35 @@ _TARGET_WEIGHTS = {
 }
 
 
-def _pick_target(rng: np.random.Generator) -> tuple:
-    """Return (x, y) in world metres for a weighted-random site. Falls
-    back to the legacy base if the site list is somehow empty."""
+def _pick_target_site(rng: np.random.Generator):
+    """M-TIER3-THREAT-CONTRACT (Issue #10, 2026-04-20): richer variant
+    of `_pick_target` that returns the chosen `Site` object so callers
+    can record `target_site_id` on the spawned Threat. Falls back to
+    None if the site list is somehow empty (caller picks the legacy
+    base coords directly)."""
     site_list = sites.SOUTH_SITES
     if not site_list:
-        return (config.BLUE_BASE_POS[0], config.BLUE_BASE_POS[1])
+        return None
     w = np.array(
         [_TARGET_WEIGHTS.get(s.subtype, 1.0) for s in site_list],
         dtype=np.float64,
     )
     w /= w.sum()
     idx = int(rng.choice(len(site_list), p=w))
-    return site_list[idx].pos
+    return site_list[idx]
+
+
+def _pick_target(rng: np.random.Generator) -> tuple:
+    """Return (x, y) in world metres for a weighted-random site. Falls
+    back to the legacy base if the site list is somehow empty. Kept
+    as-is for `test_balance_baseline.py`, `test_hgv_impact.py`,
+    `test_ballistic_cep.py`, `test_cruise_impact.py` (stable API).
+    `RedAI.step` uses `_pick_target_site` so it can populate the
+    new `target_site_id` field on each spawned Threat."""
+    chosen = _pick_target_site(rng)
+    if chosen is None:
+        return (config.BLUE_BASE_POS[0], config.BLUE_BASE_POS[1])
+    return chosen.pos
 
 
 # --- Border-line geometry (Milestone G: relative to STRAIT_CENTER_Y) ---
@@ -254,14 +270,29 @@ class RedAI:
                     skipped_budget += 1
                     continue
                 spawn = self._spawn_point(kind, base_x, base_y)
-                target_xy = _pick_target(self.rng)
+                # M-TIER3-THREAT-CONTRACT (Issue #10): resolve the picked
+                # Site (not just its position) so we can stamp
+                # `target_site_id` on the spawned Threat. Backward-compat
+                # fallback to legacy base coords if SOUTH_SITES is empty.
+                chosen_site = _pick_target_site(self.rng)
+                if chosen_site is not None:
+                    target_xy = chosen_site.pos
+                    target_site_id = chosen_site.id
+                else:
+                    target_xy = (config.BLUE_BASE_POS[0], config.BLUE_BASE_POS[1])
+                    target_site_id = None
                 if kind == ThreatType.CRUISE_SUB:
                     wps = _build_cruise_waypoints(spawn, target_xy, self.rng)
                     world.spawn_threat(
-                        kind, spawn, target_xy, intermediate_waypoints=wps
+                        kind, spawn, target_xy,
+                        intermediate_waypoints=wps,
+                        target_site_id=target_site_id,
                     )
                 else:
-                    world.spawn_threat(kind, spawn, target_xy)
+                    world.spawn_threat(
+                        kind, spawn, target_xy,
+                        target_site_id=target_site_id,
+                    )
                 world.red_budget = max(0, world.red_budget - cost)
                 spawned += 1
             note = (

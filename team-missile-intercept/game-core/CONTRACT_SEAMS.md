@@ -276,20 +276,71 @@ auto-transitions RUNNING → FINISHED once `winner` fires.
 Active issues that will extend these seams. Not yet landed; track
 in `ISSUES_2026-04-19.md`.
 
-- **Issue 7** — `place_launcher` WS command (Milestone J Part 1).
-  Will add `{cmd: "place_launcher", launcher_id, pos: [x, y]}` to
-  the command table in §2, plus land-only validation via
-  `terrain.point_on_south_land`.
+- **Issue 7** — `place_launcher` WS command. **Landed** 2026-04-20
+  (M-TIER2-J Part 1). See §2 command table.
 - **Issue 8** — `world.red_budget` + per-threat `usd_cost` deducted
-  at spawn. Adds `red_budget` / `red_budget_max` to `snap.stats`,
-  plus a new Blue-win path in `Scenario.winner`.
+  at spawn. **Landed** 2026-04-20 (M-TIER3-RED-BUDGET). Snapshot
+  `stats.red_budget` / `red_budget_max` added; `Scenario.winner`
+  extends the Blue-victory path to `(red.done OR red_budget<=0)
+  AND no_threats_alive`.
 - **Issue 10-12** — unified `target_site_id` + `maneuver_schedule`
-  fields on `Threat`. Today `_pick_target` returns `(x, y)`; the
-  new shape stores the site id and routes through lookup. Flyover
-  fallback (auto-retarget when ground-track passes target)
-  included. Contract publication to Boyu is Tier 3.
+  fields on `Threat`. **Landed** 2026-04-20 (M-TIER3-THREAT-CONTRACT).
+  See §8.1 below for the publication-ready contract.
 
 When any of these lands, update this doc in the same commit.
+
+### 8.1 Unified Threat control contract (M-TIER3-THREAT-CONTRACT, 2026-04-20)
+
+`Threat` instances expose three plumbed-through fields and one
+in-place helper. Site identification is now by stable `Site.id: int`
+(added to the `Site` dataclass, auto-assigned in insertion order by
+`_build_south_sites`); `sites.find_site_by_id(id) -> Site | None` is
+the canonical lookup.
+
+**Spawn-time fields** (`world.spawn_threat(..., target_site_id=None,
+maneuver_schedule=None)`):
+
+| Field | Shape | Consumer | Notes |
+|---|---|---|---|
+| `_target_site_id` | `int \| None` | All kinds; mutable by flyover fallback | Stable id of the Site this threat was spawned against. `red_ai.RedAI.step` stamps this via `_pick_target_site(rng)`. |
+| `_maneuver_schedule` | `List[(t_offset_s, turn_dir_3vec, g_load, duration_s)]` | Drone / cruise / ballistic only | Optional pre-scripted jinks. During an active window `[t_offset, t_offset + duration)`, default waypoint steering is REPLACED by `g_load × GRAVITY` along `turn_dir`. Clamped to `spec.max_g`. HGV ignores — uses `override_maneuver` instead. |
+| `_final_target` | `np.ndarray[3]` (x, y, 0) | Flyover fallback | Immutable copy of original target for "have I passed it?" detection; `waypoint` mutates through intermediates for cruise / drone, or via fallback retargets. |
+
+**Flyover fallback** (`Threat._maybe_retarget_on_flyover()`, called
+at the top of `Threat.step` before per-kind branches):
+
+- **When it fires:** horizontal velocity points AWAY from
+  `_final_target` (dot product < 0), AND the threat is NOT in
+  terminal phase. Terminal gates: HGV dh < 3 km or alt < 2 km;
+  cruise dh < `_CRUISE_TERMINAL_DH = 5 km`; drone dh < 2 km.
+- **What it does:** scans `SOUTH_SITES`, picks the nearest one
+  AHEAD of the velocity vector (dot product > 0), updates
+  `self.waypoint`, `self._final_target`, `self._target_site_id`.
+- **No-op kinds:** BALLISTIC — arc is set at spawn and cannot be
+  steered mid-flight; retargeting would mislead HUD without
+  changing impact.
+- **No-op geometry:** cruise / drone still chasing an intermediate
+  waypoint (`_wp_queue` non-empty); no site AHEAD of the velocity.
+
+**External-control entry point** (`Threat.override_maneuver(turn_dir, g)`):
+
+Unchanged from Milestone I. Kind-gated by step-path structure:
+only HGV reads `_override_accel` (the future stealth-cruise kind
+in Issue #12 Tier 4 will add a second consumer). Setting the field
+on drone / cruise / ballistic is a safe no-op; use
+`maneuver_schedule` for those kinds instead.
+
+**Future extensions (NOT in the 2026-04-20 contract):**
+
+- Boyu's Red AI replaces the wave spawner — schedule entries chosen
+  from a tactical policy, `override_maneuver` called per-tick for
+  terminal evasion on HGV and stealth-cruise.
+- Stealth-cruise threat kind (`ThreatType.STEALTH_CRUISE`, Issue #12
+  Tier 4) adds an `allow_terminal_override` flag on `ThreatSpec` so
+  `override_maneuver` is consumed during terminal phase.
+- `maneuver_schedule` + `target_site_id` exposed in `snap['threats']`
+  entries for HUD tooltips (not needed until Blue AI needs to read
+  Red's commitment state).
 
 ## 9. Silent-no-op risk register
 

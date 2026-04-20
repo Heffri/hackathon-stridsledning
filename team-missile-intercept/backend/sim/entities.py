@@ -90,6 +90,25 @@ class Threat:
         # (tan = _base_alt / _glide_initial_dh). HGV-only; other kinds
         # keep it at 1.0. Stored once at spawn.
         "_glide_initial_dh",
+        # M-TIER3-THREAT-CONTRACT (Issue #10, 2026-04-20): stable int
+        # id of the Site this threat was spawned against. Mutable only
+        # by `_maybe_retarget_on_flyover` when the threat has flown
+        # past its original target. None if no site was resolved at
+        # spawn (e.g. legacy tests passing bare target_xy).
+        "_target_site_id",
+        # M-TIER3-THREAT-CONTRACT (Issues #11 / #12, 2026-04-20): list
+        # of (t_offset_s, turn_dir_3vec, g_load, duration_s) tuples.
+        # Applies to drone / cruise / ballistic only — HGV uses
+        # `override_maneuver` instead. Empty list / None means no
+        # scheduled jinks; threat seeks its waypoint normally.
+        "_maneuver_schedule",
+        # M-TIER3-THREAT-CONTRACT: original (pre-flyover-fallback)
+        # target position for flyover-fallback detection. `waypoint`
+        # rotates through intermediate waypoints for cruise / drone
+        # and is mutated by the fallback, so we need an immutable-at-
+        # spawn copy to compute "has ground-track passed the target?"
+        # against. Stored as an np.ndarray[3] with z=0.
+        "_final_target",
     )
 
     def __init__(
@@ -100,6 +119,8 @@ class Threat:
         target_xy,
         t_now: float,
         intermediate_waypoints=None,
+        target_site_id=None,
+        maneuver_schedule=None,
     ):
         """Construct a Threat at `start_xy`, aimed at `target_xy`.
 
@@ -262,6 +283,22 @@ class Threat:
         self._elapsed = 0.0
         # Milestone I: no override pending by default.
         self._override_accel = None
+        # M-TIER3-THREAT-CONTRACT (Issue #10): record which Site this
+        # threat was spawned against, for flyover-fallback + external
+        # traceability. Caller (red_ai or tests) provides the id; None
+        # is legal for headless trials that don't pass one through.
+        self._target_site_id = target_site_id
+        # M-TIER3-THREAT-CONTRACT (Issues #11 / #12): normalise the
+        # optional schedule. Tuple preserves spec ordering; empty list
+        # means "no scheduled jinks, seek waypoint normally". Each
+        # entry shape: (t_offset_s, turn_dir_3vec, g_load, duration_s).
+        self._maneuver_schedule = list(maneuver_schedule) if maneuver_schedule else []
+        # M-TIER3-THREAT-CONTRACT: immutable copy of the original
+        # target for flyover-fallback detection. `self.waypoint` may
+        # rotate through intermediates (cruise / drone) or be mutated
+        # by the fallback — we need a stable reference to compute
+        # "has the threat's ground-track passed its target?" against.
+        self._final_target = np.array([target_xy[0], target_xy[1], 0.0])
 
     def override_maneuver(self, turn_direction, g_load: float) -> None:
         """Milestone I external-control hook. Stores a commanded lateral
@@ -279,9 +316,15 @@ class Threat:
 
         Physics limits still apply after the integrator (max_g cap on
         the total commanded accel, quadratic KE bleed, 500 m/s stall).
-        Intended for the Red AI layer to drive HGV trajectories; a
-        no-op on non-HGV threats is fine — the field exists on every
-        Threat but only the HGV step path consumes it.
+
+        Kind-gating (M-TIER3-THREAT-CONTRACT, 2026-04-20): only HGV
+        consumes this field today. Future stealth-cruise kind (Issue
+        #12 Tier 4) will also consume it during terminal phase for
+        HGV-lite late-phase evasion. Drone / cruise / ballistic ignore
+        the field entirely — those kinds use `maneuver_schedule` for
+        pre-scripted jinks instead. Setting the field on a non-HGV
+        threat is a no-op (the field still exists on every Threat so
+        the API is uniform, but only the HGV step path reads it).
         """
         dir_arr = np.array(turn_direction, dtype=np.float64).reshape(3)
         n = float(np.linalg.norm(dir_arr))
@@ -292,10 +335,126 @@ class Threat:
         g_clamped = max(0.0, min(float(g_load), float(self.spec.max_g)))
         self._override_accel = dir_unit * (g_clamped * config.GRAVITY)
 
+    def _active_schedule_accel(self) -> Optional[np.ndarray]:
+        """M-TIER3-THREAT-CONTRACT (Issues #11 / #12, 2026-04-20):
+        return the commanded lateral acceleration for the currently
+        active `maneuver_schedule` entry, or None if no entry is in
+        the `[t_offset, t_offset + duration)` window at the current
+        spawn-relative time `self._elapsed`.
+
+        Schedule entry shape: `(t_offset_s, turn_dir_3vec, g_load,
+        duration_s)`. Same clamping rules as `override_maneuver`:
+        direction is normalised (zero-vector skips the entry), g_load
+        is clamped to `[0, spec.max_g]`.
+
+        Applies to drone / cruise / ballistic step paths only —
+        callers should check `self.spec.kind` before reading.
+        """
+        if not self._maneuver_schedule:
+            return None
+        t_rel = self._elapsed
+        for entry in self._maneuver_schedule:
+            t_offset, turn_dir, g_load, duration = entry
+            if not (t_offset <= t_rel < t_offset + duration):
+                continue
+            dir_arr = np.asarray(turn_dir, dtype=np.float64).reshape(3)
+            mag = float(np.linalg.norm(dir_arr))
+            if mag < 1e-6:
+                continue
+            dir_unit = dir_arr / mag
+            g_clamped = max(0.0, min(float(g_load), float(self.spec.max_g)))
+            return dir_unit * (g_clamped * config.GRAVITY)
+        return None
+
+    def _maybe_retarget_on_flyover(self) -> None:
+        """M-TIER3-THREAT-CONTRACT (Issue #10, 2026-04-20): flyover
+        fallback. If the horizontal velocity points AWAY from the
+        current `_final_target` (i.e. ground-track has passed the
+        target), search for the nearest in-arena `Site` whose
+        position is AHEAD of the velocity vector and retarget to it.
+
+        Gated off during terminal-phase behaviour so a threat already
+        committing to impact does not swerve away at the last second:
+          * HGV: dh < 3 km or alt < 2 km (matches `terminal_dive` gate)
+          * CRUISE_SUB: on final waypoint with dh < `_CRUISE_TERMINAL_DH`
+          * DRONE: dh < 2 km (matches terminal altitude ramp)
+          * BALLISTIC: skipped entirely — ballistic arc is set at spawn
+            and cannot be steered mid-flight; updating waypoint would
+            mis-report target in HUD without changing the trajectory.
+
+        Also gated on `_wp_queue` being empty for cruise / drone —
+        intermediate waypoints are not "targets" that can be flown
+        past; only the final target triggers the fallback.
+
+        No-ops if no site is ahead (threat flew past the entire
+        defensive arc — it will eventually ground-impact off-target
+        or leave the arena).
+        """
+        if self.spec.kind == ThreatType.BALLISTIC:
+            return
+        if self.spec.kind in (ThreatType.CRUISE_SUB, ThreatType.DRONE):
+            if self._wp_queue:
+                return  # still chasing an intermediate waypoint
+        pos = self.state.pos
+        vel = self.state.vel
+        v_h = np.array([vel[0], vel[1], 0.0])
+        v_h_mag = float(np.linalg.norm(v_h))
+        if v_h_mag < 1.0:
+            return  # stalled / near-zero horizontal speed
+        to_target_h = np.array(
+            [self._final_target[0] - pos[0], self._final_target[1] - pos[1], 0.0]
+        )
+        # Past the target iff horizontal velocity points AWAY from it
+        # (dot product negative).
+        if float(np.dot(v_h, to_target_h)) >= 0.0:
+            return
+        # Terminal-phase gates (do not retarget during committed impact).
+        dh_to_target = float(np.linalg.norm(to_target_h))
+        if self.spec.kind == ThreatType.HGV:
+            if dh_to_target < 3_000.0 or float(pos[2]) < 2_000.0:
+                return
+        elif self.spec.kind == ThreatType.CRUISE_SUB:
+            if dh_to_target < _CRUISE_TERMINAL_DH:
+                return
+        elif self.spec.kind == ThreatType.DRONE:
+            if dh_to_target < 2_000.0:
+                return
+        # Find nearest in-arena site that is AHEAD of the velocity
+        # vector. Import lazily to avoid circular import at module load.
+        from . import sites as _sites
+        v_unit = v_h / v_h_mag
+        best = None
+        best_d = float("inf")
+        pos_h = np.array([pos[0], pos[1], 0.0])
+        for s in _sites.SOUTH_SITES:
+            s_pos_h = np.array([s.pos[0], s.pos[1], 0.0])
+            to_s_h = s_pos_h - pos_h
+            # Site is ahead iff v_unit · to_s_h > 0.
+            if float(np.dot(v_unit, to_s_h)) <= 0.0:
+                continue
+            d = float(np.linalg.norm(to_s_h))
+            if d < best_d:
+                best_d = d
+                best = s
+        if best is None:
+            return  # nothing in front — threat is past the entire arc
+        # Apply the retarget. For HGV / ballistic, waypoint IS the
+        # target so we overwrite both waypoint and _final_target. For
+        # cruise / drone (with empty _wp_queue), waypoint equals the
+        # final target, same assignment.
+        self.waypoint = np.array([best.pos[0], best.pos[1], 0.0])
+        self._final_target = self.waypoint.copy()
+        self._target_site_id = best.id
+
     def step(self, dt: float, world=None) -> None:
         if not self.state.alive:
             return
         self._elapsed += dt
+        # M-TIER3-THREAT-CONTRACT: flyover-fallback check runs before
+        # per-kind steering so a retarget reaches the waypoint-seeking
+        # code this same tick. No-op for ballistic + any threat in
+        # terminal phase + any threat whose target is still ahead.
+        self._maybe_retarget_on_flyover()
         pos = self.state.pos
         vel = self.state.vel
 
@@ -426,6 +585,15 @@ class Threat:
             else:
                 steer = np.zeros(3)
 
+            # M-TIER3-THREAT-CONTRACT (Issue #11): active
+            # `maneuver_schedule` entry replaces the weak horizontal
+            # pull. Deflects the ballistic arc — limited by `spec.max_g`
+            # (5 G for ballistic, per THREAT_SPECS). Re-integration
+            # picks the deflected trajectory up naturally.
+            schedule_accel = self._active_schedule_accel()
+            if schedule_accel is not None:
+                steer = schedule_accel
+
             accel = steer + physics.gravity_accel()
             # Altitude-scaled drag: at 35 km spawn altitude rho ≈ 0.016,
             # so cruise drag is near zero. Dense-air drag only kicks in
@@ -528,6 +696,16 @@ class Threat:
             steer = physics.cap_accel(steer, self.spec.max_g)
         else:
             steer = np.zeros(3)
+
+        # M-TIER3-THREAT-CONTRACT (Issues #11 / #12): active
+        # `maneuver_schedule` entry replaces the waypoint-seeking
+        # steer for drone / cruise during the scheduled window. After
+        # the entry's duration expires, the next tick falls back to
+        # the default waypoint seek (no residual state). Future Red
+        # AI populates the schedule at spawn for pre-scripted jinks.
+        schedule_accel = self._active_schedule_accel()
+        if schedule_accel is not None:
+            steer = schedule_accel
 
         # Altitude-hold to current target altitude (gentler spring/damper
         # than the original 0.5/0.8 gains — stops drones from bobbing).

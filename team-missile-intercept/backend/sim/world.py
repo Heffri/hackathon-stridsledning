@@ -126,6 +126,8 @@ class World:
         start_xy,
         target_xy,
         intermediate_waypoints=None,
+        target_site_id=None,
+        maneuver_schedule=None,
     ) -> int:
         """Construct a Threat and register it with the world.
 
@@ -144,6 +146,22 @@ class World:
             tuples. Cruise / drone kinds walk this list to the
             final target; ballistic ignores it (solver path only
             uses spawn + target).
+          target_site_id: M-TIER3-THREAT-CONTRACT (Issue #10).
+            Optional stable integer id of the `Site` this threat is
+            aimed at. Used by the flyover-fallback in `Threat.step`
+            to detect "I've passed my target" and for external
+            traceability (e.g. Red AI log / debugging). None is
+            legal — threat just flies to `target_xy` without site
+            binding.
+          maneuver_schedule: M-TIER3-THREAT-CONTRACT (Issues
+            #11 / #12). Optional list of
+            `(t_offset_s, turn_dir_3vec, g_load, duration_s)` tuples.
+            While an entry is active (spawn-relative time in
+            `[t_offset, t_offset + duration)`), the threat's default
+            waypoint steering is REPLACED by a lateral acceleration
+            of `g_load × GRAVITY` in `turn_dir`. Applies to drone /
+            cruise / ballistic only — HGV uses `override_maneuver`
+            instead. None / empty list means no scheduled jinks.
 
         Returns:
           Entity id (positive int) for lookup in `self.threats`.
@@ -156,8 +174,10 @@ class World:
           Do not mutate the returned Threat's internal fields
           directly (`waypoint`, `_wp_queue`, pos, vel). Use
           `Threat.override_maneuver(dir, g)` for per-tick HGV
-          lateral control. Spawn position and target cannot be
-          changed after construction — spawn a new Threat.
+          lateral control (ignored on drone / cruise / ballistic
+          kinds — those use `maneuver_schedule` instead). Spawn
+          position and target cannot be changed after construction —
+          spawn a new Threat.
         """
         eid = self._new_id()
         t = Threat(
@@ -167,6 +187,8 @@ class World:
             target_xy,
             self.t,
             intermediate_waypoints=intermediate_waypoints,
+            target_site_id=target_site_id,
+            maneuver_schedule=maneuver_schedule,
         )
         self.threats[eid] = t
         self.threats_spawned += 1

@@ -186,6 +186,53 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
 1. **Tier 3 — Red budget pool** — Done above (0.96). Boyu's Red AI
    will consume this pool for tactical spawn decisions; runtime hook
    is in place.
+0.97 **M-TIER3-THREAT-CONTRACT — unified Threat control contract
+   (runtime).** Landed 2026-04-20 (single commit). Publishes the
+   contract that Boyu's Red AI will consume for per-threat tactical
+   control. Covers Issues #10 / #11 / #12 (runtime parts):
+   - `Site.id: int` field added to the `Site` dataclass (auto-
+     assigned by insertion order in `_build_south_sites`).
+     `sites.find_site_by_id(id)` helper. `snap['sites']` entries
+     carry `id` additively (no existing field renamed).
+   - `Threat` gains three slots: `_target_site_id` (mutable by
+     fallback), `_maneuver_schedule` (list of `(t_offset, turn_dir,
+     g_load, duration)` tuples), `_final_target` (immutable copy
+     of original target).
+   - `world.spawn_threat(..., target_site_id=None,
+     maneuver_schedule=None)` — two additive kwargs. All existing
+     tests that pass positional args unchanged.
+   - `red_ai._pick_target_site(rng) -> Site` returns the chosen
+     Site so `RedAI.step` can stamp `target_site_id` at spawn.
+     Legacy `_pick_target(rng) -> (x, y)` kept for test harnesses
+     (`test_hgv_impact`, `test_ballistic_cep`, `test_cruise_impact`,
+     `test_balance_baseline`).
+   - `Threat.step` calls `_maybe_retarget_on_flyover()` at the top
+     of every tick. If horizontal velocity points away from
+     `_final_target` AND the threat is not in terminal phase, find
+     the nearest in-arena Site ahead of the velocity vector and
+     retarget `waypoint` + `_final_target` + `_target_site_id` to
+     it. No-op on BALLISTIC (fixed arc).
+   - Schedule consumer: drone / cruise / ballistic non-terminal
+     steer blocks now check `_active_schedule_accel()` before the
+     default waypoint-seek. Active entry REPLACES the default steer
+     for its window; after `duration` expires, naturally resumes
+     waypoint seek. Clamp to `spec.max_g`; zero-direction entries
+     skipped.
+   - `override_maneuver` kind-gating documented in its docstring
+     — HGV-only today; future stealth-cruise (Issue #12 Tier 4)
+     adds a second consumer.
+   - Full contract in `game-core/CONTRACT_SEAMS.md` §8.1 for Boyu
+     to consume.
+   `test_threat_contract.py` (15 cases): Site.id sequential +
+   snapshot + helper; `_pick_target_site` + spawn stamp + manual
+   spawn kwarg; schedule activation window + clamp + zero-direction
+   skip + HGV ignores structurally + measurable drone deflection;
+   flyover retarget + HGV terminal gate + ballistic no-op + target-
+   ahead no-op. Full regression suite (+75 pre-existing cases)
+   still green. Default 5-wave demo unchanged (neither `maneuver_
+   schedule` nor flyover fallback fire under default wave spawner
+   — both require Red AI commitment or an overshot target to
+   trigger).
 2. **Red AI Level 5 HGV control** — `Threat.override_maneuver` hook is in place; needs a per-tick decision layer (nearest-interceptor scan, geometry, KE budget) to drive the hook.
 3. **Smarter Red AI target selection** — currently weighted-random across sites; wave-specific targeting (wave 5 prioritises capital) would feel more tactical.
 4. **Placement AI** (post-Milestone J) — deployment UI is done; now let an AI pick positions + roster based on incoming threat direction, wave composition, and coverage optimisation. AI Auto stub is the hook point.
