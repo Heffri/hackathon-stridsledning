@@ -322,30 +322,42 @@ class BlueAI:
             ]
 
             # --- Point-defense: CIWS fires on ANY threat inside its
-            # 4 km envelope, regardless of saturation gate or threat
-            # kind. Real Lvkv 90 doctrine is "anything that reaches the
-            # inner ring gets sprayed" — cheap rounds, cheap kill
-            # attempt even on hypersonic RVs that probably outrun it.
-            # Milestone H: each CIWS launcher checks its own envelope
-            # independently, so a forward CIWS (if one is ever added)
-            # doesn't wait for a threat to approach the base.
+            # 4 km envelope. Real Lvkv 90 doctrine is "anything that
+            # reaches the inner ring gets sprayed" — cheap rounds,
+            # cheap kill attempt even on hypersonic RVs that probably
+            # outrun it. Milestone H: each CIWS launcher checks its
+            # own envelope independently.
+            #
+            # Issue #20 (M-TIER2.8, 2026-04-20): CIWS is still exempt
+            # from `MAX_SIMULTANEOUS_PER_THREAT` (rapid-fire is the
+            # point — it's a cannon, not a SAM) but DOES respect the
+            # expected-damage saturation gate now. Stops firing once
+            # enough in-flight damage is inbound to kill the threat,
+            # counting every assigned interceptor (CIWS + non-CIWS).
+            # Before the fix, CIWS would dump ~20-30 rounds at a 10-HP
+            # drone — $40-$60k of ammunition on a $30k target. With
+            # the gate, ~2-4 rounds land the kill (drone hp 10 /
+            # ciws damage_prox 8 = 2 rounds ceiling), extras stop at
+            # the gate.
             ciws_spec = INTERCEPTOR_SPECS[InterceptorType.CIWS]
             ciws_gate_sq = (
                 ciws_spec.max_range * config.LAUNCH_RANGE_MARGIN
             ) ** 2
-            for lch in self.launchers.launchers:
-                if lch.kind != InterceptorType.CIWS:
-                    continue
-                if not lch.can_fire(t_now):
-                    continue
-                dx = float(threat_pos[0] - lch.pos[0])
-                dy = float(threat_pos[1] - lch.pos[1])
-                if dx * dx + dy * dy <= ciws_gate_sq:
-                    self._fire(
-                        world, t_now, tid, threat, InterceptorType.CIWS,
-                        lch, base, dist_to_base, tag=" [CIWS]",
-                    )
-                    break  # one CIWS launcher per tick per threat
+            ciws_expected_dmg = _expected_damage(assigned_iids, world)
+            if ciws_expected_dmg < threat.state.hp:
+                for lch in self.launchers.launchers:
+                    if lch.kind != InterceptorType.CIWS:
+                        continue
+                    if not lch.can_fire(t_now):
+                        continue
+                    dx = float(threat_pos[0] - lch.pos[0])
+                    dy = float(threat_pos[1] - lch.pos[1])
+                    if dx * dx + dy * dy <= ciws_gate_sq:
+                        self._fire(
+                            world, t_now, tid, threat, InterceptorType.CIWS,
+                            lch, base, dist_to_base, tag=" [CIWS]",
+                        )
+                        break  # one CIWS launcher per tick per threat
 
             # --- Main saturation gate (excludes CIWS rounds) ---
             if len(non_ciws) >= MAX_SIMULTANEOUS_PER_THREAT:
