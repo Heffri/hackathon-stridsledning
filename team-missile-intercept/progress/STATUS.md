@@ -513,7 +513,7 @@ For quick orientation, a Claude session can be started with:
 
 ## Known Limitations (after Milestone I)
 
-1. **PN precision**: still Euler 0.05 s — CPA typically 20–80 m. PAC-3 `radius_direct = 60 m` (spec 0.3 m) is the workaround. This is the root cause of the remaining ballistic-leak dominance; other kinds are now minimal.
+1. **PN precision**: still Euler 0.05 s — CPA typically 20–80 m against ballistic. PAC-3 `radius_direct = 60 m` (spec 0.3 m) is the workaround. Note: HGV leak dominance is NOT a PN precision issue — it is the Issue #19 firing-window / rendezvous-planning gap (see #12 below).
 2. **SLM is not registered as a ballistic fallback.** Forward-deployed IRIS-T SLM launchers do not attempt ballistic intercepts despite having geometric coverage. This is a `blue_ai` engagement-decision artifact — `FALLBACK_RULES[BALLISTIC]` lists MED_SAM but `PRIMARY_RULES[BALLISTIC]` already blocks on PAC-3 / PAC-2 ready time, so in practice SLM never gets reached when ballistic fallback actually fires. Deferred intentionally; the rule-based engagement ladder is scheduled to be replaced by a learned Blue AI decision layer.
 3. **Radar / sensor model not wired.** Blue AI still has omniscient detection. `team-missile-intercept/common-info/source-data/knowledge/sensors-c2.md` has the burn-through formula ready.
 4. **No Red AI intelligence yet — but HGV override hook in place.** Waves are pre-scripted and cruise uses fixed S-pattern waypoints. Milestone I Task 3 added `Threat.override_maneuver(turn_dir, g_load)` so a future Red AI can take real-time HGV control; default HGV behaviour is now straight-line (no scripted jink).
@@ -524,6 +524,7 @@ For quick orientation, a Claude session can be started with:
 9. **No EffectComposer bloom**: explosion bloom is a hot-core + additive-blend approximation, not real post-process bloom. Would need a bundler.
 10. **Status-panel G-load** is averaged over the snapshot tick, not instantaneous.
 11. **Landmark labels** use `depthTest: false` so they always render in front — pans can show a label bleeding through terrain. Acceptable at the default camera.
+12. **HGV / high-speed ballistic firing-window gap** — `blue_ai` fires pac_3/pac_2 at the moment a threat enters the static `max_range × LAUNCH_RANGE_MARGIN` gate. For Mach-17 HGV this leaves ~10 s to impact against a geometry-distant target, which is shorter than what a Mach-5 interceptor can close from ground. Empirical baseline (`backend/diag_hgv_blue.py`, 2026-04-20): pac_3 CPA 43 km across default and ±30 km Y launcher offsets — HGV impacts target in all trials. Not a PN precision issue, not a gate-too-conservative bug. Tracked as Issue #19; Oskar's Blue AI work (pre-launch on predicted rendezvous + loft guidance + data-link re-targeting, under Chen's AWACS framing) is the planned fix. Tier 3, not blocking Hack Day.
 
 ## Team & Deliverables
 
