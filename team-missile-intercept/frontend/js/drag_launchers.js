@@ -56,21 +56,60 @@ export function initLauncherDrag({
   const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const hitPoint = new THREE.Vector3();
 
-  // Issue #23: suppress browser-default behaviours that leak into the
-  // 3D canvas.
-  //   - contextmenu: right-click would otherwise pop the browser menu
-  //     (Copy / Reload / Back), which is never useful on a WebGL surface.
-  //   - selectstart: belt-and-braces against the left-drag text-selection
-  //     box, in addition to the CSS `user-select: none` rule.
-  // Installed once at setup, never per-frame.
-  canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  // Issue #27 (W12): contextmenu must preventDefault regardless of
+  // which element the browser fired it on. W11 attached to the canvas
+  // only, so a right-click whose release landed over an HUD panel, the
+  // setup ribbon, or the status panel skipped the handler entirely and
+  // the browser menu popped. Move to window-level with a guard that
+  // covers every game surface and still respects form controls where
+  // right-click-to-paste is useful.
+  const GAME_SURFACE_SELECTOR =
+    '#view, #hud, #setup-ribbon, #match-overlay, #status-panel, #launch-banner';
+  window.addEventListener('contextmenu', (ev) => {
+    const t = ev.target;
+    if (!t) return;
+    if (t.matches?.('input, select, textarea')) return;
+    if (t.closest?.(GAME_SURFACE_SELECTOR)) {
+      ev.preventDefault();
+    }
+  });
+  // selectstart stays belt-and-braces on the canvas alongside the CSS
+  // `user-select: none` rule (Issue #23).
   canvas.addEventListener('selectstart', (ev) => ev.preventDefault());
 
   // Pointer-down state. `armed` holds the info needed to tell click
   // apart from drag on pointer-up / pointer-move. `dragging` holds the
-  // active drag once the threshold is exceeded. Mutually exclusive.
+  // active drag once the threshold is exceeded. `capturedPointerId`
+  // tracks the pointerId currently owned via setPointerCapture so every
+  // termination path — including the visibilitychange / blur /
+  // lostpointercapture safety nets wired below — can call
+  // releasePointerCapture with the right id even when the originating
+  // event object is unavailable (Issue #27).
   let armed = null;    // { mesh, id, downX, downY }
   let dragging = null; // { mesh, id }
+  let capturedPointerId = null;
+
+  // Issue #27 (W12): single-source-of-truth cleanup for the drag
+  // lifecycle. Called from the safety nets (lostpointercapture,
+  // visibilitychange → hidden, window.blur) where we have no event
+  // object and no way to know if the gesture was supposed to commit;
+  // always discards pending state and restores OrbitControls to a
+  // usable idle. Must stay strictly invariant-restoring — side-effects
+  // like sendCmd or setSelectedLauncherId belong on the explicit
+  // pointerup / pointercancel paths.
+  function restoreIdle() {
+    if (dragging) {
+      dragging.mesh.group.userData.dragging = false;
+      dragging = null;
+    }
+    armed = null;
+    if (capturedPointerId != null) {
+      try { canvas.releasePointerCapture?.(capturedPointerId); } catch (_) { /* already released */ }
+      capturedPointerId = null;
+    }
+    if (controls) controls.enabled = true;
+    if (canvas.style.cursor) canvas.style.cursor = '';
+  }
 
   function updatePointerNDC(ev) {
     const rect = canvas.getBoundingClientRect();
@@ -182,7 +221,8 @@ export function initLauncherDrag({
     // SETUP we deliberately leave the gesture to OrbitControls so a
     // drag-past-threshold orbits the camera without fighting our capture.
     if (isSetup) {
-      canvas.setPointerCapture?.(ev.pointerId);
+      try { canvas.setPointerCapture?.(ev.pointerId); } catch (_) { /* capture may fail in rare races — fall through */ }
+      capturedPointerId = ev.pointerId;
       ev.preventDefault();
     }
   });
@@ -194,9 +234,13 @@ export function initLauncherDrag({
     mesh.group.userData.dragging = false;
     if (controls) controls.enabled = true;
     canvas.style.cursor = '';
-    if (ev && ev.pointerId != null) {
-      canvas.releasePointerCapture?.(ev.pointerId);
+    // Always release any outstanding capture — fall back to the tracked
+    // pointerId when the caller didn't bring one (Issue #27 safety).
+    const pid = (ev && ev.pointerId != null) ? ev.pointerId : capturedPointerId;
+    if (pid != null) {
+      try { canvas.releasePointerCapture?.(pid); } catch (_) { /* already released */ }
     }
+    capturedPointerId = null;
     if (commit) {
       const sx = mesh.group.position.x;
       const sz = mesh.group.position.z;
@@ -210,6 +254,12 @@ export function initLauncherDrag({
   }
 
   canvas.addEventListener('pointerup', (ev) => {
+    // Only the left-button release ends a gesture we own. Right-button
+    // releases fired mid-left-drag (e.g. the operator right-clicks while
+    // repositioning a launcher) previously committed the half-finished
+    // drag as a place_launcher — Issue #27 trigger for "both buttons go
+    // dead" as the partial commit left controls in a bad state.
+    if (ev.button !== 0) return;
     // Drag-in-progress: commit the new position.
     if (dragging) {
       endDrag(true, ev);
@@ -223,7 +273,11 @@ export function initLauncherDrag({
     // the launcher, the final pixel decides.
     if (armed) {
       armed = null;
-      if (ev.pointerId != null) canvas.releasePointerCapture?.(ev.pointerId);
+      const pid = (ev.pointerId != null) ? ev.pointerId : capturedPointerId;
+      if (pid != null) {
+        try { canvas.releasePointerCapture?.(pid); } catch (_) { /* already released */ }
+      }
+      capturedPointerId = null;
       updatePointerNDC(ev);
       const hitId = findLauncherIdUnderPointer();
       setSelectedLauncherId(hitId || null);
@@ -238,7 +292,28 @@ export function initLauncherDrag({
     // selection.
     if (armed) {
       armed = null;
-      if (ev.pointerId != null) canvas.releasePointerCapture?.(ev.pointerId);
+      const pid = (ev && ev.pointerId != null) ? ev.pointerId : capturedPointerId;
+      if (pid != null) {
+        try { canvas.releasePointerCapture?.(pid); } catch (_) { /* already released */ }
+      }
+      capturedPointerId = null;
     }
   });
+
+  // Issue #27 (W12) safety nets. None of these fire on the happy path —
+  // they exist so a gesture interrupted by a tab switch, a focus loss,
+  // or a browser-initiated capture release can't leave OrbitControls
+  // permanently disabled. Each reuses restoreIdle so there is exactly
+  // one place the drag invariant is restored.
+  canvas.addEventListener('lostpointercapture', () => {
+    // Fires on every releasePointerCapture we do ourselves (by that
+    // point dragging/armed are already null → no-op) AND when the
+    // browser force-drops the capture mid-drag. The guard keeps the
+    // no-op case free.
+    if (dragging || armed || controls?.enabled === false) restoreIdle();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') restoreIdle();
+  });
+  window.addEventListener('blur', () => restoreIdle());
 }
