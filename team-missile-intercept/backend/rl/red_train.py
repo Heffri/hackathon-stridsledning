@@ -9,12 +9,15 @@ Outputs:
   rl/runs/red_<timestamp>/ckpt/          — CheckpointCallback snapshots
   rl/runs/red_<timestamp>/tb/             — tensorboard logs
 
-Mirror of rl.train for the Red side. Hyperparameters, policy architecture,
-vec-env setup are identical so cross-machine eval (Blue policy vs Red
-policy) is apples-to-apples. The only real diffs from rl.train are:
+Mirror of rl.train for the Red side. Policy architecture and vec-env
+setup are identical; diffs from rl.train:
   * RedEnv replaces MissileInterceptEnv.
   * Run dir / checkpoint prefix / tb tag use `red_` so Boyu's Blue runs
     and Chen's Red runs don't collide in rl/runs/.
+  * gamma default 0.9995 (vs Blue's 0.995). At DECISION_EVERY=10 and
+    episode_time_limit=600s the episode is ~1200 decisions long; the
+    longer discount horizon is needed for the +/-20 terminal reward to
+    shape early-episode spawn choices. CLI `--gamma` overrides.
 """
 from __future__ import annotations
 
@@ -76,7 +79,15 @@ def main():
     ap.add_argument("--batch-size", type=int, default=512)
     ap.add_argument("--n-epochs", type=int, default=8)
     ap.add_argument("--lr", type=float, default=3e-4)
-    ap.add_argument("--gamma", type=float, default=0.995)
+    # gamma default lifted 0.995 -> 0.9995 per external-ML-review. At
+    # DECISION_EVERY=10 ticks (0.5s sim per decision) and a 600s
+    # episode_time_limit, an episode is ~1200 decisions long. Boyu's
+    # 0.995 default gives a credit horizon of ~200 decisions (~100s
+    # sim) — effectively zero propagation of the +/-20 terminal reward
+    # back to early-episode decisions. 0.9995 extends the horizon to
+    # ~2000 decisions (covers the full episode) so terminal reward
+    # shapes early spawn choices. CLI flag still overrides.
+    ap.add_argument("--gamma", type=float, default=0.9995)
     ap.add_argument("--gae-lambda", type=float, default=0.95)
     ap.add_argument("--ent-coef", type=float, default=0.01)
     ap.add_argument("--clip-range", type=float, default=0.2)
