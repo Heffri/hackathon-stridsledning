@@ -34,18 +34,28 @@ Slots [0:5] are the kind mask, [5:5+n_sites] is the site mask (always
 all-ones — any site is a valid aim point). Consumed via the `action_masks`
 method + ActionMasker wrapper in red_train.py.
 
-Reward sign convention (flipped vs Blue):
-  * +2.0 × event.damage per `leak` event (Red hit a Blue site).
-  * -spec.usd_cost / 1e6 per `intercept` event (Red threat was killed
-    in flight). Additive to the spawn cost subtracted at decision time,
-    so a spawned-and-intercepted threat nets roughly -2 × cost/$M —
-    spawning threats that get shot down is strongly penalised.
-  * -0.2 per `ground_crash` event with a threat id (Red threat crashed
-    outside a site — wasted).
-  * -spec.usd_cost / 1e6 subtracted once per successful spawn at decision
-    time (encourages cost-aware play).
-  * Terminal: +100 Red win (any Blue site at HP 0), -100 Blue win
-    (Red out of budget AND no live threats), 0 draw / truncation.
+Reward sign convention (flipped vs Blue). All dense terms are
+normalized against the game's starting budgets / total site HP so
+magnitudes are comparable across reward components:
+
+  * +10.0 × (site_damage / TOTAL_SITE_HP) per `leak` event. Wiping
+    out the full defended side over an episode is worth ~+10 total;
+    a single drone leak against a 100-HP site is ~+0.17, an HGV leak
+    is ~+1.33.
+  * -1.0 × (spawn_cost / RED_BUDGET_START) per successful spawn.
+    Burning the full Red budget on spawns sums to ~-1.0. Single spawn
+    is paid ONCE per threat lifecycle here — intercept events do NOT
+    add a second deduction (the world's red_budget ledger also only
+    charges at spawn time, so the reward matches reality).
+  * +0.1 × (blue_spend_this_step / BLUE_BUDGET_START) — weak
+    cost-exchange bonus when Blue burns interceptor budget reacting
+    to Red's threats.
+  * -0.2 per `ground_crash` event with a threat id — small penalty
+    for wasted trajectories.
+  * Terminal: +20 Red win (any Blue site HP = 0), -20 Blue win
+    (Red priced out AND no live threats). -5 on draw / truncation —
+    without this, "hold forever" is a local optimum (pays nothing
+    and collects no terminal penalty).
 """
 from __future__ import annotations
 
@@ -59,7 +69,10 @@ from sim import sites as sites_module
 from sim.blue_ai import BlueAI
 from sim.config import (
     ARENA_X,
+    BLUE_BUDGET_START,
     DT,
+    RED_BUDGET_START,
+    SITE_HP_START,
 )
 from sim.launcher import RedLauncherFleet
 from sim.red_ai import (
@@ -187,15 +200,25 @@ class RedEnv(gym.Env):
         self.red_launchers = RedLauncherFleet()
         self.world.transition(MatchPhase.RUNNING)
         self._cum_reward = 0.0
+        # Total starting site HP drives the normalization denominator
+        # for leak rewards. Captured post-reset_leaks so reading from
+        # `hp_max` is safe.
+        self._total_site_hp = max(
+            1, sum(s.hp_max for s in sites_module.SOUTH_SITES)
+        )
         return self._encode_obs(), {}
 
     # ------------------------------------------------------------------
     def step(self, action):
         action = np.asarray(action, dtype=np.int64).reshape(-1)
+        # Snapshot Blue's budget pre-decision so we can reward Red for
+        # making Blue burn interceptor money. Red's own budget is
+        # snapshotted inside _apply_action via the returned cost.
+        prev_blue_budget = self.world.blue_budget
+
         # Apply Red action first (spawn or hold). Deducts red_budget
-        # inside on success; returns the spec cost in $M for the
-        # decision-level cost penalty.
-        spawned, spec_cost_M = self._apply_action(action)
+        # inside on success; returns the raw USD spawn cost.
+        spawned, spawn_cost_usd = self._apply_action(action)
 
         event_reward = 0.0
         for _ in range(DECISION_EVERY):
@@ -211,11 +234,19 @@ class RedEnv(gym.Env):
             if self.world.t >= self._episode_time_limit:
                 break
 
-        # Decision-level cost penalty is applied once per spawn
-        # (spec_cost_M = 0.0 on hold). Mirrors Boyu's Blue shaping
-        # structure: event-driven dense reward plus a per-decision
-        # efficiency term.
-        reward = event_reward - spec_cost_M
+        # --- Normalized per-decision shaping ---
+        # Spawn penalty: fraction of Red's starting budget burned on
+        # this decision. Single-charge — intercept events are NOT a
+        # second penalty (see _reward_from_events docstring).
+        spawn_penalty = -1.0 * (spawn_cost_usd / RED_BUDGET_START)
+        # Weak cost-exchange bonus: when Blue launches interceptors,
+        # Red benefits proportionally to the fraction of Blue's budget
+        # spent this decision window. Scaled small (0.1x vs leak 10x)
+        # so it doesn't dominate the leak signal.
+        blue_spent = max(0, prev_blue_budget - self.world.blue_budget)
+        blue_spend_bonus = 0.1 * (blue_spent / BLUE_BUDGET_START)
+
+        reward = event_reward + spawn_penalty + blue_spend_bonus
 
         terminated = self._winner() is not None
         truncated = (not terminated) and self.world.t >= self._episode_time_limit
@@ -223,9 +254,14 @@ class RedEnv(gym.Env):
         if terminated:
             w = self._winner()
             if w == "red":
-                reward += 100.0
+                reward += 20.0
             elif w == "blue":
-                reward -= 100.0
+                reward -= 20.0
+        elif truncated:
+            # Draw / timeout penalty. Stops the agent settling on
+            # "hold forever = 0 reward" as a local optimum — that
+            # policy now collects -5 instead of 0.
+            reward -= 5.0
 
         self._cum_reward += reward
         info = {
@@ -266,11 +302,12 @@ class RedEnv(gym.Env):
 
     # ------------------------------------------------------------------
     def _apply_action(self, action: np.ndarray) -> tuple:
-        """Execute the Red decision. Returns (spawned, spec_cost_M).
+        """Execute the Red decision. Returns (spawned, spawn_cost_usd).
 
         * `spawned` is True iff a threat entered the world this call.
-        * `spec_cost_M` is the spawn cost in $M (0.0 on hold or failed
-          spawn). Caller uses it as the decision-level reward penalty.
+        * `spawn_cost_usd` is the spec's `usd_cost` (0 on hold or failed
+          spawn). Caller normalizes by RED_BUDGET_START to produce the
+          decision-level spawn penalty.
         """
         kind_idx = int(action[0])
         site_idx = int(action[1]) if action.shape[0] > 1 else 0
@@ -315,7 +352,7 @@ class RedEnv(gym.Env):
             return False, 0.0
 
         self.world.red_budget = max(0, self.world.red_budget - spec.usd_cost)
-        return True, spec.usd_cost / 1e6
+        return True, float(spec.usd_cost)
 
     def _pick_spawn(self, kind: ThreatType) -> Optional[tuple]:
         """Pick (x, y, z) for a Red threat of this kind.
@@ -372,39 +409,33 @@ class RedEnv(gym.Env):
 
     # ------------------------------------------------------------------
     def _reward_from_events(self, events: List[dict]) -> float:
-        """Per-tick dense shaping. Red's objective is to damage Blue
-        sites; events drive the reward signal. Sign-flipped from
-        env.py._reward_from_events (Blue's event handler).
+        """Per-tick dense shaping driven by world events.
+
+        Single-charge cost model: the threat lifecycle is paid for
+        ONCE — at spawn time in step() via `spawn_penalty`. An
+        `intercept` event is therefore NOT a second deduction here
+        (doing so would punish risk-taking: agent paid $X to put the
+        threat on the board, if Blue kills it the threat just produces
+        zero additional return rather than costing $X again). The
+        earlier V1 reward had a dual-penalty bug; this version
+        removes the intercept branch.
+
+        Leak rewards are normalized against total starting site HP
+        so magnitudes are comparable across game states: wiping out
+        the entire defended side (= summing to full site HP damage)
+        is worth +10.0 total.
+
+        Ground_crash keeps a small literal penalty as a mild shaping
+        term — discourages blatantly wasted trajectories without
+        dominating the main leak signal.
         """
         r = 0.0
         for ev in events:
             et = ev.get("type")
             if et == "leak":
-                # Red scored on a Blue site. Mirror magnitude of Boyu's
-                # Blue penalty (-2.0 * dmg) → Red reward +2.0 * dmg.
                 dmg = ev.get("damage", 0)
-                r += float(dmg) * 2.0
-            elif et == "intercept":
-                # Red threat was killed in flight — the threat was
-                # already paid for at spawn time; the intercept event
-                # adds an additional cost-scaled penalty so the agent
-                # learns to avoid spawning into obvious engagement
-                # windows.
-                tid = ev.get("threat")
-                threat = self.world.threats.get(tid) if tid is not None else None
-                if threat is not None:
-                    try:
-                        spec = THREAT_SPECS[ThreatType(threat.state.kind)]
-                        r -= spec.usd_cost / 1e6
-                    except (KeyError, ValueError):
-                        r -= 1.0
-                else:
-                    r -= 1.0
+                r += 10.0 * (float(dmg) / self._total_site_hp)
             elif et == "ground_crash" and ev.get("threat") is not None:
-                # Red threat crashed without hitting a site. Small
-                # penalty to discourage spawning into dead-end
-                # trajectories. Gated on 'threat' key so interceptor
-                # ground_crash events (same event type) don't count.
                 r -= 0.2
         return r
 
