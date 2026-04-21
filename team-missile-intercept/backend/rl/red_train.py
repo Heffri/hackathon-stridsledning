@@ -52,17 +52,29 @@ def mask_fn(env: RedEnv) -> np.ndarray:
     return base.action_masks()
 
 
-def make_env(seed: int, episode_time_limit: float):
+def make_env(seed: int, episode_time_limit: float, blue_policy_path=None):
     def _init():
-        env = RedEnv(seed=seed, episode_time_limit=episode_time_limit)
+        env = RedEnv(
+            seed=seed,
+            episode_time_limit=episode_time_limit,
+            blue_policy_path=blue_policy_path,
+        )
         env = Monitor(env)
         env = ActionMasker(env, mask_fn)
         return env
     return _init
 
 
-def build_vec_env(n_envs: int, episode_time_limit: float, base_seed: int = 0):
-    fns = [make_env(base_seed + i, episode_time_limit) for i in range(n_envs)]
+def build_vec_env(
+    n_envs: int,
+    episode_time_limit: float,
+    base_seed: int = 0,
+    blue_policy_path=None,
+):
+    fns = [
+        make_env(base_seed + i, episode_time_limit, blue_policy_path)
+        for i in range(n_envs)
+    ]
     vec = SubprocVecEnv(fns, start_method="spawn")
     vec = VecMonitor(vec)
     return vec
@@ -93,6 +105,17 @@ def main():
     ap.add_argument("--clip-range", type=float, default=0.2)
     ap.add_argument("--save-every", type=int, default=100_000)
     ap.add_argument("--run-name", default=None)
+    # Warmstart: load weights + hyperparameters from an existing run
+    # instead of fresh-init. Used for iterative training (e.g. Phase 2b:
+    # Red1 → Red2 vs learned Blue). Learning rate, entropy, gamma, etc.
+    # are preserved from the saved model unless overridden by env=vec.
+    ap.add_argument("--warmstart", default=None,
+                    help="Path to model.zip to resume training from")
+    # Opponent: path to a learned Blue model.zip. When None, rule-based
+    # BlueAI is used (current default). Threaded into each RedEnv via
+    # blue_policy_path so every subproc env loads its own inference copy.
+    ap.add_argument("--blue-opponent", default=None,
+                    help="Path to MaskablePPO Blue model.zip opponent")
     args = ap.parse_args()
 
     ts = time.strftime("%Y%m%d_%H%M%S")
@@ -105,28 +128,47 @@ def main():
     ckpt_dir = run_dir / "ckpt"
     ckpt_dir.mkdir(exist_ok=True)
 
-    vec = build_vec_env(args.n_envs, args.episode_time_limit)
+    vec = build_vec_env(
+        args.n_envs,
+        args.episode_time_limit,
+        blue_policy_path=args.blue_opponent,
+    )
 
     policy_kwargs = dict(
         net_arch=[256, 256],
     )
 
-    model = MaskablePPO(
-        "MultiInputPolicy",
-        vec,
-        learning_rate=args.lr,
-        n_steps=args.n_steps,
-        batch_size=args.batch_size,
-        n_epochs=args.n_epochs,
-        gamma=args.gamma,
-        gae_lambda=args.gae_lambda,
-        clip_range=args.clip_range,
-        ent_coef=args.ent_coef,
-        policy_kwargs=policy_kwargs,
-        tensorboard_log=str(tb_dir),
-        device=args.device,
-        verbose=1,
-    )
+    if args.warmstart is not None:
+        # Resume training from saved weights + rollout stats. MaskablePPO
+        # will re-bind to our vec env (with learned-Blue opponent if set).
+        # CLI hyperparams are NOT re-applied — the saved model keeps its
+        # own lr / gamma / ent_coef from the original run. Intentional:
+        # fine-tuning with the same hyperparams preserves training
+        # momentum; if Chen wants a reset, he can edit the loaded model.
+        model = MaskablePPO.load(
+            args.warmstart,
+            env=vec,
+            device=args.device,
+            tensorboard_log=str(tb_dir),
+        )
+        print(f"Warmstarted from {args.warmstart}")
+    else:
+        model = MaskablePPO(
+            "MultiInputPolicy",
+            vec,
+            learning_rate=args.lr,
+            n_steps=args.n_steps,
+            batch_size=args.batch_size,
+            n_epochs=args.n_epochs,
+            gamma=args.gamma,
+            gae_lambda=args.gae_lambda,
+            clip_range=args.clip_range,
+            ent_coef=args.ent_coef,
+            policy_kwargs=policy_kwargs,
+            tensorboard_log=str(tb_dir),
+            device=args.device,
+            verbose=1,
+        )
     ckpt_cb = CheckpointCallback(
         save_freq=max(args.save_every // args.n_envs, 1),
         save_path=str(ckpt_dir),
@@ -136,6 +178,8 @@ def main():
     print(f"=== Training run {run_name} (RED) ===")
     print(f"total-steps={args.total_steps:,} n-envs={args.n_envs} device={args.device}")
     print(f"episode-time-limit={args.episode_time_limit}s")
+    print(f"warmstart={args.warmstart or '(none, fresh init)'}")
+    print(f"blue-opponent={args.blue_opponent or '(rule BlueAI)'}")
     print(f"writing to {run_dir}")
 
     t0 = time.time()
