@@ -34,8 +34,29 @@ import sys
 
 from sim import config, sites, terrain
 from sim.scenarios import build_default_scenario
-from sim.types import ThreatType
+from sim.types import MatchPhase, ThreatType
 from sim.world import World
+
+
+def _fresh_world() -> World:
+    """Empty world, transitioned to RUNNING so spawn_threat is live.
+    Sites are reset per call because `spawn_threat` doesn't touch sites
+    but later regression tests build full scenarios that do."""
+    sites.reset_leaks()
+    w = World()
+    w.transition(MatchPhase.RUNNING)
+    return w
+
+
+# A couple of clearly-invalid coords reused across cases.
+_STRAIT_MID = (75_000.0, 120_000.0)         # world x mid, strait centreline
+_STRAIT_EAST = (10_000.0, 110_000.0)        # strait, slightly off-centre
+_BLUE_BASE_XY = (
+    float(config.BLUE_BASE_POS[0]),
+    float(config.BLUE_BASE_POS[1]),
+)
+# Known valid ballistic / HGV spawn (inside STRATEGIC_Y_BAND).
+_VALID_STRATEGIC_XY = (75_000.0, 240_000.0)
 
 
 # --- Subtask A: prerequisites -----------------------------------------
@@ -86,10 +107,204 @@ def test_strategic_y_floor_is_configured() -> None:
           f"({floor / 1000:.0f} km)")
 
 
+# --- Subtask C: valid spawns succeed (regression guard) ---------------
+
+def test_valid_drone_spawns_at_every_red_launcher() -> None:
+    """Every entry in `RED_LAUNCHER_POSITIONS['drone']` is a legal
+    drone spawn. Returns an int id, no raise."""
+    target = _BLUE_BASE_XY
+    count = 0
+    for (x, y) in config.RED_LAUNCHER_POSITIONS["drone"]:
+        w = _fresh_world()
+        tid = w.spawn_threat(
+            ThreatType.DRONE, (float(x), float(y), 2_000.0), target
+        )
+        assert isinstance(tid, int) and tid > 0
+        assert tid in w.threats
+        count += 1
+    print(f"ok  test_valid_drone_spawns_at_every_red_launcher "
+          f"({count} positions)")
+
+
+def test_valid_cruise_spawns_at_every_red_launcher() -> None:
+    """Every entry in `RED_LAUNCHER_POSITIONS['cruise_sub']` is a legal
+    cruise spawn."""
+    target = _BLUE_BASE_XY
+    count = 0
+    for (x, y) in config.RED_LAUNCHER_POSITIONS["cruise_sub"]:
+        w = _fresh_world()
+        tid = w.spawn_threat(
+            ThreatType.CRUISE_SUB, (float(x), float(y), 3_000.0), target
+        )
+        assert isinstance(tid, int) and tid > 0
+        count += 1
+    print(f"ok  test_valid_cruise_spawns_at_every_red_launcher "
+          f"({count} positions)")
+
+
+def test_valid_ballistic_spawn_above_floor() -> None:
+    """Ballistic at y=240 km (inside STRATEGIC_Y_BAND) is legal."""
+    w = _fresh_world()
+    spawn = (_VALID_STRATEGIC_XY[0], _VALID_STRATEGIC_XY[1], 40_000.0)
+    tid = w.spawn_threat(ThreatType.BALLISTIC, spawn, _BLUE_BASE_XY)
+    assert isinstance(tid, int) and tid > 0
+    print("ok  test_valid_ballistic_spawn_above_floor")
+
+
+def test_valid_hgv_spawn_above_floor() -> None:
+    """HGV at y=240 km is legal."""
+    w = _fresh_world()
+    spawn = (_VALID_STRATEGIC_XY[0], _VALID_STRATEGIC_XY[1], 35_000.0)
+    tid = w.spawn_threat(ThreatType.HGV, spawn, _BLUE_BASE_XY)
+    assert isinstance(tid, int) and tid > 0
+    print("ok  test_valid_hgv_spawn_above_floor")
+
+
+# --- Subtask C: drone / cruise off north land → rejected --------------
+
+def test_drone_in_strait_rejected() -> None:
+    """Drone spawn at the strait centre — not on north land — raises."""
+    w = _fresh_world()
+    spawn = (_STRAIT_MID[0], _STRAIT_MID[1], 2_000.0)
+    try:
+        w.spawn_threat(ThreatType.DRONE, spawn, _BLUE_BASE_XY)
+    except ValueError as e:
+        assert "north-side land" in str(e), (
+            f"expected 'north-side land' in error, got: {e!r}"
+        )
+        print(f"ok  test_drone_in_strait_rejected "
+              f"(msg: {str(e)[:70]}...)")
+        return
+    raise AssertionError("expected ValueError, none raised")
+
+
+def test_cruise_in_strait_rejected() -> None:
+    """Cruise spawn in strait — raises."""
+    w = _fresh_world()
+    spawn = (_STRAIT_EAST[0], _STRAIT_EAST[1], 3_000.0)
+    try:
+        w.spawn_threat(ThreatType.CRUISE_SUB, spawn, _BLUE_BASE_XY)
+    except ValueError as e:
+        assert "north-side land" in str(e)
+        print("ok  test_cruise_in_strait_rejected")
+        return
+    raise AssertionError("expected ValueError, none raised")
+
+
+def test_drone_on_south_land_rejected() -> None:
+    """Drone spawn at the Blue base — south-side land, not north.
+    Should never happen in practice (sanity guard)."""
+    w = _fresh_world()
+    spawn = (_BLUE_BASE_XY[0], _BLUE_BASE_XY[1], 2_000.0)
+    try:
+        w.spawn_threat(ThreatType.DRONE, spawn, _BLUE_BASE_XY)
+    except ValueError as e:
+        assert "north-side land" in str(e)
+        print("ok  test_drone_on_south_land_rejected")
+        return
+    raise AssertionError("expected ValueError, none raised")
+
+
+# --- Subtask C: ballistic / HGV below the Y floor → rejected ----------
+
+def test_ballistic_below_floor_rejected() -> None:
+    """Ballistic at y=50 km — far below STRATEGIC_Y_FLOOR — raises
+    with a message naming the floor."""
+    w = _fresh_world()
+    spawn = (75_000.0, 50_000.0, 30_000.0)
+    try:
+        w.spawn_threat(ThreatType.BALLISTIC, spawn, _BLUE_BASE_XY)
+    except ValueError as e:
+        assert "STRATEGIC_Y_FLOOR" in str(e), (
+            f"expected 'STRATEGIC_Y_FLOOR' in error, got: {e!r}"
+        )
+        print(f"ok  test_ballistic_below_floor_rejected "
+              f"(msg: {str(e)[:70]}...)")
+        return
+    raise AssertionError("expected ValueError, none raised")
+
+
+def test_hgv_one_metre_below_floor_rejected() -> None:
+    """HGV at y = STRATEGIC_Y_FLOOR - 1 — boundary case, exactly one
+    metre below the floor — rejected."""
+    w = _fresh_world()
+    spawn = (75_000.0, config.STRATEGIC_Y_FLOOR - 1.0, 35_000.0)
+    try:
+        w.spawn_threat(ThreatType.HGV, spawn, _BLUE_BASE_XY)
+    except ValueError as e:
+        assert "STRATEGIC_Y_FLOOR" in str(e)
+        print("ok  test_hgv_one_metre_below_floor_rejected")
+        return
+    raise AssertionError("expected ValueError, none raised")
+
+
+def test_hgv_exactly_at_floor_accepted() -> None:
+    """HGV at y = STRATEGIC_Y_FLOOR — boundary, inclusive floor —
+    succeeds."""
+    w = _fresh_world()
+    spawn = (75_000.0, float(config.STRATEGIC_Y_FLOOR), 35_000.0)
+    tid = w.spawn_threat(ThreatType.HGV, spawn, _BLUE_BASE_XY)
+    assert isinstance(tid, int) and tid > 0
+    print("ok  test_hgv_exactly_at_floor_accepted")
+
+
+# --- Subtask C: default scenario regression ---------------------------
+
+def test_default_scenario_runs_all_waves_without_contract_violation() -> None:
+    """The existing wave spawner (`_spawn_point` + `_sample_spawn`)
+    produces coords the new validation always accepts. Building a
+    default scenario and stepping 250 s (enough for every wave) must
+    run to `red.done` with `threats_spawned == 26` and zero
+    ValueError propagating out. Regression guard for the case where
+    the validation is somehow too tight for the wave spawner's
+    random samples."""
+    sites.reset_leaks()
+    scn = build_default_scenario(auto_start=True)
+    dt = 0.05
+    try:
+        for _ in range(int(250.0 / dt)):
+            scn.step(dt)
+            if scn.red.done:
+                break
+    except ValueError as e:
+        raise AssertionError(
+            f"default scenario wave spawner produced a coord the "
+            f"Red-spawn-contract rejected: {e!r}"
+        )
+    assert scn.red.done, (
+        f"red.done never fired after 250 s — wave spawner regressed?"
+    )
+    # The default wave spec (build_demo_waves) totals 26 threats:
+    # 3+3+2+4+2+1+2+2+2+3+2 = 26. red_ai also skips 0 under default
+    # budget, so threats_spawned should be exactly 26.
+    assert scn.world.threats_spawned == 26, (
+        f"expected 26 threats spawned under default scenario, got "
+        f"{scn.world.threats_spawned}"
+    )
+    print(f"ok  test_default_scenario_runs_all_waves_without_contract_violation "
+          f"(spawned={scn.world.threats_spawned}, red.done={scn.red.done})")
+
+
 def main() -> None:
+    # Subtask A — prerequisites
     test_north_land_helper_basic()
     test_strategic_y_floor_is_configured()
-    print("\nAll 2 Red-spawn-contract prereq tests passed.")
+    # Subtask C — valid spawns succeed
+    test_valid_drone_spawns_at_every_red_launcher()
+    test_valid_cruise_spawns_at_every_red_launcher()
+    test_valid_ballistic_spawn_above_floor()
+    test_valid_hgv_spawn_above_floor()
+    # Subtask C — drone / cruise off-land rejections
+    test_drone_in_strait_rejected()
+    test_cruise_in_strait_rejected()
+    test_drone_on_south_land_rejected()
+    # Subtask C — ballistic / HGV below-floor rejections + boundary
+    test_ballistic_below_floor_rejected()
+    test_hgv_one_metre_below_floor_rejected()
+    test_hgv_exactly_at_floor_accepted()
+    # Subtask C — default scenario regression
+    test_default_scenario_runs_all_waves_without_contract_violation()
+    print("\nAll 13 Red-spawn-contract tests passed.")
 
 
 if __name__ == "__main__":
