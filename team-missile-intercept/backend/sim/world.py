@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from . import config, physics, sites
+from . import config, physics, sites, terrain
 from .entities import Interceptor, Threat
 from .types import (
     LEGAL_PHASE_TRANSITIONS,
@@ -128,6 +128,7 @@ class World:
         intermediate_waypoints=None,
         target_site_id=None,
         maneuver_schedule=None,
+        validate_location: bool = True,
     ) -> int:
         """Construct a Threat and register it with the world.
 
@@ -162,6 +163,16 @@ class World:
             of `g_load × GRAVITY` in `turn_dir`. Applies to drone /
             cruise / ballistic only — HGV uses `override_maneuver`
             instead. None / empty list means no scheduled jinks.
+          validate_location: W14 (Issue #30) opt-out. When True
+            (default), `start_xy` is checked against the per-kind
+            Red spawn contract (see "Raises"). Pass False only from
+            tests that pre-position a threat at a non-contract
+            location to unit-test other behaviour (flyover
+            fallback, CIWS saturation, maneuver schedule, winner
+            conditions). Production AI callers (RedAI.step today,
+            Boyu's Red AI tomorrow) MUST leave this True so bad
+            coord choices surface loudly via ValueError rather
+            than silently admitting an illegal spawn.
 
         Returns:
           Entity id (positive int) for lookup in `self.threats`.
@@ -178,7 +189,46 @@ class World:
           kinds — those use `maneuver_schedule` instead). Spawn
           position and target cannot be changed after construction —
           spawn a new Threat.
+
+        Raises:
+          ValueError: W14 (Issue #30) spatial spawn contract — the
+            caller's (x, y) violates the per-kind rule. Drone / cruise
+            must be on north-side land; ballistic / HGV must be
+            y >= config.STRATEGIC_Y_FLOOR. The current wave spawner
+            (`red_ai._spawn_point` + `_sample_spawn`) always produces
+            valid coords; this raise surfaces bugs in future Red AI
+            callers loudly rather than silently dropping the spawn.
+            Altitude is not validated — see CONTRACT_SEAMS.md §9.
         """
+        # W14 (Issue #30): enforce the Red spawn contract. Boyu's
+        # future Red AI calls spawn_threat with arbitrary (x, y) — the
+        # runtime validates the location per kind so a misbehaving AI
+        # can't cheat by spawning an HGV directly over a Blue site.
+        # Tests that pre-position a threat for unit-testing other
+        # behaviour (flyover, CIWS, maneuver) can opt out with
+        # validate_location=False.
+        if validate_location:
+            x_spawn = float(start_xy[0])
+            y_spawn = float(start_xy[1])
+            if kind in (ThreatType.DRONE, ThreatType.CRUISE_SUB):
+                if not terrain.point_on_north_land(x_spawn, y_spawn):
+                    raise ValueError(
+                        f"{kind.value} spawn at ({x_spawn:.0f}, "
+                        f"{y_spawn:.0f}) is not on north-side land. "
+                        f"Drone / cruise must launch from Red mainland "
+                        f"or islands (see terrain.point_on_north_land)."
+                    )
+            elif kind in (ThreatType.BALLISTIC, ThreatType.HGV):
+                if y_spawn < config.STRATEGIC_Y_FLOOR:
+                    raise ValueError(
+                        f"{kind.value} spawn y={y_spawn:.0f} is too "
+                        f"close to the front line. Strategic-range "
+                        f"assets must spawn with y >= "
+                        f"{config.STRATEGIC_Y_FLOOR:.0f} (gives Blue "
+                        f"~20+ s of engagement window; see "
+                        f"config.STRATEGIC_Y_FLOOR)."
+                    )
+
         eid = self._new_id()
         t = Threat(
             eid,

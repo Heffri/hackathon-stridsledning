@@ -39,7 +39,13 @@ def main() -> None:
     ciws_pos = config.BLUE_LAUNCHER_POSITIONS["ciws"][0]
     drone_spawn = (float(ciws_pos[0]), float(ciws_pos[1]) + 3_000.0, 500.0)
     drone_target = (float(ciws_pos[0]), float(ciws_pos[1]))
-    tid = scn.world.spawn_threat(ThreatType.DRONE, drone_spawn, drone_target)
+    # W14 (Issue #30): pre-position drone close to CIWS for the
+    # saturation test — not a realistic Red spawn path, just a
+    # placement utility. Opt out of the spatial contract.
+    tid = scn.world.spawn_threat(
+        ThreatType.DRONE, drone_spawn, drone_target,
+        validate_location=False,
+    )
 
     dt = 0.05
     max_ticks = int(30.0 / dt)

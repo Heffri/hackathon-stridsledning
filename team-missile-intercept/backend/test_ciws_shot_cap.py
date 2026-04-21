@@ -58,7 +58,13 @@ def test_cap_holds_under_hp_bump() -> bool:
     # 4 km envelope so the launcher definitely sees it in range.
     drone_spawn = (float(ciws_pos[0]), float(ciws_pos[1]) + 3_000.0, 500.0)
     drone_target = (float(ciws_pos[0]), float(ciws_pos[1]))
-    tid = scn.world.spawn_threat(ThreatType.DRONE, drone_spawn, drone_target)
+    # W14 (Issue #30): pre-position drone close to CIWS for the
+    # shot-cap test — not a realistic Red spawn path, just a
+    # placement utility. Opt out of the spatial contract.
+    tid = scn.world.spawn_threat(
+        ThreatType.DRONE, drone_spawn, drone_target,
+        validate_location=False,
+    )
 
     dt = 0.05
     # 20 s is long enough to see CIWS spray through multiple fuel cycles

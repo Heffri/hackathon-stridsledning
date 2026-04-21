@@ -54,8 +54,13 @@ def test_budget_zero_with_live_threat_is_none() -> None:
     regardless of budget."""
     scn = _fresh_scenario()
     scn.world.blue_budget = 0
-    # Spawn a single drone to keep the match alive
-    scn.world.spawn_threat(ThreatType.DRONE, (75_000.0, 100_000.0, 2_000.0), (75_000.0, 8_000.0))
+    # Spawn a single drone to keep the match alive.
+    # W14 (Issue #30): location is test setup, not a realistic Red
+    # spawn — opt out of the spatial contract.
+    scn.world.spawn_threat(
+        ThreatType.DRONE, (75_000.0, 100_000.0, 2_000.0),
+        (75_000.0, 8_000.0), validate_location=False,
+    )
     w = scn.winner
     assert w is None, f"expected None (match in progress), got {w!r}"
     print("ok  test_budget_zero_with_live_threat_is_none")
@@ -90,8 +95,13 @@ def test_old_behavior_would_have_failed() -> None:
     This test asserts the NEW behaviour and implicitly records what
     changed."""
     scn = _fresh_scenario()
-    # Spawn a threat so we're clearly mid-match
-    scn.world.spawn_threat(ThreatType.DRONE, (75_000.0, 100_000.0, 2_000.0), (75_000.0, 8_000.0))
+    # Spawn a threat so we're clearly mid-match.
+    # W14 (Issue #30): location is test setup, not a realistic Red
+    # spawn — opt out of the spatial contract.
+    scn.world.spawn_threat(
+        ThreatType.DRONE, (75_000.0, 100_000.0, 2_000.0),
+        (75_000.0, 8_000.0), validate_location=False,
+    )
     scn.world.blue_budget = 0
     # Old rule: w == 'red'. New rule: w == None (match continues).
     w = scn.winner

@@ -122,6 +122,9 @@ def test_manual_spawn_stores_target_site_id() -> None:
         (75_000.0, 100_000.0, 2_000.0),
         site.pos,
         target_site_id=site.id,
+        # W14 (Issue #30): mid-strait spawn is a placement utility,
+        # not a realistic Red spawn — opt out.
+        validate_location=False,
     )
     thr = w.threats[tid]
     assert thr._target_site_id == site.id
@@ -137,6 +140,8 @@ def test_maneuver_schedule_active_window() -> None:
         (75_000.0, 100_000.0, 2_000.0),
         (75_000.0, 5_000.0),
         maneuver_schedule=[(5.0, (1.0, 0.0, 0.0), 3.0, 2.0)],
+        # W14 (Issue #30): mid-strait spawn is a placement utility.
+        validate_location=False,
     )
     thr = w.threats[tid]
     dt = 0.05
@@ -160,6 +165,8 @@ def test_maneuver_schedule_clamps_to_spec_max_g() -> None:
         (75_000.0, 100_000.0, 2_000.0),
         (75_000.0, 5_000.0),
         maneuver_schedule=[(0.5, (1.0, 0.0, 0.0), 99.0, 5.0)],
+        # W14 (Issue #30): mid-strait spawn is a placement utility.
+        validate_location=False,
     )
     thr = w.threats[tid]
     dt = 0.05
@@ -187,6 +194,8 @@ def test_maneuver_schedule_skips_zero_direction() -> None:
         (75_000.0, 100_000.0, 2_000.0),
         (75_000.0, 5_000.0),
         maneuver_schedule=[(0.5, (0.0, 0.0, 0.0), 3.0, 5.0)],
+        # W14 (Issue #30): mid-strait spawn is a placement utility.
+        validate_location=False,
     )
     thr = w.threats[tid]
     dt = 0.05
@@ -234,10 +243,15 @@ def test_maneuver_schedule_deflects_drone_measurably() -> None:
     w2 = _fresh_world()
     spawn = (75_000.0, 100_000.0, 2_000.0)
     target = (75_000.0, 5_000.0)  # due south
-    t1 = w1.spawn_threat(ThreatType.DRONE, spawn, target)
+    # W14 (Issue #30): mid-strait spawn is a placement utility for
+    # the schedule-deflection test — opt out of the spatial contract.
+    t1 = w1.spawn_threat(
+        ThreatType.DRONE, spawn, target, validate_location=False,
+    )
     t2 = w2.spawn_threat(
         ThreatType.DRONE, spawn, target,
         maneuver_schedule=[(2.0, (1.0, 0.0, 0.0), 2.0, 3.0)],
+        validate_location=False,
     )
     thr1 = w1.threats[t1]
     thr2 = w2.threats[t2]
@@ -270,6 +284,10 @@ def test_flyover_retargets_when_ground_track_past_target() -> None:
     spawn = (past_a_x, past_a_y, 2_000.0)
     tid = w.spawn_threat(
         ThreatType.DRONE, spawn, site_a.pos, target_site_id=site_a.id,
+        # W14 (Issue #30): threat is deliberately pre-positioned past
+        # a south-side site for the flyover-fallback unit test; this
+        # is not a realistic Red spawn. Opt out of the spatial contract.
+        validate_location=False,
     )
     thr = w.threats[tid]
     # Force velocity to point toward site_b (away from site_a)
@@ -300,6 +318,9 @@ def test_flyover_fallback_skipped_during_hgv_terminal_dive() -> None:
     spawn = (site.pos[0] + 1_000.0, site.pos[1] - 500.0, 1_500.0)
     tid = w.spawn_threat(
         ThreatType.HGV, spawn, site.pos, target_site_id=site.id,
+        # W14 (Issue #30): HGV pre-positioned in terminal-dive phase
+        # for the no-retarget unit test; not a realistic Red spawn.
+        validate_location=False,
     )
     thr = w.threats[tid]
     # Force heading that looks like overshoot
@@ -322,6 +343,9 @@ def test_flyover_fallback_noop_on_ballistic() -> None:
     spawn = (site.pos[0] - 30_000.0, site.pos[1] - 30_000.0, 40_000.0)
     tid = w.spawn_threat(
         ThreatType.BALLISTIC, spawn, site.pos, target_site_id=site.id,
+        # W14 (Issue #30): ballistic pre-positioned past target for
+        # the fallback-no-op unit test; not a realistic Red spawn.
+        validate_location=False,
     )
     thr = w.threats[tid]
     # One step — verify no retarget
@@ -342,6 +366,10 @@ def test_flyover_fallback_noop_when_target_ahead() -> None:
     spawn = (site.pos[0], site.pos[1] + 100_000.0, 2_000.0)
     tid = w.spawn_threat(
         ThreatType.DRONE, spawn, site.pos, target_site_id=site.id,
+        # W14 (Issue #30): spawn is in the strait (y ~ 105-130 km),
+        # not on north land — acceptable here because this test is a
+        # placement unit test for flyover fallback, not a Red spawn.
+        validate_location=False,
     )
     thr = w.threats[tid]
     # Default-constructed velocity is already toward target; step a few
