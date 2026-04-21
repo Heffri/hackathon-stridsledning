@@ -393,7 +393,98 @@ on drone / cruise / ballistic is a safe no-op; use
   entries for HUD tooltips (not needed until Blue AI needs to read
   Red's commitment state).
 
-## 9. Silent-no-op risk register
+## 9. Red spawn contract (M-TIER3+, Issue #30, 2026-04-20)
+
+`World.spawn_threat` now validates the caller's `start_xy` per kind
+so Boyu's future Red AI (and every other consumer of the spawn entry
+point) gets a crisp, enforced rule for WHERE threats are allowed to
+originate. This is the spatial half of the threat contract already
+documented in §8.1.
+
+### Per-kind rule table
+
+| Kind       | Rule                                              | Check                                 |
+|------------|---------------------------------------------------|---------------------------------------|
+| DRONE      | `(x, y)` on north-side land                       | `terrain.point_on_north_land(x, y)`   |
+| CRUISE_SUB | `(x, y)` on north-side land                       | `terrain.point_on_north_land(x, y)`   |
+| BALLISTIC  | `y >= config.STRATEGIC_Y_FLOOR` (inclusive)       | simple comparison                     |
+| HGV        | `y >= config.STRATEGIC_Y_FLOOR` (inclusive)       | simple comparison                     |
+
+`STRATEGIC_Y_FLOOR = 180_000 m` is sized so a Mach-17 HGV has ~31 s
+of remaining flight time after spawn and a Mach-13 ballistic has
+~40 s — enough for Blue AI to react without the threat being
+teleported in on top of a defended site. The floor is DISTINCT from
+the narrower `STRATEGIC_Y_BAND = [235_000, 245_000]` in
+`red_ai.py`: the BAND is today's random-wave sampler's habit
+(always satisfies the floor by construction); the FLOOR is the
+future-AI rule.
+
+Altitude is **not** validated. Red AI's choice; degraded behaviour
+(e.g. a ballistic spawned at 200 m altitude flies into the ground
+instantly) is gameplay feedback, not a spawn-contract violation.
+
+### ValueError protocol
+
+On contract violation, `spawn_threat` raises `ValueError` with:
+
+- The kind that was attempted.
+- The offending coord (`x, y` or just `y`, per rule).
+- The specific rule + a pointer to the canonical API
+  (`terrain.point_on_north_land` for drone / cruise,
+  `config.STRATEGIC_Y_FLOOR` for ballistic / HGV).
+
+Rationale: a bad coord is an AI bug, not a runtime condition to
+silently swallow. The raise gives Red AI callers a clear signal
+to catch + pick a different location. `red_ai.RedAI.step` does
+not catch today (it never violates); a future consumer that wants
+best-effort retry can wrap the call.
+
+### Opt-out for test setup
+
+`spawn_threat` accepts `validate_location: bool = True`. Passing
+`False` skips the check. This is **for tests only** — cases that
+pre-position a threat at a non-contract location to unit-test other
+behaviour (flyover fallback, CIWS saturation, maneuver schedule,
+winner conditions). Production AI callers (`RedAI.step`, future
+Boyu AI) must leave the default in place.
+
+Existing opt-out callers (as of W14 landing):
+
+- `test_ciws_saturation` / `test_ciws_shot_cap` — drone 3 km north
+  of CIWS launcher (not north-land).
+- `test_winner_budget_not_loss` — arbitrary drone spawn to keep
+  the match mid-state.
+- `test_threat_contract` — eight pre-positioned spawns across
+  flyover, maneuver-schedule, and target-site-id tests.
+
+### Wave spawner is unaffected
+
+`red_ai._spawn_point` routes drone / cruise through
+`RedLauncherFleet.next_pos` (picks a `RED_LAUNCHER_POSITIONS` tuple,
+which is validated at config-load against `point_on_north_land`).
+`_sample_spawn` routes ballistic / HGV through `STRATEGIC_Y_BAND`
+(always `≥ STRATEGIC_Y_FLOOR`). Both paths produce coords the new
+validation accepts — bit-for-bit identical behaviour pre/post W14
+for the default demo. `test_red_spawn_contract` §5 locks this as a
+regression canary (260 s sim run, spawned == 26, zero ValueError).
+
+### Acceptance harness
+
+`backend/test_red_spawn_contract.py` — 13 cases:
+
+- Prereq (2): `point_on_north_land` basic sanity; `STRATEGIC_Y_FLOOR`
+  is configured and in the arena.
+- Valid spawns (4): drone at every `RED_LAUNCHER_POSITIONS["drone"]`,
+  cruise at every `cruise_sub`, ballistic + HGV inside the strategic
+  band.
+- Rejections (5): drone / cruise in strait; drone at Blue base
+  (south land); ballistic at y=50 km; HGV at floor − 1 m.
+- Boundary (1): HGV at exactly `y == STRATEGIC_Y_FLOOR` succeeds
+  (inclusive floor).
+- Regression (1): default scenario runs every wave with no
+  ValueError; `red.done` fires; `threats_spawned == 26`.
+
+## 10. Silent-no-op risk register
 
 Patterns that have bitten us; keep an eye out:
 
@@ -437,3 +528,13 @@ Patterns that have bitten us; keep an eye out:
   keyboard-shortcut namespace" subsection. `R` is now claimed
   for camera reset; future shortcuts should honour the form-
   control + modifier guards. Advisory only.
+- **2026-04-20 (W14, Issue #30)** — §9 added: Red spawn contract.
+  `World.spawn_threat` validates `start_xy` per kind (drone /
+  cruise on north land; ballistic / HGV above
+  `STRATEGIC_Y_FLOOR`) and raises `ValueError` on violation.
+  `config.STRATEGIC_Y_FLOOR = 180_000 m` added. Opt-out
+  (`validate_location=False`) for test placement utilities.
+  Wave spawner unaffected — produces valid coords by
+  construction. Existing §9 (silent-no-op register) renumbered
+  to §10. Acceptance harness is
+  `backend/test_red_spawn_contract.py` (13 cases).

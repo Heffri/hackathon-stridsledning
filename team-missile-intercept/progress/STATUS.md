@@ -227,6 +227,54 @@ Per-site HP now decrements per leak (drone 5 / cruise 15 / ballistic 30 / HGV 40
    W13 phase. Server-port discipline respected: 5174 freed between
    phases and at session end.
 
+1.1 **W14 — Red spawn contract landed (Issue #30).** Landed
+   2026-04-20 on branch `new-teamwork-split-V1`. Four commits:
+   `8d081a9` (Subtask A — `STRATEGIC_Y_FLOOR` + 2-case prereq test),
+   `079d5b8` (Subtask B — `World.spawn_threat` validation + opt-out
+   + fix 4 existing tests with latent bad spawns),
+   `6b34290` (Subtask C — extend `test_red_spawn_contract.py` to 13
+   cases incl. default-scenario regression), plus this docs commit
+   (Subtask D).
+
+   Formalises the spatial spawn contract Boyu's future Red AI will
+   consume when it replaces the wave spawner. Today every `spawn_threat`
+   call goes through `red_ai._spawn_point` / `_sample_spawn` which
+   produce contract-compliant coords by construction (drone / cruise
+   via `RED_LAUNCHER_POSITIONS`, ballistic / HGV via `STRATEGIC_Y_BAND`).
+   After W14 the runtime ENFORCES the rule:
+   - Drone / cruise `(x, y)` must lie on north-side land
+     (`terrain.point_on_north_land`) or `spawn_threat` raises
+     `ValueError`.
+   - Ballistic / HGV `y` must be `>= config.STRATEGIC_Y_FLOOR`
+     (`180_000 m`, inclusive) or `ValueError`. Floor is sized so
+     Mach-17 HGV has ~31 s of remaining flight; Mach-13 ballistic
+     ~40 s — giving Blue a realistic engagement window.
+   - Altitude not validated (future scope; altitude is advisory).
+   `ValueError` messages include the offending coord + rule + pointer
+   to the canonical API (`terrain.point_on_north_land` /
+   `config.STRATEGIC_Y_FLOOR`).
+
+   New `validate_location: bool = True` kwarg on `spawn_threat` lets
+   tests that pre-position threats for unit-testing other behaviour
+   (flyover fallback, CIWS saturation, maneuver schedule, winner
+   conditions) opt out. Used by `test_ciws_saturation`,
+   `test_ciws_shot_cap`, `test_winner_budget_not_loss`, and
+   `test_threat_contract`. Production AI callers (current wave
+   spawner, future Boyu Red AI) leave the default.
+
+   Acceptance harness: `backend/test_red_spawn_contract.py` — 13
+   cases. Default-scenario regression confirms the wave spawner is
+   unaffected (26 threats spawn, red.done fires, zero `ValueError`
+   propagation over a 250 s run). Full 16-test suite
+   (the 15 preflight tests + the new file) green both pre- and
+   post-W14. No physics / AI / guidance / snapshot change.
+
+   For Boyu: `world.spawn_threat(kind, (x, y, z), target_xy)` is the
+   entry point; pass coords that satisfy the per-kind rule above and
+   catch `ValueError` on invalid coord to retry or pick a different
+   location. See `game-core/CONTRACT_SEAMS.md §9` for the full rule
+   table + rationale.
+
 0.99 **W12 bugfixes — mouse robustness + click-to-select scope.**
    Landed 2026-04-20 (commits `f878fe3`, `b233fb3`, docs close after).
    Closes two 2026-04-20 post-W11 smoke items, both in the frontend
