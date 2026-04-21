@@ -94,6 +94,37 @@ from sim.types import (
 )
 from sim.world import World
 
+def _patch_numpy_core_for_legacy_pickle() -> None:
+    """Alias numpy._core.* → numpy.core.* for cross-version model loads.
+
+    Boyu's Blue model was saved under numpy>=2.0 where numpy's internal
+    C-extension modules moved from `numpy.core.*` to `numpy._core.*`.
+    Our current env has numpy 1.26. It DOES ship a `numpy._core`
+    forwarding stub (imported transitively by torch / sb3 before this
+    patch runs) but the stub doesn't expose submodules like
+    `numpy._core.numeric`, so the pickled Blue model fails to unpickle.
+    We bind each missing submodule into sys.modules as an alias of the
+    legacy `numpy.core.*` path. Idempotent: each key is only installed
+    if absent.
+    """
+    import sys
+    import types
+    import numpy
+    sys.modules.setdefault("numpy._core", types.ModuleType("numpy._core"))
+    for submod in ("numeric", "multiarray", "_methods", "umath"):
+        key = f"numpy._core.{submod}"
+        if key in sys.modules:
+            continue
+        try:
+            legacy = getattr(numpy.core, submod)
+        except AttributeError:
+            continue
+        alias = types.ModuleType(key)
+        for name in dir(legacy):
+            setattr(alias, name, getattr(legacy, name))
+        sys.modules[key] = alias
+
+
 from rl.env import (
     BUDGET_SCALE,
     DECISION_EVERY,
@@ -173,6 +204,7 @@ class RedEnv(gym.Env):
         # training process's GPU context.
         self._blue_policy_path = blue_policy_path
         if blue_policy_path is not None:
+            _patch_numpy_core_for_legacy_pickle()
             from sb3_contrib import MaskablePPO
             self.blue_policy = MaskablePPO.load(blue_policy_path, device="cpu")
         else:
