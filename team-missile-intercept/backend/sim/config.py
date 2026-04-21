@@ -217,3 +217,15 @@ LAUNCHER_BASE_COSTS: dict = {
 # -245 + 0.519 * 250 = -115) and then world Y = 5000 - scene_z * 1000:
 # world_y ≈ 120_000 m.
 STRAIT_CENTER_Y = 120_000.0  # metres, world coord. Threat spawn Y anchor.
+
+# W14 (Issue #30, 2026-04-20): minimum Y (metres north of origin) at
+# which future Red AI is allowed to spawn a ballistic or HGV threat.
+# Sized so even a Mach-17 HGV has ~31 s of flight time before reaching
+# a typical southern site, giving Blue AI a realistic engagement
+# window. The existing `STRATEGIC_Y_BAND = [235_000, 245_000]` used
+# by today's random wave spawner (in `red_ai.py`) is a narrower
+# sampling range (very far back). The FLOOR is the future-AI rule;
+# the BAND is the current spawner's habit — the wave spawner's sample
+# always satisfies the floor by construction.
+# Inclusive: y == STRATEGIC_Y_FLOOR is valid.
+STRATEGIC_Y_FLOOR = 180_000.0
