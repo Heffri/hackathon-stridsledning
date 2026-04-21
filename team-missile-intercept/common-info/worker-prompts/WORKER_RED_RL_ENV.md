@@ -24,6 +24,7 @@ Boyu is actively working on this branch (on his own machine). **Always `git pull
 
 Start by reading (on branch `rl-self-play-v1`):
 - `CLAUDE.md` (repo root) — project framing
+- **`team-missile-intercept/common-info/gpt_advise_rl_overfitting.md`** — external senior-ML-eng consultation on reward design, action space, overfit risk, and hyperparameters for this exact task. **Read sections 1, 2, 4.** Design decisions in this prompt reflect its recommendations; read it so you understand the rationale behind gamma=0.9995, flat `Discrete` action, normalized reward, and `-5` draw penalty.
 - `team-missile-intercept/backend/rl/env.py` — Boyu's Blue env (`MissileInterceptEnv`). This is the **primary reference** — mirror its shape for Red.
 - `team-missile-intercept/backend/rl/train.py` — Boyu's training entry. Mirror for Red.
 - `team-missile-intercept/backend/rl/eval.py` — eval harness (reference for policy load API)
@@ -33,8 +34,10 @@ Start by reading (on branch `rl-self-play-v1`):
 - `team-missile-intercept/backend/sim/red_ai.py` — see how `RedAI.step(world.t, world)` is invoked in `env.py::step` (you mirror with `BlueAI`)
 - `team-missile-intercept/backend/sim/world.py` — `World.spawn_threat(kind, spawn_pos, target_xy, ...)` — you call this directly from `RedEnv.step`
 - `team-missile-intercept/backend/sim/types.py` — `ThreatType` enum, `ThreatSpec.usd_cost`, `MatchPhase`
-- `team-missile-intercept/backend/sim/config.py` — `RED_BUDGET_START`, `RED_LAUNCHER_POSITIONS`, `RED_SPAWN_Y`
+- `team-missile-intercept/backend/sim/config.py` — `RED_BUDGET_START`, `BLUE_BUDGET_START`, `RED_LAUNCHER_POSITIONS`, `RED_SPAWN_Y`
 - `team-missile-intercept/backend/sim/sites.py` — `SOUTH_SITES` (Blue targets; Red agent picks one per spawn)
+
+**Note on `gpt_advise_rl_overfitting.md`**: that file will be at the above path after Chen commits it alongside this prompt update. If not present at preflight time, proceed without it — the key takeaways are already baked into this prompt's spec sections below.
 
 # Pre-flight
 
@@ -66,46 +69,89 @@ Boyu's `MissileInterceptEnv` trains Blue vs rule-based Red. Your `RedEnv` trains
 
 Reuse Boyu's normalization constants (`POS_SCALE`, `VEL_SCALE`, `BUDGET_SCALE`, `TIME_SCALE`). If they're module-level in `env.py`, import them. Don't duplicate constants.
 
-## Action space
+## Action space — FLAT Discrete (revised per 2026-04-21 external RL consult)
 
-**Per decision:** `MultiDiscrete([5, len(SOUTH_SITES)])`
-- Element 0 (`kind_idx`): `0`=hold, `1`=drone, `2`=cruise_sub, `3`=ballistic, `4`=hgv
-- Element 1 (`target_site_idx`): index into `SOUTH_SITES` tuple (~4–7 entries depending on current arena)
+**Per decision:** `gym.spaces.Discrete(1 + 4 * len(SOUTH_SITES))`
 
-When `kind_idx == 0`, the `target_site_idx` is ignored (hold = no spawn this decision).
+Action layout:
+- `0` = hold (no spawn this decision)
+- `1 + kind * N_SITES + site` = spawn `kind` threat targeting `SOUTH_SITES[site]`, where `kind ∈ {0:drone, 1:cruise_sub, 2:ballistic, 3:hgv}`, `site ∈ [0, N_SITES)`.
 
-**Why not let agent choose launcher / maneuver?** V1 simplification:
+So total action count is `1 + 4 * N_SITES`. For example, with `N_SITES = 5`: actions `1..5` = drone→site_0..4, `6..10` = cruise→..., `11..15` = ballistic→..., `16..20` = hgv→..., `0` = hold.
+
+**Why flat `Discrete` instead of `MultiDiscrete([5, N_SITES])`?** External RL consult (`common-info/gpt_advise_rl_overfitting.md`, section 4) flagged that `MultiDiscrete` factorizes the action distribution as `P(kind, site | obs) = P(kind | obs) × P(site | obs)`, so the policy cannot easily learn coupled strategies like "drones against site A, HGV against site B" — it can only learn one kind distribution and one target distribution independently. `Discrete(1 + 4*N_SITES)` lets the policy head emit a joint distribution, and action masking is exact and simple.
+
+**Why no launcher / maneuver selection?** V1 simplification retained:
 - Launcher is implied by kind:
-  - drone → auto-select from `RED_LAUNCHER_POSITIONS['drone']` (round-robin or random)
+  - drone → auto-select from `RED_LAUNCHER_POSITIONS['drone']` (round-robin or least-recently-used)
   - cruise_sub → auto-select from `RED_LAUNCHER_POSITIONS['cruise_sub']`
   - ballistic → spawn at far-north strip (`y ≈ RED_SPAWN_Y`, random x within arena width; consult `world.py::spawn_threat` for current convention)
   - hgv → same as ballistic
 - maneuver_schedule defaults to empty (no jink). HGV uses default glide-path dive.
 
-Boyu's spec (operator relay) mentioned wanting agent control over launcher + maneuver, but V1 starts simpler. Document this scope cut in the module docstring of `red_env.py`; Boyu can extend later if training plateaus.
+Document this scope cut in the module docstring of `red_env.py` with a TODO for Boyu's extension.
 
 ## Action masking
 
-Invalid actions must be masked to zero in `action_mask`. An action `(kind, site)` is invalid if:
-- `kind != 0` and `world.red_budget < THREAT_SPECS[kind].usd_cost` (can't afford spawn)
-- `kind != 0` and no compatible launcher is ready (reload cooldown not finished — check `RedLauncherFleet` or equivalent; if there's no explicit Red fleet data structure, use a simple per-kind cooldown dict in the env)
-- `kind` spawn rule violated (e.g. kind requires a specific launcher that doesn't exist)
+For `Discrete(1 + 4*N_SITES)`, mask shape is `Box(0, 1, (1 + 4 * len(SOUTH_SITES),), dtype=np.int8)` — one entry per action index.
 
-Hold (`kind_idx == 0`) is always valid.
+Action `0` (hold) is **always valid** (mask=1).
 
-**Mask shape:** `Box(0, 1, (5, len(SOUTH_SITES)), dtype=np.int8)` or `Box(0, 1, (5 * len(SOUTH_SITES),), dtype=np.int8)` flattened — pick whichever `ActionMasker` wrapper accepts cleanly (check how Boyu does it for Blue's `(15, 31)` shape and follow the same idiom).
+Action `1 + kind * N_SITES + site` is valid iff ALL of:
+- `world.red_budget >= THREAT_SPECS[kind].usd_cost` (can afford)
+- A compatible launcher for `kind` is ready (off cooldown, not reloading). For drone/cruise_sub, check `RedLauncherFleet` (or equivalent) state; for ballistic/hgv the "launcher" is the abstract far-north strip so just check a per-kind cooldown dict local to the env.
+- Site at index `site` is still alive (`sites[site].hp > 0`). No point targeting a dead site.
 
-## Reward
+Implement action masking **inside the env's `action_masks()` method** (not via `ActionMasker` wrapper) — per sb3-contrib docs, `ActionMasker` is incompatible with `SubprocVecEnv`, so the env-native approach is required for our 8–16 parallel training. Check Boyu's `env.py` to confirm his pattern; match it.
 
-Dense reward computed each `step()` from events in the sim window (same event stream Blue env reads — flip sign convention):
+## Reward — normalized fractions (revised per 2026-04-21 external RL consult)
 
-- **+damage per leak**: `+float(event.damage)` for each `type: "intercept"` event that Blue scored (wait — those are damage to Red threats, Red doesn't want those). Actually: for `type: "damage"` events where the damage is applied to a Blue **site**, add `+event.damage` to Red reward. These are the "leak + hit site" events. Double-check the event schema by reading `world.py`'s event emitters around intercept / site-hit.
-- **–usd_cost per spawn**: when Red agent spawns a threat, deduct `spec.usd_cost / 1e6` from reward (subtract a small number so 1M-USD spawn = –1.0 reward). Same scale as Blue uses for `+spec.usd_cost / 1e6` on intercepts — keeps magnitudes comparable.
-- **Efficiency penalty**: small `-0.05` per unused-launcher-tick or similar minor regularizer — match Boyu's `-spent/$M * 0.05` pattern if it makes sense for Red (probably not — skip unless Boyu's Blue reward has an exact Red analog).
-- **Terminal**:
-  - **Red wins** (all military sites HP ≤ 0, or `Scenario.winner()` returns `"red"`): `+100.0` bonus, `terminated=True`.
-  - **Blue wins** (`Scenario.winner()` returns `"blue"`): `-100.0`, `terminated=True`.
-  - **Draw / timeout**: no terminal bonus, `truncated=True` when `world.t >= MAX_EPISODE_SIM_TIME`.
+Dense reward computed each `step()` from events in the sim window. Use **normalized fractions**, not raw $USD amounts — this keeps reward scale stable across the episode and comparable to the terminal bonus magnitude. Consult `common-info/gpt_advise_rl_overfitting.md` section 1 for the rationale.
+
+**Per-step dense reward (sum of these components):**
+
+```python
+# At env init, compute the total starting site HP (sum across all Blue sites):
+#     TOTAL_SITE_HP = sum(s.hp_max for s in sites)
+
+# Per step:
+r = 0.0
+
+# (1) +10.0 × Δsite_damage_fraction  — primary Red objective
+#     damage_this_step = sum of event.damage across all "damage" events
+#     where event.target is a Blue site this step
+r += 10.0 * (damage_this_step / TOTAL_SITE_HP)
+
+# (2) -1.0 × Δred_spend_fraction  — cost of spawning (suppresses spam)
+#     red_spend_this_step = spec.usd_cost if the agent spawned this step else 0
+r -= 1.0 * (red_spend_this_step / RED_BUDGET_START)
+
+# (3) +0.1 × Δblue_spend_fraction  — cost-exchange pressure (capped weak shaping)
+#     blue_spend_this_step = sum of interceptor costs launched by BlueAI this step
+#     Keep this weight SMALL (0.05 to 0.2); too high teaches decoy-spam
+r += 0.1 * (blue_spend_this_step / BLUE_BUDGET_START)
+```
+
+**Terminal reward** (applied on episode end, in addition to the dense step reward):
+
+```python
+# Via Scenario.winner() check after the final sim step:
+if winner == "red":
+    r += 20.0     # Red win bonus
+elif winner == "blue":
+    r -= 20.0     # Blue win penalty
+else:  # None / timeout / draw
+    r -= 5.0      # Draw penalty — prevents "hold forever to avoid spawn cost"
+    #             # degenerate policy. Without this, "do nothing" is locally optimal.
+```
+
+**Magnitudes rationale:** with dense-component sum typically in the range `[-1.0, +1.5]` per step × ~1200 steps/episode = `[-1200, +1800]` cumulative dense reward across a full episode. Terminal `±20` is therefore **NOT** dominant (unlike a `+100` terminal that would overwhelm dense signal, or a `+5` terminal that would be ignored). Pick these to sit at "same order of magnitude" as integrated dense reward. See `gpt_advise_rl_overfitting.md` for the reasoning.
+
+**Event schema discovery**: read `backend/sim/world.py`'s event emitters around `intercept`, `damage` (site-hit), and `leak` events. Identify which event reliably fires when a Blue site takes damage (that's the `+10 × Δsite_damage_fraction` source). Boyu's `env.py` already consumes this stream for Blue reward — inspect his code to see the exact event field names.
+
+**What to NOT add:**
+- Do not add a per-tick efficiency penalty like Boyu's Blue `-spent/$M * 0.05`. For Red, the `-Δred_spend_fraction` term already captures the spawn cost; a per-tick regularizer would double-count.
+- Do not add "time pressure" (penalty for long episodes) unless training diagnostics show Red learning to stall. Start without it.
 
 ## Opponent (rule-based Blue)
 
@@ -137,6 +183,27 @@ self.blue.step(self.world.t, self.world)  # mirror Boyu's `self.red.step(world.t
 - `step(action)`: apply Red action (spawn or hold), advance `DECISION_EVERY` ticks calling `world.step(DT)` each tick and `self.blue.step(world.t, world)` once per decision, compute reward, check termination.
 - `MAX_EPISODE_SIM_TIME`: same as Blue (`600.0 s`).
 
+## Discount factor (gamma) — HIGH IMPACT change
+
+**For `red_train.py`: override SB3 PPO's default `gamma=0.99` to `gamma=0.9995`.**
+
+Rationale (per `gpt_advise_rl_overfitting.md` section 1): at `DECISION_EVERY=10` (0.5s sim per decision), a 600s episode has 1200 decisions. With `gamma=0.99`, the effective credit horizon is `1/(1-gamma) = 100 decisions ≈ 50 seconds` — so the terminal win/loss reward is discounted to near-zero from an early-episode decision's perspective. That's why dense shaping matters, but it also means strategy-level learning (when to spawn HGV vs drone, when to save budget) gets no gradient signal.
+
+`gamma=0.9995` gives horizon `~2000 decisions = ~1000s`, covering an entire episode. This is the right scale for competitive game strategy.
+
+Also set `gae_lambda=0.95` (same as Boyu's Blue). Don't tune broadly — `target_kl=0.03` as a safety clamp is worth setting (stops PPO updates that diverge too far, matches SB3 community default for unstable action-space-change runs).
+
+## Observation — ordering matters (documented per external consult)
+
+Since the observation uses fixed-size arrays (`threats[0:MAX_THREATS]`, `launchers[0:MAX_LAUNCHERS]`, etc.), **ordering must be deterministic and meaningful** — not Python spawn order. Per `gpt_advise_rl_overfitting.md` section 4, a plain MLP `MultiInputPolicy` is not permutation-invariant, so bad ordering creates avoidable learning noise.
+
+**Read Boyu's `env.py`** and confirm his ordering scheme. Most likely options:
+- Threats sorted by time-to-impact (ascending) — closest threat first
+- Launchers sorted by `(kind, position_index)` — stable across episodes
+- Interceptors sorted by `(target_id, time-to-intercept)` — ordered by engagement
+
+Match whatever Boyu does. If Boyu's ordering is `arbitrary Python list order` (spawn order), flag that as a concern in your deliverable summary but **do not change his ordering** — consistency between Blue and Red envs matters more than "perfect" ordering. Cross-eval apples-to-apples requires symmetric encoding.
+
 # Task
 
 Five subtasks in order. **One commit per subtask.** Push each after `git pull --ff-only origin rl-self-play-v1` succeeds.
@@ -148,13 +215,14 @@ Five subtasks in order. **One commit per subtask.** Push each after `git pull --
 3. Implement `class RedEnv(gym.Env)` with:
    - `metadata` (standard gym)
    - `__init__(self, episode_time_limit: float = 600.0, seed: int | None = None)`
-   - `observation_space` (Dict, identical to Blue's)
-   - `action_space = MultiDiscrete([5, len(SOUTH_SITES)])`
-   - `_action_mask_shape` + `action_masks()` method returning flat 1D int8 array (shape `(5 * len(SOUTH_SITES),)`)
+   - `observation_space` (Dict, identical to Blue's shape)
+   - `action_space = gym.spaces.Discrete(1 + 4 * len(SOUTH_SITES))` — flat discrete per Action space section above
+   - `action_masks()` method returning 1D int8 array shape `(1 + 4 * len(SOUTH_SITES),)`. Index 0 (hold) always 1; other indices follow validity checks in the Action Masking section above.
    - `reset(seed, options) → (obs_dict, info_dict)`
-   - `step(action) → (obs, reward, terminated, truncated, info)` — applies Red action, steps sim + Blue opponent, returns reward per spec above
-   - Internal: `_apply_action(action: np.ndarray) → (spawned: bool, spec_cost_M: float)` — encapsulates spawn logic + launcher selection
-   - Internal: `_compute_reward(events, spec_cost_M: float) → float` — handles leak/damage/site-hit events from the sim window
+   - `step(action: int) → (obs, reward, terminated, truncated, info)` — applies Red action, steps sim + Blue opponent, returns normalized reward per spec above
+   - Internal: `_decode_action(action: int) → (is_spawn: bool, kind: ThreatType | None, site_idx: int | None)` — decodes the flat action index
+   - Internal: `_apply_action(...) → (spawned: bool, red_spend_usd: float)` — encapsulates spawn logic + launcher selection + budget deduction
+   - Internal: `_compute_reward(damage_this_step, red_spend_usd, blue_spend_usd, winner) → float` — assembles dense + terminal reward per the normalized-fractions spec
    - Internal: `_encode_obs() → dict[str, np.ndarray]` — identical to Blue's encoding
 4. Module docstring at the top documenting:
    - What RedEnv is for (training Red agent in self-play against rule-based Blue)
@@ -175,8 +243,14 @@ Clone `backend/rl/train.py` to `red_train.py`. Change:
 4. Checkpoint prefix: `red_ppo_<step>.zip` (not `blue_ppo_<step>.zip`)
 5. TensorBoard tag: `red/` prefix if Boyu uses tags; else same convention
 6. CLI: `--total-steps`, `--n-envs`, `--episode-time-limit`, etc. — all same defaults as Blue's train.py
+7. **Hyperparameter overrides (HIGH IMPACT — revised per external consult)**:
+   - `gamma = 0.9995` (NOT Boyu's default `0.99` — see Discount factor section above; this is the single most important change)
+   - `gae_lambda = 0.95` (match Boyu if he uses this)
+   - `target_kl = 0.03` (safety clamp — stops PPO updates that diverge too far; match Boyu's value if he has one, otherwise default to 0.03)
+   - Everything else (n_steps, batch_size, n_epochs, clip_range, ent_coef, learning_rate, policy_kwargs / net_arch) **IDENTICAL** to Boyu's `train.py` so cross-eval is apples-to-apples.
+8. **CLI flag `--gamma` exposed** so Chen can ablate it later if needed. Default = 0.9995.
 
-Everything else (hyperparameters, vec env, policy architecture) **identical** to Boyu's `train.py` so cross-machine eval is apples-to-apples.
+The divergence from Boyu's train.py is intentional: Red's strategic horizon (when to save budget for late-game, spawn-decoy-to-drain-Blue tactics) needs a longer discount horizon than Blue's tactical-allocation task. If Boyu later sees Blue policy plateau, he may want to bump his own gamma too — but that's his call, not ours.
 
 **Commit:** `feat(rl): red_train.py — MaskablePPO training entry for RedEnv`
 
@@ -261,14 +335,28 @@ Push.
 4. If stashed at preflight: `git stash pop`.
 5. Re-run smoke one more time to confirm nothing regressed.
 
-# Deliverable — final summary (≤ 400 words)
+# Deliverable — final summary (≤ 500 words)
 
 1. **Commits landed** — hashes + one-line each, 4 or 5.
-2. **RedEnv structure** — file path, action-space shape used, how launcher auto-selection works, any deviations from the spec above with justification.
-3. **Smoke test output** — one-liner: "100 steps, no NaN, winner distribution X/Y Red/Blue, avg reward Z".
-4. **Training CLI smoke** — did `red_train.py --total-steps 1000 --n-envs 2` start cleanly? Any SB3 warnings that look serious?
-5. **Divergence from Blue's env** — list non-symmetric differences, explain.
-6. **Things flagged for Boyu** — design decisions this worker deferred (launcher-choice, maneuver_schedule, cross-eval in eval.py), anything Boyu should review before training.
-7. **Anything surprising** — type signatures that didn't match expectations, sim bookkeeping corner cases, mask-shape tricks.
+2. **RedEnv structure** — file path, action-space shape used (`Discrete(1 + 4*N_SITES)` = ? for current `N_SITES`), how launcher auto-selection works, any deviations from the spec above with justification.
+3. **Reward wiring** — which sim events feed each reward component, what denominators you used for normalization (`TOTAL_SITE_HP`, `RED_BUDGET_START`, `BLUE_BUDGET_START`). Confirm the draw penalty fires on timeout.
+4. **Hyperparameter overrides in red_train.py** — confirm `gamma=0.9995` is set (not inherited default), `target_kl=0.03` safety clamp applied. Note if Boyu's `train.py` defined any of these differently at the time of cloning.
+5. **Smoke test output** — one-liner: "100 steps, no NaN, winner distribution X/Y Red/Blue, mean episode reward Z".
+6. **Training CLI smoke** — did `red_train.py --total-steps 1000 --n-envs 2` start cleanly? Any SB3 warnings that look serious (e.g. action-mask shape mismatch, device warnings on Blackwell sm_120 GPU)?
+7. **Divergence from Blue's env** — list non-symmetric differences, explain. Include: action space flat-vs-factorized, reward normalized-vs-raw, gamma 0.9995-vs-0.99.
+8. **Things flagged for Boyu** — action items for his review:
+   - Design decisions this worker deferred (launcher-choice, maneuver_schedule in Red action space, cross-eval in eval.py for Red policies)
+   - **Verify Boyu's Blue efficiency penalty semantics**: the spec `-spent/$M * 0.05` in `env.py` — confirm `spent` is **new spending this decision step**, NOT cumulative. If cumulative, that's a bug penalizing the same launch repeatedly every decision after it happens (flagged by external RL consult). Don't fix Boyu's env; just flag in the summary so Chen can relay.
+   - If Boyu's ordering scheme in obs arrays is `spawn order` rather than `time-to-impact` / `distance` / `id`, flag as a latent learning-noise concern for him to consider (again, don't change, just flag).
+9. **Anything surprising** — type signatures that didn't match expectations, sim bookkeeping corner cases, mask-shape tricks, event schema surprises.
+10. **TensorBoard red flags to watch during Chen's real training** — include in summary so Chen knows what to monitor:
+    - `explained_variance < 0` for long periods → reward/obs scale broken
+    - `approx_kl > 0.03–0.05` repeatedly → policy updates too aggressive, LR too high
+    - `clip_fraction > 0.3–0.5` constantly → updates too large
+    - `entropy` collapses very early → policy degenerate (one action dominates)
+    - `entropy` stays max + `ep_rew_mean` flat → not learning (reward / mask bug)
+    - `value_loss` huge or exploding → reward scale miscalibration
 
-Chen will launch the real training manually after reading this summary. Expected launch command: `python team-missile-intercept/backend/rl/red_train.py --total-steps 1000000 --n-envs 8` on Chen's PC while Boyu trains Blue on his machine in parallel.
+Chen will launch the real training manually after reading this summary. Expected launch command: `python team-missile-intercept/backend/rl/red_train.py --total-steps 1000000 --n-envs 16 --gamma 0.9995` on Chen's PC (5950X + 5070) while Boyu trains Blue on his machine in parallel. Expected wall-clock at Chen's hardware: 30-60 minutes for 1M steps.
+
+**Phase 2 follow-up (not this worker's scope)**: after Phase 1 lands, a separate follow-up worker will implement opponent-pool fine-tuning (Red2 vs [rule_Blue + Blue1], Blue2 vs [Red1 + Red2 + rule_Red]) and tournament cross-eval to select the final demo pair. That worker needs the `eval.py` extension hinted at in Subtask E. You don't do any of that here — just make sure your RedEnv is stable and document the seams cleanly so that follow-up has a good base.
