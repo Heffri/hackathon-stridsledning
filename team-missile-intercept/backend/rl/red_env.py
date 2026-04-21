@@ -71,10 +71,11 @@ from sim.config import (
     ARENA_X,
     BLUE_BUDGET_START,
     DT,
+    LAUNCH_RANGE_MARGIN,
     RED_BUDGET_START,
     SITE_HP_START,
 )
-from sim.launcher import RedLauncherFleet
+from sim.launcher import LauncherFleet, RedLauncherFleet
 from sim.red_ai import (
     BALLISTIC_ALT_RANGE,
     BALLISTIC_MIN_Z,
@@ -149,6 +150,7 @@ class RedEnv(gym.Env):
         self,
         seed: Optional[int] = None,
         episode_time_limit: float = MAX_EPISODE_SIM_TIME,
+        blue_policy_path: Optional[str] = None,
     ):
         super().__init__()
         self._seed = seed
@@ -160,9 +162,21 @@ class RedEnv(gym.Env):
         self._build_spaces()
         self.world: Optional[World] = None
         self.blue: Optional[BlueAI] = None
+        self.blue_fleet: Optional[LauncherFleet] = None
         self.red_launchers: Optional[RedLauncherFleet] = None
         self.rng: Optional[np.random.Generator] = None
         self._cum_reward: float = 0.0
+        # Learned-Blue opponent. When None, rule-based BlueAI is used.
+        # When a path is given, the policy is loaded ONCE here (per
+        # process — under SubprocVecEnv each worker loads its own copy).
+        # Device forced to CPU so subprocess inference doesn't share the
+        # training process's GPU context.
+        self._blue_policy_path = blue_policy_path
+        if blue_policy_path is not None:
+            from sb3_contrib import MaskablePPO
+            self.blue_policy = MaskablePPO.load(blue_policy_path, device="cpu")
+        else:
+            self.blue_policy = None
 
     def _build_spaces(self):
         mask_len = N_RED_KINDS + self._n_sites
@@ -191,10 +205,18 @@ class RedEnv(gym.Env):
         self.rng = np.random.default_rng(seed)
         sites_module.reset_leaks()
         self.world = World()
-        # BlueAI owns its own LauncherFleet (constructed from
-        # config.BLUE_LAUNCHER_POSITIONS). Mirrors how env.py uses its
-        # own fleet — except here the fleet belongs to the opponent.
-        self.blue = BlueAI()
+        # Rule Blue: BlueAI owns its own LauncherFleet (constructed from
+        # config.BLUE_LAUNCHER_POSITIONS). Learned Blue: we own the
+        # LauncherFleet directly and drive it from policy.predict
+        # (mirroring env.py's MissileInterceptEnv ownership). In both
+        # cases `self.blue_fleet` points at the active fleet so the obs
+        # encoder has one uniform lookup.
+        if self.blue_policy is None:
+            self.blue = BlueAI()
+            self.blue_fleet = self.blue.launchers
+        else:
+            self.blue = None
+            self.blue_fleet = LauncherFleet()
         # Red launcher fleet is used only for `positions_for(kind)` /
         # `next_pos(kind)` lookups; no ammo / cooldown bookkeeping.
         self.red_launchers = RedLauncherFleet()
@@ -216,14 +238,36 @@ class RedEnv(gym.Env):
         # snapshotted inside _apply_action via the returned cost.
         prev_blue_budget = self.world.blue_budget
 
-        # Apply Red action first (spawn or hold). Deducts red_budget
+        # Learned Blue acts FIRST, using pre-Red-action world state.
+        # Matches Boyu's training distribution: during Blue training,
+        # Blue's obs reflected state before the current-window Red AI
+        # step ran inside the inner loop — Red's new spawn this window
+        # only became visible next decision. Applying Blue before Red
+        # here keeps that input distribution consistent.
+        if self.blue_policy is not None:
+            blue_obs = self._encode_obs_blue()
+            blue_mask_flat = blue_obs["action_mask"].reshape(-1).astype(np.int8)
+            blue_action, _ = self.blue_policy.predict(
+                blue_obs, deterministic=False, action_masks=blue_mask_flat
+            )
+            self._apply_blue_action(np.asarray(blue_action).reshape(-1))
+
+        # Apply Red action (spawn or hold). Deducts red_budget
         # inside on success; returns the raw USD spawn cost.
         spawned, spawn_cost_usd = self._apply_action(action)
 
         event_reward = 0.0
         for _ in range(DECISION_EVERY):
             self.world.events = []
-            self.blue.step(self.world.t, self.world)
+            if self.blue_policy is None:
+                # Rule Blue: runs its own decision logic every tick and
+                # ticks its internal fleet inside step().
+                self.blue.step(self.world.t, self.world)
+            else:
+                # Learned Blue: fleet tick advances reload / CD timers.
+                # Firing decisions already made ONCE at the top of this
+                # step() call; no per-tick policy calls.
+                self.blue_fleet.tick(self.world.t)
             # No RedLauncherFleet.tick() — fleet is ammo-less (see
             # launcher.RedLauncher docstring).
             self.world.step(DT)
@@ -476,17 +520,122 @@ class RedEnv(gym.Env):
         return mask
 
     # ------------------------------------------------------------------
+    # Learned-Blue opponent helpers. Only used when blue_policy is set.
+    # All three are ports of the matching methods in
+    # rl.env.MissileInterceptEnv — we mirror rather than import so the
+    # fleet/threat lookups bind to RedEnv's state.
+    def _build_blue_action_mask_2d(self) -> np.ndarray:
+        """2D Blue action mask of shape (MAX_LAUNCHERS, MAX_THREATS+1),
+        int8. Row l col c = 1 iff launcher l firing at threat-slot c is
+        legal this tick. Col MAX_THREATS = hold, always 1 for live or
+        pad launcher rows so MaskablePPO can always pick at least one
+        legal sub-action per dim.
+        """
+        threats = self._alive_threats()
+        launchers = self.blue_fleet.launchers[:MAX_LAUNCHERS]
+        mask = np.zeros((MAX_LAUNCHERS, MAX_THREATS + 1), dtype=np.int8)
+        t_now = self.world.t
+        for l_idx in range(MAX_LAUNCHERS):
+            if l_idx >= len(launchers):
+                mask[l_idx, MAX_THREATS] = 1
+                continue
+            lch = launchers[l_idx]
+            mask[l_idx, MAX_THREATS] = 1  # hold always valid
+            if lch.reloading or not lch.can_fire(t_now):
+                continue
+            spec = INTERCEPTOR_SPECS[lch.kind]
+            max_range = spec.max_range * LAUNCH_RANGE_MARGIN
+            for t_idx, th in enumerate(threats):
+                if t_idx >= MAX_THREATS:
+                    break
+                if not th.state.alive:
+                    continue
+                dx = float(th.state.pos[0] - lch.pos[0])
+                dy = float(th.state.pos[1] - lch.pos[1])
+                dz = float(th.state.pos[2])
+                dist = (dx * dx + dy * dy + dz * dz) ** 0.5
+                if dist <= max_range:
+                    mask[l_idx, t_idx] = 1
+        return mask
+
+    def _encode_obs_blue(self) -> dict:
+        """Observation for learned Blue policy inference.
+
+        Identical to `_encode_obs` except `action_mask` is the 2D Blue
+        shape (MAX_LAUNCHERS, MAX_THREATS+1) instead of Red's flat
+        marginal. Blue's CombinedExtractor was trained on the 2D shape;
+        feeding the Red-shaped mask would error on a per-key reshape.
+        """
+        obs = self._encode_obs()
+        obs["action_mask"] = self._build_blue_action_mask_2d()
+        return obs
+
+    def _apply_blue_action(self, action: np.ndarray) -> int:
+        """Execute Blue's learned-policy action against the world.
+
+        Port of rl.env.MissileInterceptEnv._apply_action. `action` has
+        shape (MAX_LAUNCHERS,), values in [0, MAX_THREATS]. Value
+        MAX_THREATS means hold; otherwise launcher `l_idx` fires at
+        threat-slot `action[l_idx]`. Invalid fires are silently skipped
+        — the action mask should have blocked them but we defensively
+        re-check (in-range / ready / threat-alive). Threat-slot order
+        matches `_alive_threats()` which mirrors env.py's iteration
+        order (dict insertion order on `world.threats`), so learned
+        Blue's index → threat mapping is consistent with its training.
+        Returns the count of successful fires (not currently used, but
+        retained for parity with env.py + future info-dict wiring).
+        """
+        launchers = self.blue_fleet.launchers
+        threats = self._alive_threats()
+        n_fires = 0
+        for l_idx, a in enumerate(action):
+            if l_idx >= len(launchers):
+                break
+            a_int = int(a)
+            if a_int >= MAX_THREATS:
+                continue  # hold
+            if a_int >= len(threats):
+                continue  # pad slot target
+            lch = launchers[l_idx]
+            if lch.reloading or not lch.can_fire(self.world.t):
+                continue
+            threat = threats[a_int]
+            if not threat.state.alive:
+                continue
+            spec = INTERCEPTOR_SPECS[lch.kind]
+            t_pos = threat.state.pos
+            dx = float(t_pos[0] - lch.pos[0])
+            dy = float(t_pos[1] - lch.pos[1])
+            dz = float(t_pos[2])
+            dist = (dx * dx + dy * dy + dz * dz) ** 0.5
+            if dist > spec.max_range * LAUNCH_RANGE_MARGIN:
+                continue
+            mode = lch.fire(self.world.t)
+            self.world.spawn_interceptor(
+                lch.kind,
+                (lch.pos[0], lch.pos[1], 0.0),
+                (dx, dy, dz),
+                threat.state.id,
+                mode,
+            )
+            self.world.blue_budget = max(
+                0, self.world.blue_budget - spec.usd_cost
+            )
+            n_fires += 1
+        return n_fires
+
+    # ------------------------------------------------------------------
     def _encode_obs(self) -> dict:
         """Omniscient Dict observation — same shape + fields as Blue env.
 
         Adapted from rl.env.MissileInterceptEnv._encode_obs:
-        `self.blue.launchers` replaces `self.fleet`; other logic is
+        `self.blue_fleet` replaces `self.fleet`; other logic is
         identical. Kept as a method (not imported from env.py) because
         it references `self`-bound fleet / world state and the Blue env
         class hierarchy doesn't support the substitution cleanly.
         """
         threats = self._alive_threats()
-        launchers = self.blue.launchers.launchers[:MAX_LAUNCHERS]
+        launchers = self.blue_fleet.launchers[:MAX_LAUNCHERS]
         interceptors = self._alive_interceptors()
         sites = sites_module.SOUTH_SITES[:MAX_SITES]
         t_now = self.world.t
