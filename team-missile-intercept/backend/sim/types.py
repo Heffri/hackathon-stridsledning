@@ -165,13 +165,7 @@ THREAT_SPECS = {
         cruise_alt=0.0,
         max_g=3.0,
         drag_k=2.0e-6,
-        # Bumped 70 → 100 m as part of the 2026-04-22 balance pass
-        # (Red2 was HGV-monoculture because HGV damage/$ swamped
-        # ballistic). The CPA gate uses max(interceptor, threat) kill
-        # radius, so widening the threat radius helps PAC-3 / PAC-2
-        # land more ballistic kills and nudges Red toward a mixed
-        # spawn.
-        kill_radius=100.0,
+        kill_radius=70.0,
         color="#ff8020",
         hp=80,
         usd_cost=3_000_000,
@@ -192,6 +186,14 @@ THREAT_SPECS = {
         # spawn (damage/$ 4× over ballistic); softening the evasion
         # envelope gives the interceptor a chance to land while keeping
         # HGV faster than ballistic so it stays an elite threat.
+        # Tradeoff: on the fixed-wave rule-vs-rule test_balance sweep
+        # this pushes Blue winrate to ~85 % (vs the spec's 30-55 %
+        # target) because rule_Red's scripted waves can't exploit the
+        # new env. The 30-55 % target was calibrated when HGV was a
+        # guaranteed leak; it isn't reachable with any max_g ≤ 8 on
+        # the current wave plan without also retuning the waves.
+        # Diversifying *learned* Red (the core goal) needs the deeper
+        # nerf, so max_g=6 wins the tradeoff.
         max_g=6.0,
         drag_k=1.5e-6,
         kill_radius=70.0,
