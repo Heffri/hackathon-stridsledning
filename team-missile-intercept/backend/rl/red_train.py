@@ -52,12 +52,20 @@ def mask_fn(env: RedEnv) -> np.ndarray:
     return base.action_masks()
 
 
-def make_env(seed: int, episode_time_limit: float, blue_policy_path=None):
+def make_env(
+    seed: int,
+    episode_time_limit: float,
+    blue_policy_path=None,
+    blue_opponent_pool=None,
+    blue_opponent_weights=None,
+):
     def _init():
         env = RedEnv(
             seed=seed,
             episode_time_limit=episode_time_limit,
             blue_policy_path=blue_policy_path,
+            blue_opponent_pool=blue_opponent_pool,
+            blue_opponent_weights=blue_opponent_weights,
         )
         env = Monitor(env)
         env = ActionMasker(env, mask_fn)
@@ -70,14 +78,46 @@ def build_vec_env(
     episode_time_limit: float,
     base_seed: int = 0,
     blue_policy_path=None,
+    blue_opponent_pool=None,
+    blue_opponent_weights=None,
 ):
     fns = [
-        make_env(base_seed + i, episode_time_limit, blue_policy_path)
+        make_env(
+            base_seed + i,
+            episode_time_limit,
+            blue_policy_path=blue_policy_path,
+            blue_opponent_pool=blue_opponent_pool,
+            blue_opponent_weights=blue_opponent_weights,
+        )
         for i in range(n_envs)
     ]
     vec = SubprocVecEnv(fns, start_method="spawn")
     vec = VecMonitor(vec)
     return vec
+
+
+def _parse_pool_args(pool_str, weights_str):
+    """Parse --opponent-pool / --opponent-weights CLI into env kwargs.
+
+    `--opponent-pool "rule,path1,path2"` splits on commas; whitespace
+    around entries is trimmed and empties dropped. The "rule" sentinel
+    is propagated verbatim — RedEnv translates it to None (rule BlueAI).
+    Returns (pool_list, weights_list) or (None, None) if pool is unset.
+    """
+    if pool_str is None:
+        return None, None
+    pool = [s.strip() for s in pool_str.split(",") if s.strip()]
+    if not pool:
+        return None, None
+    weights = None
+    if weights_str is not None:
+        weights = [float(s) for s in weights_str.split(",") if s.strip()]
+        if len(weights) != len(pool):
+            raise ValueError(
+                f"--opponent-weights length ({len(weights)}) must match "
+                f"--opponent-pool length ({len(pool)})"
+            )
+    return pool, weights
 
 
 def main():
@@ -115,8 +155,26 @@ def main():
     # BlueAI is used (current default). Threaded into each RedEnv via
     # blue_policy_path so every subproc env loads its own inference copy.
     ap.add_argument("--blue-opponent", default=None,
-                    help="Path to MaskablePPO Blue model.zip opponent")
+                    help="Path to MaskablePPO Blue model.zip opponent "
+                         "(single-opponent shortcut; ignored if "
+                         "--opponent-pool is set)")
+    # Opponent pool — comma-separated list for self-play robustness. The
+    # "rule" entry stands for rule-based BlueAI; every other entry is a
+    # path to a Blue model.zip. Weights are optional and default to
+    # uniform. Each episode, RedEnv samples one opponent per the
+    # weights. Prevents catastrophic forgetting from single-opponent
+    # fine-tunes observed in the earlier Phase 4 500K round.
+    ap.add_argument("--opponent-pool", default=None,
+                    help="Comma-separated Blue opponents: 'rule' or "
+                         "model.zip paths. E.g. "
+                         "'rule,rl/models/blue1/model.zip,rl/runs/blue_3/model.zip'")
+    ap.add_argument("--opponent-weights", default=None,
+                    help="Comma-separated per-opponent sampling weights "
+                         "(default: uniform). Must match --opponent-pool "
+                         "length; auto-normalized to sum=1.")
     args = ap.parse_args()
+
+    opp_pool, opp_weights = _parse_pool_args(args.opponent_pool, args.opponent_weights)
 
     ts = time.strftime("%Y%m%d_%H%M%S")
     # `red_<ts>` visually distinguishes Red training runs from Boyu's
@@ -132,6 +190,8 @@ def main():
         args.n_envs,
         args.episode_time_limit,
         blue_policy_path=args.blue_opponent,
+        blue_opponent_pool=opp_pool,
+        blue_opponent_weights=opp_weights,
     )
 
     policy_kwargs = dict(
@@ -179,7 +239,11 @@ def main():
     print(f"total-steps={args.total_steps:,} n-envs={args.n_envs} device={args.device}")
     print(f"episode-time-limit={args.episode_time_limit}s")
     print(f"warmstart={args.warmstart or '(none, fresh init)'}")
-    print(f"blue-opponent={args.blue_opponent or '(rule BlueAI)'}")
+    if opp_pool is not None:
+        print(f"opponent-pool={opp_pool}")
+        print(f"opponent-weights={list(opp_weights) if opp_weights else '(uniform)'}")
+    else:
+        print(f"blue-opponent={args.blue_opponent or '(rule BlueAI)'}")
     print(f"writing to {run_dir}")
 
     t0 = time.time()

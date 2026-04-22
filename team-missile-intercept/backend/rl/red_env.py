@@ -182,6 +182,8 @@ class RedEnv(gym.Env):
         seed: Optional[int] = None,
         episode_time_limit: float = MAX_EPISODE_SIM_TIME,
         blue_policy_path: Optional[str] = None,
+        blue_opponent_pool: Optional[List] = None,
+        blue_opponent_weights: Optional[List[float]] = None,
     ):
         super().__init__()
         self._seed = seed
@@ -197,18 +199,47 @@ class RedEnv(gym.Env):
         self.red_launchers: Optional[RedLauncherFleet] = None
         self.rng: Optional[np.random.Generator] = None
         self._cum_reward: float = 0.0
-        # Learned-Blue opponent. When None, rule-based BlueAI is used.
-        # When a path is given, the policy is loaded ONCE here (per
-        # process — under SubprocVecEnv each worker loads its own copy).
-        # Device forced to CPU so subprocess inference doesn't share the
-        # training process's GPU context.
+        # Opponent pool. Each entry is either a path to a Blue model.zip
+        # or None (sentinel for rule BlueAI). Per-episode reset() samples
+        # one entry per `_blue_pool_weights`. Back-compat: the legacy
+        # single-path `blue_policy_path` becomes a 1-entry pool; when
+        # both are given, the pool wins.
         self._blue_policy_path = blue_policy_path
-        if blue_policy_path is not None:
+        if blue_opponent_pool is None:
+            if blue_policy_path is not None:
+                blue_opponent_pool = [blue_policy_path]
+            else:
+                blue_opponent_pool = [None]
+        # Accept the "rule" string sentinel the CLI uses so callers
+        # don't have to translate to None themselves.
+        self._blue_pool = [None if p == "rule" else p for p in blue_opponent_pool]
+        if blue_opponent_weights is None:
+            n = len(self._blue_pool)
+            self._blue_pool_weights = np.full(n, 1.0 / n, dtype=np.float64)
+        else:
+            if len(blue_opponent_weights) != len(self._blue_pool):
+                raise ValueError(
+                    "blue_opponent_weights length must match pool length"
+                )
+            w = np.asarray(blue_opponent_weights, dtype=np.float64)
+            total = float(w.sum())
+            if total <= 0:
+                raise ValueError("blue_opponent_weights must sum to > 0")
+            self._blue_pool_weights = w / total
+        # Eager-load each unique learned policy in the pool. SubprocVecEnv
+        # workers each get their own copy — memory cost scales with
+        # n_envs * |pool| but avoids the per-episode load latency.
+        self._blue_pool_policies = {}
+        if any(p is not None for p in self._blue_pool):
             _patch_numpy_core_for_legacy_pickle()
             from sb3_contrib import MaskablePPO
-            self.blue_policy = MaskablePPO.load(blue_policy_path, device="cpu")
-        else:
-            self.blue_policy = None
+            for path in self._blue_pool:
+                if path is None or path in self._blue_pool_policies:
+                    continue
+                self._blue_pool_policies[path] = MaskablePPO.load(path, device="cpu")
+        # Per-episode bindings — reset() fills these.
+        self.blue_policy = None
+        self._active_opponent_path: Optional[str] = None
 
     def _build_spaces(self):
         mask_len = N_RED_KINDS + self._n_sites
@@ -237,6 +268,17 @@ class RedEnv(gym.Env):
         self.rng = np.random.default_rng(seed)
         sites_module.reset_leaks()
         self.world = World()
+        # Sample this episode's Blue opponent from the pool. `None` ==
+        # rule BlueAI; any other entry is a path that eager-loaded into
+        # `_blue_pool_policies` at __init__. `self._active_opponent_path`
+        # is logged on the first-step info dict for offline diagnosis of
+        # opponent-mix coverage across a training run.
+        idx = int(self.rng.choice(len(self._blue_pool), p=self._blue_pool_weights))
+        chosen = self._blue_pool[idx]
+        self._active_opponent_path = chosen
+        self.blue_policy = (
+            self._blue_pool_policies[chosen] if chosen is not None else None
+        )
         # Rule Blue: BlueAI owns its own LauncherFleet (constructed from
         # config.BLUE_LAUNCHER_POSITIONS). Learned Blue: we own the
         # LauncherFleet directly and drive it from policy.predict

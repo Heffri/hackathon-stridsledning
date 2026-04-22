@@ -117,6 +117,8 @@ class BlueSelfPlayEnv(MissileInterceptEnv):
         red_policy_path: Optional[str] = None,
         seed: Optional[int] = None,
         episode_time_limit: Optional[float] = None,
+        red_opponent_pool: Optional[List] = None,
+        red_opponent_weights: Optional[List[float]] = None,
     ):
         kwargs = {"seed": seed}
         if episode_time_limit is not None:
@@ -127,11 +129,46 @@ class BlueSelfPlayEnv(MissileInterceptEnv):
         self._red_seed = seed
         self._n_sites = max(1, len(sites_module.SOUTH_SITES))
 
-        if red_policy_path is not None:
-            from sb3_contrib import MaskablePPO
-            self.red_policy = MaskablePPO.load(red_policy_path, device="cpu")
+        # Opponent pool. Each entry is either a path to a Red model.zip
+        # or None (sentinel for rule RedAI). Per-episode reset() samples
+        # one entry per `_red_pool_weights`. Back-compat: the legacy
+        # single-path `red_policy_path` becomes a 1-entry pool; when both
+        # are given, the pool wins.
+        if red_opponent_pool is None:
+            if red_policy_path is not None:
+                red_opponent_pool = [red_policy_path]
+            else:
+                red_opponent_pool = [None]
+        # Accept the "rule" string sentinel the CLI uses so callers
+        # don't have to translate to None themselves.
+        self._red_pool = [None if p == "rule" else p for p in red_opponent_pool]
+        if red_opponent_weights is None:
+            n = len(self._red_pool)
+            self._red_pool_weights = np.full(n, 1.0 / n, dtype=np.float64)
         else:
-            self.red_policy = None
+            if len(red_opponent_weights) != len(self._red_pool):
+                raise ValueError(
+                    "red_opponent_weights length must match pool length"
+                )
+            w = np.asarray(red_opponent_weights, dtype=np.float64)
+            total = float(w.sum())
+            if total <= 0:
+                raise ValueError("red_opponent_weights must sum to > 0")
+            self._red_pool_weights = w / total
+
+        # Eager-load each unique learned policy in the pool. One copy
+        # per unique path — SubprocVecEnv workers each get their own.
+        self._red_pool_policies = {}
+        if any(p is not None for p in self._red_pool):
+            from sb3_contrib import MaskablePPO
+            for path in self._red_pool:
+                if path is None or path in self._red_pool_policies:
+                    continue
+                self._red_pool_policies[path] = MaskablePPO.load(path, device="cpu")
+
+        # Per-episode bindings — reset() fills these.
+        self.red_policy = None
+        self._active_opponent_path: Optional[str] = None
 
         self.red_launchers: Optional[RedLauncherFleet] = None
         self._red_rng: Optional[np.random.Generator] = None
@@ -141,12 +178,29 @@ class BlueSelfPlayEnv(MissileInterceptEnv):
         obs, info = super().reset(seed=seed, options=options)
         if seed is not None:
             self._red_seed = seed
+        # Sample this episode's Red opponent from the pool. `None` ==
+        # rule RedAI (the parent already installed it in super().reset,
+        # so we leave self.red alone); any other entry is a path that
+        # eager-loaded into `_red_pool_policies` at __init__.
+        # `_active_opponent_path` is tracked for diagnostic visibility.
+        # Use a dedicated RNG here so opponent sampling is decoupled
+        # from the parent env's seeded physics rng.
+        if self._red_rng is None:
+            self._red_rng = np.random.default_rng(self._red_seed)
+        idx = int(self._red_rng.choice(
+            len(self._red_pool), p=self._red_pool_weights
+        ))
+        chosen = self._red_pool[idx]
+        self._active_opponent_path = chosen
+        self.red_policy = (
+            self._red_pool_policies[chosen] if chosen is not None else None
+        )
         if self.red_policy is not None:
             # Override the rule RedAI the parent just installed with a
             # no-op stand-in. Learned Red drives spawns from `step`.
             self.red = _NoOpRedAI()
             self.red_launchers = RedLauncherFleet()
-            self._red_rng = np.random.default_rng(self._red_seed)
+        # else: keep parent's rule RedAI + rule Blue-owned fleet.
         return obs, info
 
     # ------------------------------------------------------------------

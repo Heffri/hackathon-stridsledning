@@ -64,12 +64,20 @@ def mask_fn(env: BlueSelfPlayEnv) -> np.ndarray:
     return mask2d.reshape(-1).astype(np.int8)
 
 
-def make_env(seed: int, episode_time_limit: float, red_policy_path=None):
+def make_env(
+    seed: int,
+    episode_time_limit: float,
+    red_policy_path=None,
+    red_opponent_pool=None,
+    red_opponent_weights=None,
+):
     def _init():
         env = BlueSelfPlayEnv(
             red_policy_path=red_policy_path,
             seed=seed,
             episode_time_limit=episode_time_limit,
+            red_opponent_pool=red_opponent_pool,
+            red_opponent_weights=red_opponent_weights,
         )
         env = Monitor(env)
         env = ActionMasker(env, mask_fn)
@@ -82,14 +90,44 @@ def build_vec_env(
     episode_time_limit: float,
     base_seed: int = 0,
     red_policy_path=None,
+    red_opponent_pool=None,
+    red_opponent_weights=None,
 ):
     fns = [
-        make_env(base_seed + i, episode_time_limit, red_policy_path)
+        make_env(
+            base_seed + i,
+            episode_time_limit,
+            red_policy_path=red_policy_path,
+            red_opponent_pool=red_opponent_pool,
+            red_opponent_weights=red_opponent_weights,
+        )
         for i in range(n_envs)
     ]
     vec = SubprocVecEnv(fns, start_method="spawn")
     vec = VecMonitor(vec)
     return vec
+
+
+def _parse_pool_args(pool_str, weights_str):
+    """Parse --opponent-pool / --opponent-weights CLI into env kwargs.
+
+    Same semantics as red_train._parse_pool_args — duplicated here so
+    blue_train is usable without importing from the Red module.
+    """
+    if pool_str is None:
+        return None, None
+    pool = [s.strip() for s in pool_str.split(",") if s.strip()]
+    if not pool:
+        return None, None
+    weights = None
+    if weights_str is not None:
+        weights = [float(s) for s in weights_str.split(",") if s.strip()]
+        if len(weights) != len(pool):
+            raise ValueError(
+                f"--opponent-weights length ({len(weights)}) must match "
+                f"--opponent-pool length ({len(pool)})"
+            )
+    return pool, weights
 
 
 def main():
@@ -118,8 +156,23 @@ def main():
                          "(preserves lr/gamma/etc from saved checkpoint)")
     ap.add_argument("--red-opponent", default=None,
                     help="Path to learned Red model.zip. When unset, rule "
-                         "RedAI is used (equivalent to rl.train).")
+                         "RedAI is used (equivalent to rl.train). Ignored "
+                         "if --opponent-pool is set.")
+    # Opponent pool for self-play robustness. See red_train.py for the
+    # symmetric flag on the Red-training side. The "rule" entry stands
+    # for rule-based RedAI; every other entry is a path to a Red
+    # model.zip. Weights optional, default uniform.
+    ap.add_argument("--opponent-pool", default=None,
+                    help="Comma-separated Red opponents: 'rule' or "
+                         "model.zip paths. E.g. "
+                         "'rule,rl/runs/red_1/model.zip,rl/runs/red_3/model.zip'")
+    ap.add_argument("--opponent-weights", default=None,
+                    help="Comma-separated per-opponent sampling weights "
+                         "(default: uniform). Must match --opponent-pool "
+                         "length; auto-normalized to sum=1.")
     args = ap.parse_args()
+
+    opp_pool, opp_weights = _parse_pool_args(args.opponent_pool, args.opponent_weights)
 
     run_dir = Path(args.output_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -131,6 +184,8 @@ def main():
         args.n_envs,
         args.episode_time_limit,
         red_policy_path=args.red_opponent,
+        red_opponent_pool=opp_pool,
+        red_opponent_weights=opp_weights,
     )
 
     policy_kwargs = dict(
@@ -178,7 +233,11 @@ def main():
     print(f"timesteps={args.timesteps:,} n-envs={args.n_envs} device={args.device}")
     print(f"episode-time-limit={args.episode_time_limit}s gamma={args.gamma}")
     print(f"warmstart={args.warmstart or '(none, fresh init)'}")
-    print(f"red-opponent={args.red_opponent or '(rule RedAI)'}")
+    if opp_pool is not None:
+        print(f"opponent-pool={opp_pool}")
+        print(f"opponent-weights={list(opp_weights) if opp_weights else '(uniform)'}")
+    else:
+        print(f"red-opponent={args.red_opponent or '(rule RedAI)'}")
     print(f"writing to {run_dir}")
 
     t0 = time.time()
