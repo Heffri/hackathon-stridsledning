@@ -32,6 +32,8 @@ Mirror of `rl.red_train` for the Blue side of self-play:
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 import time
 from pathlib import Path
 
@@ -73,6 +75,7 @@ def make_env(
     reward_site_survival=0.02,
     reward_intercept=0.5,
     reward_red_drain=5.0,
+    layouts_pool=None,
 ):
     def _init():
         env = BlueSelfPlayEnv(
@@ -84,6 +87,7 @@ def make_env(
             reward_site_survival=reward_site_survival,
             reward_intercept=reward_intercept,
             reward_red_drain=reward_red_drain,
+            layouts_pool=layouts_pool,
         )
         env = Monitor(env)
         env = ActionMasker(env, mask_fn)
@@ -101,6 +105,7 @@ def build_vec_env(
     reward_site_survival=0.02,
     reward_intercept=0.5,
     reward_red_drain=5.0,
+    layouts_pool=None,
 ):
     fns = [
         make_env(
@@ -112,12 +117,49 @@ def build_vec_env(
             reward_site_survival=reward_site_survival,
             reward_intercept=reward_intercept,
             reward_red_drain=reward_red_drain,
+            layouts_pool=layouts_pool,
         )
         for i in range(n_envs)
     ]
     vec = SubprocVecEnv(fns, start_method="spawn")
     vec = VecMonitor(vec)
     return vec
+
+
+def _load_layouts_pool(path):
+    """Load + validate a layouts-pool JSON. Mirror of
+    rl.red_train._load_layouts_pool (duplicated so blue_train is usable
+    without importing from the Red module).
+    """
+    if path is None:
+        return None
+    p = Path(path)
+    if not p.exists():
+        print(f"ERROR: --layouts-pool file not found: {path}", file=sys.stderr)
+        sys.exit(2)
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"ERROR: failed to parse {path}: {e}", file=sys.stderr)
+        sys.exit(2)
+    layouts = data.get("layouts") if isinstance(data, dict) else None
+    if not isinstance(layouts, list) or not layouts:
+        print(f"ERROR: {path} missing a non-empty 'layouts' list", file=sys.stderr)
+        sys.exit(2)
+    for i, lay in enumerate(layouts):
+        roster = lay.get("roster") if isinstance(lay, dict) else None
+        if not isinstance(roster, dict) or not roster:
+            print(
+                f"ERROR: {path} layouts[{i}] missing 'roster' dict",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+    print(
+        f"[blue_train] loaded {len(layouts)} layouts from {path}: "
+        f"slots={[lay.get('slot', '?') for lay in layouts]}",
+        flush=True,
+    )
+    return layouts
 
 
 def _parse_pool_args(pool_str, weights_str):
@@ -190,12 +232,18 @@ def main():
     ap.add_argument("--reward-intercept", type=float, default=0.5,
                     help="Flat per-intercept bonus on top of the base "
                          "env's value-scaled credit (0 disables).")
+    ap.add_argument("--layouts-pool", default=None,
+                    help="Path to top3_layouts.json (or compatible). "
+                         "When set, each training episode samples one Blue "
+                         "launcher layout from the pool (domain "
+                         "randomization). Default: config.BLUE_LAUNCHER_POSITIONS.")
     ap.add_argument("--reward-red-drain", type=float, default=5.0,
                     help="Terminal bonus scaled by 1 - red_budget/"
                          "RED_BUDGET_START (0 disables).")
     args = ap.parse_args()
 
     opp_pool, opp_weights = _parse_pool_args(args.opponent_pool, args.opponent_weights)
+    layouts_pool = _load_layouts_pool(args.layouts_pool)
 
     run_dir = Path(args.output_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -212,6 +260,7 @@ def main():
         reward_site_survival=args.reward_site_survival,
         reward_intercept=args.reward_intercept,
         reward_red_drain=args.reward_red_drain,
+        layouts_pool=layouts_pool,
     )
 
     policy_kwargs = dict(

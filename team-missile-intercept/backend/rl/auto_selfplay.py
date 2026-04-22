@@ -236,7 +236,8 @@ def _run(cmd: List[str]) -> None:
 
 
 def _train_blue(round_n: int, pool_csv: str, weights_csv: str,
-                timesteps: int, extra_args: List[str]) -> Path:
+                timesteps: int, extra_args: List[str],
+                layouts_pool: Optional[str] = None) -> Path:
     out_dir = Path(f"rl/runs/blue_local/blue_{round_n}")
     cmd = [
         sys.executable, "-m", "rl.blue_train",
@@ -244,15 +245,18 @@ def _train_blue(round_n: int, pool_csv: str, weights_csv: str,
         "--opponent-weights", weights_csv,
         "--timesteps", str(timesteps),
         "--output-dir", str(out_dir),
-        *extra_args,
     ]
+    if layouts_pool is not None:
+        cmd.extend(["--layouts-pool", layouts_pool])
+    cmd.extend(extra_args)
     _run(cmd)
     return out_dir / "model.zip"
 
 
 def _train_red(round_n: int, pool_csv: str, weights_csv: str,
                timesteps: int, warmstart: str,
-               extra_args: List[str]) -> Path:
+               extra_args: List[str],
+               layouts_pool: Optional[str] = None) -> Path:
     out_dir = Path(f"rl/runs/red_{round_n}")
     cmd = [
         sys.executable, "-m", "rl.red_train",
@@ -261,8 +265,10 @@ def _train_red(round_n: int, pool_csv: str, weights_csv: str,
         "--total-steps", str(timesteps),
         "--warmstart", warmstart,
         "--run-name", f"red_{round_n}",
-        *extra_args,
     ]
+    if layouts_pool is not None:
+        cmd.extend(["--layouts-pool", layouts_pool])
+    cmd.extend(extra_args)
     _run(cmd)
     return out_dir / "model.zip"
 
@@ -348,6 +354,10 @@ def main() -> int:
                     default=DEFAULT_RED_ROUND3_WARMSTART,
                     help="Red warmstart for `--start-round` when no "
                          "preceding Red round exists on disk.")
+    ap.add_argument("--layouts-pool", type=str, default=None,
+                    help="Path to top3_layouts.json. Forwarded verbatim "
+                         "to blue_train / red_train so every episode in "
+                         "every round samples a Blue layout from the pool.")
     ap.add_argument("--extra-blue-args", type=str, default="",
                     help="Extra args forwarded verbatim to blue_train "
                          "(shell-split on whitespace).")
@@ -405,6 +415,7 @@ def main() -> int:
             blue_path = _train_blue(
                 round_n, blue_pool_csv, blue_weights_csv,
                 args.timesteps_per_train, extra_blue,
+                layouts_pool=args.layouts_pool,
             )
 
             # --- Red round (opponent pool = Blue history + baselines,
@@ -431,6 +442,7 @@ def main() -> int:
             red_path = _train_red(
                 round_n, red_pool_csv, red_weights_csv,
                 args.timesteps_per_train, warmstart, extra_red,
+                layouts_pool=args.layouts_pool,
             )
 
             # --- CSV log + optional checkpoint eval.
