@@ -618,6 +618,8 @@ class RedEnv(gym.Env):
             if lch.reloading or not lch.can_fire(t_now):
                 continue
             spec = INTERCEPTOR_SPECS[lch.kind]
+            if self.world.blue_budget < spec.usd_cost:
+                continue  # audit 2026-04-22 F4: unaffordable → only hold is legal
             max_range = spec.max_range * LAUNCH_RANGE_MARGIN
             for t_idx, th in enumerate(threats):
                 if t_idx >= MAX_THREATS:
@@ -677,6 +679,8 @@ class RedEnv(gym.Env):
             if not threat.state.alive:
                 continue
             spec = INTERCEPTOR_SPECS[lch.kind]
+            if self.world.blue_budget < spec.usd_cost:
+                continue  # audit 2026-04-22 F1: refuse unaffordable fire (no free shots)
             t_pos = threat.state.pos
             dx = float(t_pos[0] - lch.pos[0])
             dy = float(t_pos[1] - lch.pos[1])
@@ -692,9 +696,7 @@ class RedEnv(gym.Env):
                 threat.state.id,
                 mode,
             )
-            self.world.blue_budget = max(
-                0, self.world.blue_budget - spec.usd_cost
-            )
+            self.world.blue_budget -= spec.usd_cost
             n_fires += 1
         return n_fires
 
