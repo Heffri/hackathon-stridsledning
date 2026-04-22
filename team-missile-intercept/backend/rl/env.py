@@ -51,14 +51,14 @@ MAX_SITES = 10
 DECISION_EVERY = 10
 
 # Hard cap on episode sim time (seconds). Default matches run 1700-1900s;
-# training uses shorter episodes for sample efficiency. Bumped 600→900
+# training uses shorter episodes for sample efficiency. Bumped 600→1200
 # per audit 2026-04-22 F5 — 600 s truncated slow North-Remote Island
-# drone waves (~750 s transit to south sites), which manifested as 100%
-# DRAW in rule-vs-rule cross-eval and a distorted reward distribution
-# during training (Red's draw-penalty fired more than any other
-# terminal signal). 900 s fits the slowest drone while still keeping
-# episodes ~50% shorter than production 3600 s cap.
-MAX_EPISODE_SIM_TIME = 900.0
+# drone waves (~750-850 s transit to south sites), which manifested as
+# 100% DRAW in rule-vs-rule cross-eval and a distorted reward distribution
+# during training (Red's draw-penalty fired more than any other terminal
+# signal). 1200 s gives comfortable headroom above the slowest drone
+# while staying ~3x shorter than production 3600 s cap.
+MAX_EPISODE_SIM_TIME = 1200.0
 
 # --- Normalization scales (keep obs tensor O(1)) ---
 POS_SCALE = 1e5        # 100 km reference
