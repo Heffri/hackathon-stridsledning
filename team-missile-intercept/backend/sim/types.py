@@ -165,7 +165,13 @@ THREAT_SPECS = {
         cruise_alt=0.0,
         max_g=3.0,
         drag_k=2.0e-6,
-        kill_radius=70.0,
+        # Bumped 70 → 100 m as part of the 2026-04-22 balance pass
+        # (Red2 was HGV-monoculture because HGV damage/$ swamped
+        # ballistic). The CPA gate uses max(interceptor, threat) kill
+        # radius, so widening the threat radius helps PAC-3 / PAC-2
+        # land more ballistic kills and nudges Red toward a mixed
+        # spawn.
+        kill_radius=100.0,
         color="#ff8020",
         hp=80,
         usd_cost=3_000_000,
@@ -181,12 +187,21 @@ THREAT_SPECS = {
         kind=ThreatType.HGV,
         cruise_speed=5831.0,
         cruise_alt=35_000.0,
-        max_g=10.0,
+        # max_g 10 → 6 as part of the 2026-04-22 balance pass. Pure
+        # ~100 % leak rate vs PAC-3 PN made HGV the only rational Red
+        # spawn (damage/$ 4× over ballistic); softening the evasion
+        # envelope gives the interceptor a chance to land while keeping
+        # HGV faster than ballistic so it stays an elite threat.
+        max_g=6.0,
         drag_k=1.5e-6,
         kill_radius=70.0,
         color="#ff4080",
         hp=60,
-        usd_cost=10_000_000,
+        # usd_cost 10M → 25M as part of the 2026-04-22 balance pass.
+        # At $100M Red budget this drops the HGV cap from 10 to 4 per
+        # match, forcing Red to mix in ballistic / cruise to fill the
+        # remaining budget instead of pure HGV spam.
+        usd_cost=25_000_000,
         requires_ground_impact=True,
     ),
 }
