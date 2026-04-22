@@ -10,7 +10,10 @@ from .world import World
 
 
 class Scenario:
-    def __init__(self):
+    def __init__(
+        self,
+        layout_override: Optional[Dict[str, List[Tuple[float, float]]]] = None,
+    ):
         """Assemble a fresh demo scenario: new World (lands in SETUP
         phase), fresh RedAI driving `build_demo_waves()`, fresh
         BlueAI. Calls `sites.reset_leaks()` because `SOUTH_SITES` is
@@ -26,6 +29,14 @@ class Scenario:
         self.world = World()
         self.red = RedAI(build_demo_waves())
         self.blue = BlueAI()
+        if layout_override is not None:
+            # Swap the default BlueAI fleet for one built from the supplied
+            # positions dict. Caller is responsible for terrain-validated
+            # input (e.g. layouts sourced from a shootout JSON whose entries
+            # were validated at shootout time). Not mutating config here
+            # avoids test pollution and vectorized-env cross-thread state
+            # leakage.
+            self.blue.launchers = LauncherFleet(positions=layout_override)
 
     def set_layout(self, roster: Dict[str, List[Tuple[float, float]]]) -> None:
         """Swap `config.BLUE_LAUNCHER_POSITIONS` to `roster` and rebuild
@@ -252,7 +263,10 @@ class Scenario:
         return snap
 
 
-def build_default_scenario(auto_start: bool = True) -> Scenario:
+def build_default_scenario(
+    auto_start: bool = True,
+    layout_override: Optional[Dict[str, List[Tuple[float, float]]]] = None,
+) -> Scenario:
     """Construct the default demo scenario.
 
     M-TIER2-PHASE adds `auto_start`. A fresh `World` starts in SETUP;
@@ -263,7 +277,7 @@ def build_default_scenario(auto_start: bool = True) -> Scenario:
     interactive client walks through the real SETUP → (player clicks
     Start) → RUNNING flow needed by the deployment UI (M-TIER2-J).
     """
-    scn = Scenario()
+    scn = Scenario(layout_override=layout_override)
     if auto_start:
         scn.world.transition(MatchPhase.RUNNING)
     return scn
