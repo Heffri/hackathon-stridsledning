@@ -1,0 +1,3344 @@
+{
+  "meta": {
+    "n_episodes": 30,
+    "seeds": [
+      1000,
+      1001,
+      1002,
+      1003,
+      1004,
+      1005,
+      1006,
+      1007,
+      1008,
+      1009,
+      1010,
+      1011,
+      1012,
+      1013,
+      1014,
+      1015,
+      1016,
+      1017,
+      1018,
+      1019,
+      1020,
+      1021,
+      1022,
+      1023,
+      1024,
+      1025,
+      1026,
+      1027,
+      1028,
+      1029
+    ],
+    "episode_time_limit": 600.0,
+    "red_labels": [
+      "rule",
+      "red_20260421_234425"
+    ],
+    "blue_labels": [
+      "rule",
+      "blue_ai_1m_2xpenalty"
+    ]
+  },
+  "pairs": [
+    {
+      "red": "rule",
+      "blue": "rule",
+      "stats": {
+        "red_label": "rule",
+        "blue_label": "rule",
+        "red_spec": "rule",
+        "blue_spec": "rule",
+        "n_episodes": 30,
+        "red_wins": 0,
+        "blue_wins": 0,
+        "draws": 30,
+        "episode_length_mean": 1200.0,
+        "episode_length_std": 0.0,
+        "sim_time_mean": 600.000000000002,
+        "sim_time_std": 0.0,
+        "sites_destroyed_mean": 0.03333333333333333,
+        "sites_destroyed_std": 0.18257418583505536,
+        "sites_total_damage_mean": 65.16666666666667,
+        "sites_total_damage_std": 28.0542372893126,
+        "red_budget_remaining_mean": 670000.0,
+        "blue_budget_remaining_mean": 79316033.33333333,
+        "intercepts_mean": 5.0,
+        "leaks_mean": 1.6666666666666667,
+        "ground_crashes_mean": 3.3666666666666667,
+        "red_spawns_total_by_kind": {
+          "drone": 330,
+          "cruise_sub": 240,
+          "ballistic": 120,
+          "hgv": 90
+        },
+        "blue_launches_total_by_kind": {
+          "ciws": 47,
+          "rbs_70": 11,
+          "iris_t_sls": 85,
+          "iris_t_slm": 344,
+          "pac_2": 120,
+          "pac_3": 118
+        },
+        "wall_s": 271.7449176311493
+      },
+      "episodes": [
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 79486000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 7,
+            "rbs_70": 0,
+            "iris_t_sls": 5,
+            "iris_t_slm": 10,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 4,
+          "leak_count": 1,
+          "ground_crash_count": 5
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 73475000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 3,
+            "iris_t_sls": 4,
+            "iris_t_slm": 16,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 4,
+          "leak_count": 3,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 76825000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 1,
+            "iris_t_sls": 2,
+            "iris_t_slm": 14,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 1,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 78000000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 0,
+            "iris_t_slm": 14,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 2,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 83000000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 0,
+            "iris_t_slm": 9,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 0,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 80988000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 6,
+            "rbs_70": 0,
+            "iris_t_sls": 0,
+            "iris_t_slm": 11,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 0,
+          "ground_crash_count": 5
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 1,
+          "sites_total_damage": 100,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 83000000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 0,
+            "iris_t_slm": 9,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 3,
+          "leak_count": 3,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 80823000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 1,
+            "rbs_70": 1,
+            "iris_t_sls": 2,
+            "iris_t_slm": 10,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 1,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 79325000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 1,
+            "iris_t_sls": 5,
+            "iris_t_slm": 10,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 2,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 85998000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 1,
+            "rbs_70": 0,
+            "iris_t_sls": 0,
+            "iris_t_slm": 10,
+            "pac_2": 4,
+            "pac_3": 3
+          },
+          "intercept_count": 5,
+          "leak_count": 2,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 80500000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 3,
+            "iris_t_slm": 10,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 1,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 72321000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 2,
+            "rbs_70": 1,
+            "iris_t_sls": 3,
+            "iris_t_slm": 18,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 1,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 74825000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 1,
+            "iris_t_sls": 2,
+            "iris_t_slm": 16,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 3,
+          "leak_count": 2,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 83000000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 0,
+            "iris_t_slm": 9,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 1,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 75000000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 6,
+            "iris_t_slm": 14,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 1,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 81500000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 3,
+            "iris_t_slm": 9,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 7,
+          "leak_count": 2,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 80000000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 4,
+            "iris_t_slm": 10,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 7,
+          "leak_count": 2,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 75321000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 2,
+            "rbs_70": 1,
+            "iris_t_sls": 5,
+            "iris_t_slm": 14,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 1,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 120,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 80000000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 4,
+            "iris_t_slm": 10,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 4,
+          "leak_count": 3,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 79500000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 3,
+            "iris_t_slm": 11,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 3,
+          "leak_count": 2,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 77319000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 3,
+            "rbs_70": 1,
+            "iris_t_sls": 1,
+            "iris_t_slm": 14,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 4,
+          "leak_count": 2,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 80488000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 6,
+            "rbs_70": 0,
+            "iris_t_sls": 3,
+            "iris_t_slm": 10,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 1,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 76000000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 0,
+            "iris_t_slm": 16,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 1,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 75480000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 10,
+            "rbs_70": 0,
+            "iris_t_sls": 5,
+            "iris_t_slm": 14,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 3,
+          "leak_count": 2,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 79000000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 6,
+            "iris_t_slm": 10,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 1,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 80500000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 5,
+            "iris_t_slm": 9,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 1,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 81998000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 1,
+            "rbs_70": 0,
+            "iris_t_sls": 2,
+            "iris_t_slm": 9,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 2,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 80986000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 7,
+            "rbs_70": 0,
+            "iris_t_sls": 2,
+            "iris_t_slm": 10,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 120,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 85500000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 3,
+            "iris_t_slm": 9,
+            "pac_2": 4,
+            "pac_3": 3
+          },
+          "intercept_count": 6,
+          "leak_count": 3,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 79323000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 1,
+            "rbs_70": 1,
+            "iris_t_sls": 7,
+            "iris_t_slm": 9,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 4,
+          "leak_count": 2,
+          "ground_crash_count": 4
+        }
+      ]
+    },
+    {
+      "red": "rule",
+      "blue": "blue_ai_1m_2xpenalty",
+      "stats": {
+        "red_label": "rule",
+        "blue_label": "blue_ai_1m_2xpenalty",
+        "red_spec": "rule",
+        "blue_spec": "rl/models/blue_ai_1m_2xpenalty/model.zip",
+        "n_episodes": 30,
+        "red_wins": 0,
+        "blue_wins": 0,
+        "draws": 30,
+        "episode_length_mean": 1200.0,
+        "episode_length_std": 0.0,
+        "sim_time_mean": 600.000000000002,
+        "sim_time_std": 0.0,
+        "sites_destroyed_mean": 0.03333333333333333,
+        "sites_destroyed_std": 0.18257418583505536,
+        "sites_total_damage_mean": 80.0,
+        "sites_total_damage_std": 31.128210954717254,
+        "red_budget_remaining_mean": 670000.0,
+        "blue_budget_remaining_mean": 53967000.0,
+        "intercepts_mean": 5.8,
+        "leaks_mean": 2.3666666666666667,
+        "ground_crashes_mean": 3.966666666666667,
+        "red_spawns_total_by_kind": {
+          "drone": 330,
+          "cruise_sub": 240,
+          "ballistic": 120,
+          "hgv": 90
+        },
+        "blue_launches_total_by_kind": {
+          "ciws": 145,
+          "rbs_70": 84,
+          "iris_t_sls": 210,
+          "iris_t_slm": 689,
+          "pac_2": 228,
+          "pac_3": 122
+        },
+        "wall_s": 325.37352895736694
+      },
+      "episodes": [
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 47801000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 12,
+            "rbs_70": 1,
+            "iris_t_sls": 8,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 5
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 5
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 51119000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 3,
+            "rbs_70": 5,
+            "iris_t_sls": 8,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 4,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 52767000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 4,
+            "rbs_70": 7,
+            "iris_t_sls": 4,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 4,
+          "leak_count": 5,
+          "ground_crash_count": 5
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 54125000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 5,
+            "iris_t_sls": 4,
+            "iris_t_slm": 23,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 8,
+          "leak_count": 3,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 54775000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 7,
+            "iris_t_sls": 4,
+            "iris_t_slm": 22,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 2,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 0,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 51467000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 4,
+            "rbs_70": 3,
+            "iris_t_sls": 8,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 7,
+          "leak_count": 0,
+          "ground_crash_count": 5
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 1,
+          "sites_total_damage": 100,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 58150000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 2,
+            "iris_t_sls": 3,
+            "iris_t_slm": 20,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 3,
+          "leak_count": 3,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 53809000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 8,
+            "rbs_70": 1,
+            "iris_t_sls": 4,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 3,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 45642000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 4,
+            "rbs_70": 2,
+            "iris_t_sls": 12,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 5
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 55592000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 4,
+            "rbs_70": 8,
+            "iris_t_sls": 4,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 7,
+          "leak_count": 2,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 50938000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 6,
+            "rbs_70": 6,
+            "iris_t_sls": 8,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 3,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 53107000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 9,
+            "rbs_70": 5,
+            "iris_t_sls": 4,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 120,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 54984000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 8,
+            "rbs_70": 0,
+            "iris_t_sls": 2,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 4,
+          "leak_count": 3,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 53642000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 4,
+            "rbs_70": 2,
+            "iris_t_sls": 4,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 4,
+          "leak_count": 1,
+          "ground_crash_count": 6
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 51467000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 4,
+            "rbs_70": 3,
+            "iris_t_sls": 8,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 1,
+          "ground_crash_count": 5
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 59650000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 2,
+            "iris_t_sls": 8,
+            "iris_t_slm": 22,
+            "pac_2": 6,
+            "pac_3": 4
+          },
+          "intercept_count": 7,
+          "leak_count": 2,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 65494000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 3,
+            "rbs_70": 0,
+            "iris_t_sls": 5,
+            "iris_t_slm": 24,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 8,
+          "leak_count": 2,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 52980000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 10,
+            "rbs_70": 0,
+            "iris_t_sls": 8,
+            "iris_t_slm": 23,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 4,
+          "leak_count": 2,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 135,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 51634000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 8,
+            "rbs_70": 2,
+            "iris_t_sls": 8,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 4,
+          "leak_count": 5,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 52644000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 3,
+            "rbs_70": 2,
+            "iris_t_sls": 6,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 7,
+          "leak_count": 3,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 120,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 57803000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 11,
+            "rbs_70": 1,
+            "iris_t_sls": 2,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 2,
+          "leak_count": 3,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 52644000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 3,
+            "rbs_70": 2,
+            "iris_t_sls": 12,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 8,
+          "leak_count": 1,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 52469000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 3,
+            "rbs_70": 3,
+            "iris_t_sls": 8,
+            "iris_t_slm": 23,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 1,
+          "ground_crash_count": 5
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 47803000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 11,
+            "rbs_70": 1,
+            "iris_t_sls": 8,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 5
+          },
+          "intercept_count": 5,
+          "leak_count": 3,
+          "ground_crash_count": 5
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 56825000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 1,
+            "iris_t_sls": 10,
+            "iris_t_slm": 24,
+            "pac_2": 6,
+            "pac_3": 4
+          },
+          "intercept_count": 11,
+          "leak_count": 1,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 48125000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 5,
+            "iris_t_sls": 16,
+            "iris_t_slm": 23,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 1,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 66467000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 4,
+            "rbs_70": 3,
+            "iris_t_sls": 8,
+            "iris_t_slm": 21,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 4
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 120,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 55811000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 7,
+            "rbs_70": 1,
+            "iris_t_sls": 8,
+            "iris_t_slm": 20,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 3,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 120,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 59142000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 4,
+            "rbs_70": 2,
+            "iris_t_sls": 7,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 3
+          },
+          "intercept_count": 7,
+          "leak_count": 3,
+          "ground_crash_count": 3
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 120,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 50134000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 8,
+            "ballistic": 4,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 8,
+            "rbs_70": 2,
+            "iris_t_sls": 11,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 3,
+          "ground_crash_count": 4
+        }
+      ]
+    },
+    {
+      "red": "red_20260421_234425",
+      "blue": "rule",
+      "stats": {
+        "red_label": "red_20260421_234425",
+        "blue_label": "rule",
+        "red_spec": "rl/runs/red_20260421_234425/model.zip",
+        "blue_spec": "rule",
+        "n_episodes": 30,
+        "red_wins": 0,
+        "blue_wins": 0,
+        "draws": 30,
+        "episode_length_mean": 1200.0,
+        "episode_length_std": 0.0,
+        "sim_time_mean": 600.000000000002,
+        "sim_time_std": 0.0,
+        "sites_destroyed_mean": 0.0,
+        "sites_destroyed_std": 0.0,
+        "sites_total_damage_mean": 69.0,
+        "sites_total_damage_std": 35.72886401969605,
+        "red_budget_remaining_mean": 494000.0,
+        "blue_budget_remaining_mean": 81110866.66666667,
+        "intercepts_mean": 8.3,
+        "leaks_mean": 2.066666666666667,
+        "ground_crashes_mean": 0.5666666666666667,
+        "red_spawns_total_by_kind": {
+          "drone": 506,
+          "cruise_sub": 480,
+          "ballistic": 0,
+          "hgv": 90
+        },
+        "blue_launches_total_by_kind": {
+          "ciws": 13,
+          "rbs_70": 44,
+          "iris_t_sls": 174,
+          "iris_t_slm": 513,
+          "pac_2": 106,
+          "pac_3": 92
+        },
+        "wall_s": 514.2292485237122
+      },
+      "episodes": [
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 93000000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 2,
+            "iris_t_slm": 10,
+            "pac_2": 3,
+            "pac_3": 2
+          },
+          "intercept_count": 7,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 0,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 78325000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 1,
+            "iris_t_sls": 3,
+            "iris_t_slm": 17,
+            "pac_2": 4,
+            "pac_3": 3
+          },
+          "intercept_count": 8,
+          "leak_count": 0,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 0,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 85825000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 1,
+            "iris_t_sls": 2,
+            "iris_t_slm": 17,
+            "pac_2": 3,
+            "pac_3": 2
+          },
+          "intercept_count": 7,
+          "leak_count": 0,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 820000,
+          "blue_budget_remaining": 83000000,
+          "red_spawns_by_kind": {
+            "drone": 6,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 4,
+            "iris_t_slm": 18,
+            "pac_2": 3,
+            "pac_3": 3
+          },
+          "intercept_count": 5,
+          "leak_count": 1,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 0,
+          "red_budget_remaining": 190000,
+          "blue_budget_remaining": 92000000,
+          "red_spawns_by_kind": {
+            "drone": 27,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 6,
+            "iris_t_slm": 8,
+            "pac_2": 3,
+            "pac_3": 2
+          },
+          "intercept_count": 7,
+          "leak_count": 0,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 730000,
+          "blue_budget_remaining": 79650000,
+          "red_spawns_by_kind": {
+            "drone": 9,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 2,
+            "iris_t_sls": 7,
+            "iris_t_slm": 17,
+            "pac_2": 3,
+            "pac_3": 3
+          },
+          "intercept_count": 9,
+          "leak_count": 3,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 83000000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 6,
+            "iris_t_slm": 15,
+            "pac_2": 3,
+            "pac_3": 3
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 820000,
+          "blue_budget_remaining": 82000000,
+          "red_spawns_by_kind": {
+            "drone": 6,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 12,
+            "iris_t_slm": 13,
+            "pac_2": 4,
+            "pac_3": 3
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 82325000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 1,
+            "iris_t_sls": 1,
+            "iris_t_slm": 17,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 8,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 135,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 76646000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 2,
+            "rbs_70": 2,
+            "iris_t_sls": 4,
+            "iris_t_slm": 24,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 4,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 760000,
+          "blue_budget_remaining": 84825000,
+          "red_spawns_by_kind": {
+            "drone": 8,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 1,
+            "iris_t_sls": 4,
+            "iris_t_slm": 17,
+            "pac_2": 3,
+            "pac_3": 2
+          },
+          "intercept_count": 8,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 700000,
+          "blue_budget_remaining": 79825000,
+          "red_spawns_by_kind": {
+            "drone": 10,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 2,
+            "iris_t_sls": 9,
+            "iris_t_slm": 17,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 12,
+          "leak_count": 1,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 490000,
+          "blue_budget_remaining": 83650000,
+          "red_spawns_by_kind": {
+            "drone": 17,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 2,
+            "iris_t_sls": 7,
+            "iris_t_slm": 19,
+            "pac_2": 3,
+            "pac_3": 2
+          },
+          "intercept_count": 7,
+          "leak_count": 5,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 75321000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 2,
+            "rbs_70": 1,
+            "iris_t_sls": 7,
+            "iris_t_slm": 18,
+            "pac_2": 5,
+            "pac_3": 3
+          },
+          "intercept_count": 12,
+          "leak_count": 2,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 120,
+          "red_budget_remaining": 790000,
+          "blue_budget_remaining": 79819000,
+          "red_spawns_by_kind": {
+            "drone": 7,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 3,
+            "rbs_70": 1,
+            "iris_t_sls": 6,
+            "iris_t_slm": 19,
+            "pac_2": 3,
+            "pac_3": 4
+          },
+          "intercept_count": 7,
+          "leak_count": 3,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 73821000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 2,
+            "rbs_70": 1,
+            "iris_t_sls": 10,
+            "iris_t_slm": 18,
+            "pac_2": 4,
+            "pac_3": 3
+          },
+          "intercept_count": 11,
+          "leak_count": 2,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 135,
+          "red_budget_remaining": 760000,
+          "blue_budget_remaining": 79975000,
+          "red_spawns_by_kind": {
+            "drone": 8,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 4,
+            "iris_t_sls": 5,
+            "iris_t_slm": 16,
+            "pac_2": 4,
+            "pac_3": 3
+          },
+          "intercept_count": 6,
+          "leak_count": 4,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 700000,
+          "blue_budget_remaining": 79475000,
+          "red_spawns_by_kind": {
+            "drone": 10,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 3,
+            "iris_t_sls": 6,
+            "iris_t_slm": 17,
+            "pac_2": 3,
+            "pac_3": 3
+          },
+          "intercept_count": 9,
+          "leak_count": 3,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 730000,
+          "blue_budget_remaining": 79150000,
+          "red_spawns_by_kind": {
+            "drone": 9,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 2,
+            "iris_t_sls": 7,
+            "iris_t_slm": 17,
+            "pac_2": 3,
+            "pac_3": 3
+          },
+          "intercept_count": 10,
+          "leak_count": 3,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 730000,
+          "blue_budget_remaining": 84825000,
+          "red_spawns_by_kind": {
+            "drone": 9,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 1,
+            "iris_t_sls": 4,
+            "iris_t_slm": 17,
+            "pac_2": 3,
+            "pac_3": 3
+          },
+          "intercept_count": 10,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 85000000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 4,
+            "iris_t_slm": 17,
+            "pac_2": 4,
+            "pac_3": 3
+          },
+          "intercept_count": 9,
+          "leak_count": 1,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 55,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 75975000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 3,
+            "iris_t_sls": 6,
+            "iris_t_slm": 17,
+            "pac_2": 4,
+            "pac_3": 5
+          },
+          "intercept_count": 10,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 790000,
+          "blue_budget_remaining": 80650000,
+          "red_spawns_by_kind": {
+            "drone": 7,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 3,
+            "iris_t_sls": 6,
+            "iris_t_slm": 18,
+            "pac_2": 3,
+            "pac_3": 3
+          },
+          "intercept_count": 8,
+          "leak_count": 1,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 55,
+          "red_budget_remaining": 760000,
+          "blue_budget_remaining": 80650000,
+          "red_spawns_by_kind": {
+            "drone": 8,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 3,
+            "iris_t_sls": 5,
+            "iris_t_slm": 17,
+            "pac_2": 3,
+            "pac_3": 4
+          },
+          "intercept_count": 8,
+          "leak_count": 2,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 670000,
+          "blue_budget_remaining": 80300000,
+          "red_spawns_by_kind": {
+            "drone": 11,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 6,
+            "iris_t_sls": 4,
+            "iris_t_slm": 17,
+            "pac_2": 3,
+            "pac_3": 3
+          },
+          "intercept_count": 9,
+          "leak_count": 5,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 700000,
+          "blue_budget_remaining": 84500000,
+          "red_spawns_by_kind": {
+            "drone": 10,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 7,
+            "iris_t_slm": 23,
+            "pac_2": 4,
+            "pac_3": 2
+          },
+          "intercept_count": 8,
+          "leak_count": 1,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 75148000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 1,
+            "rbs_70": 2,
+            "iris_t_sls": 9,
+            "iris_t_slm": 17,
+            "pac_2": 5,
+            "pac_3": 3
+          },
+          "intercept_count": 10,
+          "leak_count": 3,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 790000,
+          "blue_budget_remaining": 74496000,
+          "red_spawns_by_kind": {
+            "drone": 7,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 3,
+            "rbs_70": 0,
+            "iris_t_sls": 7,
+            "iris_t_slm": 16,
+            "pac_2": 5,
+            "pac_3": 4
+          },
+          "intercept_count": 5,
+          "leak_count": 1,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 730000,
+          "blue_budget_remaining": 80500000,
+          "red_spawns_by_kind": {
+            "drone": 9,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 7,
+            "iris_t_slm": 16,
+            "pac_2": 3,
+            "pac_3": 3
+          },
+          "intercept_count": 9,
+          "leak_count": 1,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 730000,
+          "blue_budget_remaining": 79650000,
+          "red_spawns_by_kind": {
+            "drone": 9,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 2,
+            "iris_t_sls": 7,
+            "iris_t_slm": 24,
+            "pac_2": 3,
+            "pac_3": 3
+          },
+          "intercept_count": 12,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        }
+      ]
+    },
+    {
+      "red": "red_20260421_234425",
+      "blue": "blue_ai_1m_2xpenalty",
+      "stats": {
+        "red_label": "red_20260421_234425",
+        "blue_label": "blue_ai_1m_2xpenalty",
+        "red_spec": "rl/runs/red_20260421_234425/model.zip",
+        "blue_spec": "rl/models/blue_ai_1m_2xpenalty/model.zip",
+        "n_episodes": 30,
+        "red_wins": 0,
+        "blue_wins": 0,
+        "draws": 30,
+        "episode_length_mean": 1200.0,
+        "episode_length_std": 0.0,
+        "sim_time_mean": 600.000000000002,
+        "sim_time_std": 0.0,
+        "sites_destroyed_mean": 0.0,
+        "sites_destroyed_std": 0.0,
+        "sites_total_damage_mean": 71.0,
+        "sites_total_damage_std": 28.83962790902536,
+        "red_budget_remaining_mean": 224000.0,
+        "blue_budget_remaining_mean": 53163066.666666664,
+        "intercepts_mean": 7.833333333333333,
+        "leaks_mean": 2.566666666666667,
+        "ground_crashes_mean": 0.5333333333333333,
+        "red_spawns_total_by_kind": {
+          "drone": 776,
+          "cruise_sub": 480,
+          "ballistic": 0,
+          "hgv": 90
+        },
+        "blue_launches_total_by_kind": {
+          "ciws": 4,
+          "rbs_70": 172,
+          "iris_t_sls": 330,
+          "iris_t_slm": 630,
+          "pac_2": 196,
+          "pac_3": 148
+        },
+        "wall_s": 557.139955997467
+      },
+      "episodes": [
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 70000000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 12,
+            "iris_t_slm": 20,
+            "pac_2": 4,
+            "pac_3": 3
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 15,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 48600000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 8,
+            "iris_t_sls": 8,
+            "iris_t_slm": 22,
+            "pac_2": 8,
+            "pac_3": 5
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 15,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 53800000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 4,
+            "iris_t_sls": 9,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 6,
+          "leak_count": 1,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 55,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 37000000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 0,
+            "iris_t_sls": 8,
+            "iris_t_slm": 23,
+            "pac_2": 8,
+            "pac_3": 8
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 0,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 38800000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 4,
+            "iris_t_sls": 15,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 7
+          },
+          "intercept_count": 7,
+          "leak_count": 0,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 110,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 65650000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 2,
+            "iris_t_sls": 12,
+            "iris_t_slm": 20,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 10,
+          "leak_count": 4,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 70,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 47950000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 6,
+            "iris_t_sls": 16,
+            "iris_t_slm": 23,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 8,
+          "leak_count": 3,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 65300000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 4,
+            "iris_t_sls": 14,
+            "iris_t_slm": 19,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 9,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 760000,
+          "blue_budget_remaining": 67750000,
+          "red_spawns_by_kind": {
+            "drone": 8,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 10,
+            "iris_t_sls": 5,
+            "iris_t_slm": 20,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 8,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 110,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 50600000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 8,
+            "iris_t_sls": 16,
+            "iris_t_slm": 20,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 9,
+          "leak_count": 4,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 790000,
+          "blue_budget_remaining": 69800000,
+          "red_spawns_by_kind": {
+            "drone": 7,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 4,
+            "iris_t_sls": 11,
+            "iris_t_slm": 20,
+            "pac_2": 4,
+            "pac_3": 3
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 85,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 43400000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 12,
+            "iris_t_sls": 13,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 5
+          },
+          "intercept_count": 11,
+          "leak_count": 4,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 110,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 67600000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 8,
+            "iris_t_sls": 8,
+            "iris_t_slm": 19,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 8,
+          "leak_count": 5,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 70,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 35425000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 9,
+            "iris_t_sls": 10,
+            "iris_t_slm": 22,
+            "pac_2": 8,
+            "pac_3": 8
+          },
+          "intercept_count": 8,
+          "leak_count": 3,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 730000,
+          "blue_budget_remaining": 70625000,
+          "red_spawns_by_kind": {
+            "drone": 9,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 5,
+            "iris_t_sls": 9,
+            "iris_t_slm": 20,
+            "pac_2": 4,
+            "pac_3": 3
+          },
+          "intercept_count": 9,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 66650000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 2,
+            "iris_t_sls": 12,
+            "iris_t_slm": 19,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 8,
+          "leak_count": 4,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 730000,
+          "blue_budget_remaining": 65400000,
+          "red_spawns_by_kind": {
+            "drone": 9,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 12,
+            "iris_t_sls": 11,
+            "iris_t_slm": 19,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 7,
+          "leak_count": 3,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 110,
+          "red_budget_remaining": 700000,
+          "blue_budget_remaining": 70425000,
+          "red_spawns_by_kind": {
+            "drone": 10,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 9,
+            "iris_t_sls": 8,
+            "iris_t_slm": 20,
+            "pac_2": 4,
+            "pac_3": 3
+          },
+          "intercept_count": 7,
+          "leak_count": 5,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 700000,
+          "blue_budget_remaining": 35275000,
+          "red_spawns_by_kind": {
+            "drone": 10,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 7,
+            "iris_t_sls": 13,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 8
+          },
+          "intercept_count": 10,
+          "leak_count": 3,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 95,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 66125000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 5,
+            "iris_t_sls": 10,
+            "iris_t_slm": 20,
+            "pac_2": 4,
+            "pac_3": 4
+          },
+          "intercept_count": 7,
+          "leak_count": 3,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 55,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 37950000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 6,
+            "iris_t_sls": 8,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 8
+          },
+          "intercept_count": 6,
+          "leak_count": 2,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 70,
+          "red_budget_remaining": 700000,
+          "blue_budget_remaining": 44475000,
+          "red_spawns_by_kind": {
+            "drone": 10,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 3,
+            "iris_t_sls": 8,
+            "iris_t_slm": 23,
+            "pac_2": 8,
+            "pac_3": 6
+          },
+          "intercept_count": 7,
+          "leak_count": 3,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 47650000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 2,
+            "iris_t_sls": 8,
+            "iris_t_slm": 24,
+            "pac_2": 8,
+            "pac_3": 5
+          },
+          "intercept_count": 6,
+          "leak_count": 1,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 70,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 36275000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 7,
+            "iris_t_sls": 11,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 8
+          },
+          "intercept_count": 10,
+          "leak_count": 3,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 52900000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 12,
+            "iris_t_sls": 8,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 9,
+          "leak_count": 3,
+          "ground_crash_count": 0
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 38825000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 1,
+            "iris_t_sls": 14,
+            "iris_t_slm": 22,
+            "pac_2": 8,
+            "pac_3": 7
+          },
+          "intercept_count": 8,
+          "leak_count": 1,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 55,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 49800000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 4,
+            "iris_t_sls": 11,
+            "iris_t_slm": 20,
+            "pac_2": 8,
+            "pac_3": 5
+          },
+          "intercept_count": 8,
+          "leak_count": 2,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 40,
+          "red_budget_remaining": 700000,
+          "blue_budget_remaining": 48417000,
+          "red_spawns_by_kind": {
+            "drone": 10,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 4,
+            "rbs_70": 9,
+            "iris_t_sls": 14,
+            "iris_t_slm": 23,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 7,
+          "leak_count": 1,
+          "ground_crash_count": 2
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 70,
+          "red_budget_remaining": 10000,
+          "blue_budget_remaining": 50825000,
+          "red_spawns_by_kind": {
+            "drone": 33,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 1,
+            "iris_t_sls": 16,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 7,
+          "leak_count": 3,
+          "ground_crash_count": 1
+        },
+        {
+          "winner": "draw",
+          "episode_length": 1200,
+          "sim_time": 600.000000000002,
+          "sites_destroyed": 0,
+          "sites_total_damage": 80,
+          "red_budget_remaining": 700000,
+          "blue_budget_remaining": 51600000,
+          "red_spawns_by_kind": {
+            "drone": 10,
+            "cruise_sub": 16,
+            "ballistic": 0,
+            "hgv": 3
+          },
+          "blue_launches_by_kind": {
+            "ciws": 0,
+            "rbs_70": 8,
+            "iris_t_sls": 12,
+            "iris_t_slm": 21,
+            "pac_2": 8,
+            "pac_3": 4
+          },
+          "intercept_count": 11,
+          "leak_count": 2,
+          "ground_crash_count": 0
+        }
+      ]
+    }
+  ]
+}
