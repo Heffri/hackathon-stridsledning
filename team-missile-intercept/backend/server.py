@@ -23,6 +23,13 @@ from sim.scenarios import build_default_scenario
 from sim.types import InterceptorType, MatchPhase
 
 
+# Live-demo hook: learned-policy paths read from env vars at import time.
+# Unset → scenario uses the rule-based RedAI / BlueAI as before (zero
+# regression). Both vars are independent; either can be set alone.
+_RED_POLICY_PATH = os.environ.get("RED_POLICY_PATH")
+_BLUE_POLICY_PATH = os.environ.get("BLUE_POLICY_PATH")
+
+
 ROOT = Path(__file__).resolve().parent
 FRONTEND_DIR = ROOT.parent / "frontend"
 
@@ -44,6 +51,7 @@ class SimRunner:
         # keep the old auto_start=True default when they call
         # build_default_scenario() themselves.
         self.scenario = build_default_scenario(auto_start=False)
+        self._apply_learned_policies()
         self.speed: float = 1.0   # time multiplier
         self._subscribers: set[asyncio.Queue] = set()
         self._task: asyncio.Task | None = None
@@ -62,6 +70,35 @@ class SimRunner:
         # Speed is preserved across resets — operators demoing at 20x
         # keep their pace between matches.
         self.scenario = build_default_scenario(auto_start=False)
+        self._apply_learned_policies()
+
+    def _apply_learned_policies(self) -> None:
+        """Live-demo hook. If ``RED_POLICY_PATH`` / ``BLUE_POLICY_PATH`` env
+        vars are set, replace ``scenario.red`` / ``scenario.blue`` with
+        learned-policy wrappers from ``rl.live_ai``. Either is independent;
+        unset vars leave the rule-based AI unchanged. Called from
+        ``__init__`` + ``reset`` so a fresh match always re-installs the
+        wrappers (each learned match starts from zero round-robin /
+        launcher state, matching the rule-based Restart UX).
+        Fails fast — load errors propagate so demo-prep surfaces bugs
+        instead of silently falling back to rule-based.
+        """
+        if _RED_POLICY_PATH:
+            from rl.live_ai import LearnedRedAI
+            self.scenario.red = LearnedRedAI(_RED_POLICY_PATH, self.scenario)
+            print(
+                f"[server] Loaded learned Red policy: {_RED_POLICY_PATH}",
+                flush=True,
+            )
+        if _BLUE_POLICY_PATH:
+            from rl.live_ai import LearnedBlueAI
+            self.scenario.blue = LearnedBlueAI(
+                _BLUE_POLICY_PATH, self.scenario
+            )
+            print(
+                f"[server] Loaded learned Blue policy: {_BLUE_POLICY_PATH}",
+                flush=True,
+            )
 
     async def _loop(self):
         dt = config.DT
