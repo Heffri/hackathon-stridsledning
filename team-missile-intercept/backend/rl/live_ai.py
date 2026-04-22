@@ -159,7 +159,14 @@ class LearnedRedAI:
         # alongside the last successful spawn time so the idle-timeout
         # branch can fire against a hoarding policy.
         self._done_latched = False
-        self._last_spawn_t = 0.0
+        # Sentinel-init so the idle-timeout branch can't self-latch before
+        # the first spawn (audit 2026-04-22 F3): prior `_last_spawn_t=0.0`
+        # with the guard `t_now > 120 and t_now - _last_spawn_t > 120`
+        # trips at t=120.05 if Red never spawned, flipping done=True and
+        # ending the match via the red_done + no_threats Blue-win path.
+        # None = "never spawned"; idle-check skips until the first spawn
+        # records a real timestamp.
+        self._last_spawn_t: Optional[float] = None
         # Scenario attrs ---------------------------------------------------
         self.log: List[str] = []
         self.waves: List = []   # stub — see class docstring
@@ -178,12 +185,15 @@ class LearnedRedAI:
         if self._env.world.red_budget < cheapest:
             self._done_latched = True
             return True
-        # Idle timeout — only meaningful after the match has actually
-        # been running. The `t_now > IDLE_TIMEOUT_S` guard stops the
-        # initial zero-initialized `_last_spawn_t` from tripping this
-        # at t=IDLE_TIMEOUT_S before Red has had a real chance to act.
+        # Idle timeout — only meaningful once Red has actually spawned
+        # at least once. With sentinel-init `_last_spawn_t=None`, the
+        # idle-check is skipped until the first spawn records a real
+        # timestamp; after that, >IDLE_TIMEOUT_S of silence latches done.
         t_now = self._env.world.t
-        if t_now > self.IDLE_TIMEOUT_S and (t_now - self._last_spawn_t) > self.IDLE_TIMEOUT_S:
+        if (
+            self._last_spawn_t is not None
+            and (t_now - self._last_spawn_t) > self.IDLE_TIMEOUT_S
+        ):
             self._done_latched = True
             return True
         return False
