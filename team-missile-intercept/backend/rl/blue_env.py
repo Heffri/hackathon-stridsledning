@@ -17,6 +17,31 @@ the inner loop become visible in the NEXT obs, not the current).
 numpy._core compat shim: applied at module import time (same pattern as
 red_env.py on rl-self-play-v1) so `MaskablePPO.load` can unpickle models
 saved under numpy>=2.0 while we run on numpy 1.26.
+
+Reward shaping — L1 additions on top of MissileInterceptEnv's base
+reward (event-scaled intercepts - leak penalty - spend efficiency -
+terminal +/-100). All three are strictly-additive and default-on so
+the pool-training regime sees them without extra CLI flags; set any
+coefficient to 0 to disable a term individually:
+
+  * `reward_site_survival` (default 0.02) — per-decision baseline
+    proportional to `sum(site.hp / site.hp_max)`. Small + steady so
+    it biases Blue toward keeping sites alive without dominating the
+    intercept/leak signal. Accumulates to ~72 reward over a 1200-
+    decision fully-survived episode (alpha=0.02, 3 sites).
+  * `reward_intercept` (default 0.5) — flat per-intercept bonus on
+    top of the base env's value-scaled credit. Small enough not to
+    reverse the sign of a lossy intercept (firing $1.5M SAM at a
+    $30k drone nets r = 0.03 + 0.5 = 0.53, still positive but still
+    cheaper than hold).
+  * `reward_red_drain` (default 5.0) — terminal bonus at episode end,
+    scaled by `1 - world.red_budget / RED_BUDGET_START`. Rewards
+    forcing Red to burn through its pool. Fires on truncation too so
+    a 600s stalemate with fully-drained Red still credits Blue.
+
+None of these alter obs or action shapes — cross-eval compatibility
+with Boyu's baseline Blue models (same observation encoder, same
+2D action mask) is preserved by design.
 """
 from __future__ import annotations
 
@@ -119,11 +144,21 @@ class BlueSelfPlayEnv(MissileInterceptEnv):
         episode_time_limit: Optional[float] = None,
         red_opponent_pool: Optional[List] = None,
         red_opponent_weights: Optional[List[float]] = None,
+        reward_site_survival: float = 0.02,
+        reward_intercept: float = 0.5,
+        reward_red_drain: float = 5.0,
     ):
         kwargs = {"seed": seed}
         if episode_time_limit is not None:
             kwargs["episode_time_limit"] = episode_time_limit
         super().__init__(**kwargs)
+        # L1 reward-shaping coefficients. Defaults enabled for the pool
+        # self-play regime. Set any coefficient to 0 to disable that
+        # term — exact reproducibility of a baseline Blue (no shaping)
+        # is recovered with all three at 0.
+        self._reward_site_survival = float(reward_site_survival)
+        self._reward_intercept = float(reward_intercept)
+        self._reward_red_drain = float(reward_red_drain)
 
         self._red_policy_path = red_policy_path
         self._red_seed = seed
@@ -205,6 +240,12 @@ class BlueSelfPlayEnv(MissileInterceptEnv):
 
     # ------------------------------------------------------------------
     def step(self, action):
+        # Snapshot pre-step state that the L1 shaping block diffs against.
+        # `world.intercepts` is a monotonic counter of successful intercepts
+        # maintained by sim.world; diffing pre/post gives exactly the
+        # number of intercepts that landed this outer step.
+        prev_intercepts = self.world.intercepts if self.world is not None else 0
+
         # Learned Red decides FIRST at the top of each decision tick.
         # Blue's obs (which produced `action`) was captured at the end
         # of the previous step, before Red's current-window spawn — this
@@ -218,7 +259,29 @@ class BlueSelfPlayEnv(MissileInterceptEnv):
                 red_obs, deterministic=False, action_masks=red_mask_flat
             )
             self._apply_red_action(np.asarray(red_action).reshape(-1))
-        return super().step(action)
+        obs, reward, terminated, truncated, info = super().step(action)
+
+        # --- L1 reward shaping. Each term is strictly additive; a zero
+        # coefficient disables it. Keep obs/action shapes UNCHANGED so
+        # cross-eval vs Boyu's baseline Blue models still works with
+        # the same loaded observation encoder.
+        if self._reward_site_survival > 0.0:
+            survival = sum(
+                s.hp / max(1, s.hp_max) for s in sites_module.SOUTH_SITES
+            )
+            reward += self._reward_site_survival * survival
+        if self._reward_intercept > 0.0:
+            n_intercepts = max(0, self.world.intercepts - prev_intercepts)
+            if n_intercepts > 0:
+                reward += self._reward_intercept * n_intercepts
+        if (terminated or truncated) and self._reward_red_drain > 0.0:
+            drain_frac = 1.0 - (
+                self.world.red_budget / max(1.0, float(RED_BUDGET_START))
+            )
+            drain_frac = max(0.0, min(1.0, drain_frac))
+            reward += self._reward_red_drain * drain_frac
+
+        return obs, float(reward), terminated, truncated, info
 
     # ------------------------------------------------------------------
     # Red obs + mask helpers. Shape matches `rl.red_env.RedEnv`'s flat

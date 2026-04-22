@@ -70,6 +70,9 @@ def make_env(
     red_policy_path=None,
     red_opponent_pool=None,
     red_opponent_weights=None,
+    reward_site_survival=0.02,
+    reward_intercept=0.5,
+    reward_red_drain=5.0,
 ):
     def _init():
         env = BlueSelfPlayEnv(
@@ -78,6 +81,9 @@ def make_env(
             episode_time_limit=episode_time_limit,
             red_opponent_pool=red_opponent_pool,
             red_opponent_weights=red_opponent_weights,
+            reward_site_survival=reward_site_survival,
+            reward_intercept=reward_intercept,
+            reward_red_drain=reward_red_drain,
         )
         env = Monitor(env)
         env = ActionMasker(env, mask_fn)
@@ -92,6 +98,9 @@ def build_vec_env(
     red_policy_path=None,
     red_opponent_pool=None,
     red_opponent_weights=None,
+    reward_site_survival=0.02,
+    reward_intercept=0.5,
+    reward_red_drain=5.0,
 ):
     fns = [
         make_env(
@@ -100,6 +109,9 @@ def build_vec_env(
             red_policy_path=red_policy_path,
             red_opponent_pool=red_opponent_pool,
             red_opponent_weights=red_opponent_weights,
+            reward_site_survival=reward_site_survival,
+            reward_intercept=reward_intercept,
+            reward_red_drain=reward_red_drain,
         )
         for i in range(n_envs)
     ]
@@ -170,6 +182,17 @@ def main():
                     help="Comma-separated per-opponent sampling weights "
                          "(default: uniform). Must match --opponent-pool "
                          "length; auto-normalized to sum=1.")
+    # L1 reward shaping knobs (see blue_env.py docstring for semantics).
+    # Defaults enabled; zero values disable individual terms.
+    ap.add_argument("--reward-site-survival", type=float, default=0.02,
+                    help="Per-decision baseline bonus scaled by summed "
+                         "site HP ratio (0 disables).")
+    ap.add_argument("--reward-intercept", type=float, default=0.5,
+                    help="Flat per-intercept bonus on top of the base "
+                         "env's value-scaled credit (0 disables).")
+    ap.add_argument("--reward-red-drain", type=float, default=5.0,
+                    help="Terminal bonus scaled by 1 - red_budget/"
+                         "RED_BUDGET_START (0 disables).")
     args = ap.parse_args()
 
     opp_pool, opp_weights = _parse_pool_args(args.opponent_pool, args.opponent_weights)
@@ -186,6 +209,9 @@ def main():
         red_policy_path=args.red_opponent,
         red_opponent_pool=opp_pool,
         red_opponent_weights=opp_weights,
+        reward_site_survival=args.reward_site_survival,
+        reward_intercept=args.reward_intercept,
+        reward_red_drain=args.reward_red_drain,
     )
 
     policy_kwargs = dict(
@@ -238,6 +264,10 @@ def main():
         print(f"opponent-weights={list(opp_weights) if opp_weights else '(uniform)'}")
     else:
         print(f"red-opponent={args.red_opponent or '(rule RedAI)'}")
+    print(
+        f"reward-shaping L1: site-survival={args.reward_site_survival} "
+        f"intercept={args.reward_intercept} red-drain={args.reward_red_drain}"
+    )
     print(f"writing to {run_dir}")
 
     t0 = time.time()
