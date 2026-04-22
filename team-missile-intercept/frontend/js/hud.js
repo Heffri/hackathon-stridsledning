@@ -129,10 +129,6 @@ export function wireHud(sendCmd) {
   });
 }
 
-// Track events we've already shown so snapshot replay doesn't re-fire.
-const _seenEvents = new Set();
-let _bannerHideTimer = null;
-
 export function updateHud(snap) {
   setText('stat-t', snap.t.toFixed(1));
   setText('stat-wave', snap.wave ?? 0);
@@ -143,19 +139,6 @@ export function updateHud(snap) {
 
   renderLog('log-red', snap.red_log || []);
   renderLog('log-blue', snap.blue_log || []);
-
-  // Launch banner: trigger on new "launch" events in this snapshot
-  for (const ev of snap.events || []) {
-    if (ev.type !== 'launch') continue;
-    const key = `launch_${ev.id}`;
-    if (_seenEvents.has(key)) continue;
-    _seenEvents.add(key);
-    showLaunchBanner(ev.kind, ev.target);
-  }
-  // Keep the set from growing forever
-  if (_seenEvents.size > 500) {
-    _seenEvents.clear();
-  }
 
   // Per-site HP bars (Milestone I — replaces the old leak counters).
   renderSiteHp(snap.sites || []);
@@ -480,25 +463,9 @@ function renderPhaseOverlay(phase, winner) {
   el.classList.add('hidden');
 }
 
-function showLaunchBanner(interceptorKind, targetId) {
-  const el = document.getElementById('launch-banner');
-  if (!el) return;
-  const name = INTERCEPTOR_NAMES[interceptorKind] || interceptorKind;
-  el.innerHTML =
-    `<div class="lb-title">LAUNCH: ${escapeHtml(name)}</div>` +
-    `<div class="lb-line">vs Target #${targetId}</div>`;
-  el.classList.remove('hidden');
-  if (_bannerHideTimer) clearTimeout(_bannerHideTimer);
-  _bannerHideTimer = setTimeout(() => {
-    el.classList.add('hidden');
-  }, 2000);
-}
-
-// Called by main.js on websocket reset so Reset button clears the banner
-// state and banner re-triggers for the next game.
+// Called by main.js on websocket reset so Reset button clears banner
+// state and re-triggers for next game.
 export function resetHudEventTracking() {
-  _seenEvents.clear();
-  document.getElementById('launch-banner')?.classList.add('hidden');
   document.getElementById('match-overlay')?.classList.add('hidden');
   // Ribbon re-shows on the next SETUP snapshot; hiding it here avoids a
   // stale-visible flash between Reset click and the first snapshot.

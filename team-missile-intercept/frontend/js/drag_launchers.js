@@ -125,7 +125,7 @@ export function initLauncherDrag({
   function boxesForHitTest() {
     const boxes = [];
     for (const mesh of launchers.byId.values()) {
-      boxes.push(mesh.box);
+      boxes.push(mesh.hitMesh || mesh.box);
     }
     return boxes;
   }

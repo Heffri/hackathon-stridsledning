@@ -14,8 +14,8 @@ export const BASE_POS = [75_000, 5_000, 0];
 
 export function createScene(canvas) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a1424);
-  scene.fog = new THREE.Fog(0x0a1424, 100, 500);
+  scene.background = new THREE.Color(0x1a2a3e);
+  scene.fog = new THREE.Fog(0x1a2a3e, 200, 700);
 
   // Dusk/dawn gradient skydome. A large inverted sphere with a shader
   // that lerps from a dark-blue zenith (high world Y) to a warm amber
@@ -28,9 +28,9 @@ export function createScene(canvas) {
     side: THREE.BackSide,
     depthWrite: false,
     uniforms: {
-      zenithColor: { value: new THREE.Color(0x0a1524) },
-      horizonColor: { value: new THREE.Color(0x2a1a10) },
-      glowColor: { value: new THREE.Color(0xffa64a) },
+      zenithColor: { value: new THREE.Color(0x1a2d48) },
+      horizonColor: { value: new THREE.Color(0x4a3828) },
+      glowColor: { value: new THREE.Color(0xff9a38) },
     },
     vertexShader: /* glsl */ `
       varying vec3 vWorldPos;
@@ -65,25 +65,14 @@ export function createScene(canvas) {
   renderer.setSize(window.innerWidth, window.innerHeight);
 
   const camera = new THREE.PerspectiveCamera(
-    55,
+    72,
     window.innerWidth / window.innerHeight,
     0.1,
     2000,
   );
-  // Pull camera south of the base, medium altitude (~25 km world → 25 units
-  // at SCALE=0.001), looking north and slightly up so high-altitude entities
-  // (ballistic threats at 30-40 km) clearly arc down from above the horizon.
-  // Three.js axes: +X=east, +Y=up, -Z=north. Camera is south-east of base
-  // looking toward the deep arena.
-  // Position: 18 east, 25 up, 55 south. OrbitControls target slightly north
-  // and above the base so the battle volume fills the view.
-  // Camera pulled further back + aimed deeper into the 250 km arena so
-  // HGV / ballistic spawn borders at Z ≈ -175 are in the frame.
-  // W13 Phase 7: pulled out into named constants so `resetCameraView`
-  // (exposed below) can restore the demo-default framing after the
-  // operator pans / zooms during the 4-minute presentation window.
-  const DEFAULT_CAMERA_POS = [30, 50, 110];
-  const DEFAULT_CONTROLS_TARGET = [0, 12, -70];
+  // W13 Phase 7: named constants let resetCameraView restore demo framing.
+  const DEFAULT_CAMERA_POS = [0, 42, 95];
+  const DEFAULT_CONTROLS_TARGET = [0, 0, -90];
   camera.position.set(...DEFAULT_CAMERA_POS);
   camera.lookAt(...DEFAULT_CONTROLS_TARGET);
 
@@ -102,12 +91,27 @@ export function createScene(canvas) {
     controls.update();
   }
 
-  // Lighting
-  const amb = new THREE.AmbientLight(0x5577aa, 0.5);
-  scene.add(amb);
-  const sun = new THREE.DirectionalLight(0xffe0aa, 1.0);
-  sun.position.set(40, 80, 40);
+  // ── Lighting ─────────────────────────────────────────────────────────────
+  // Hemisphere light: sky (blue-grey) from above, ground (warm olive) from
+  // below. Fills shadows with soft colour variance instead of pure black.
+  const hemi = new THREE.HemisphereLight(0x8aaac8, 0x3a3820, 1.0);
+  scene.add(hemi);
+
+  // Primary sun — warm amber, raking from south-east at high angle.
+  const sun = new THREE.DirectionalLight(0xffd890, 2.0);
+  sun.position.set(60, 90, 50);
   scene.add(sun);
+
+  // Fill light — cool blue from the north/opposite side, moderate power.
+  // Adds colour contrast: warm sunlit faces vs. cool shadow faces.
+  const fill = new THREE.DirectionalLight(0x6090c8, 0.6);
+  fill.position.set(-40, 30, -80);
+  scene.add(fill);
+
+  // Rim light — pale warm from below-west, lifts the horizon strip.
+  const rim = new THREE.DirectionalLight(0xffa060, 0.35);
+  rim.position.set(-80, -10, 20);
+  scene.add(rim);
 
   // Arena is asymmetric (150 km wide × 250 km deep to accommodate HGV
   // spawns 180 km north of the base). Ground plane is a rectangle
@@ -138,9 +142,9 @@ export function createScene(canvas) {
   // (from y=0 up to y=+0.3) doesn't z-fight.
   const groundGeom = new THREE.PlaneGeometry(widthUnits, depthUnits);
   const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x0c182a,
-    roughness: 0.95,
-    metalness: 0.0,
+    color: 0x1a3050,   // brighter steel-blue sea
+    roughness: 0.85,
+    metalness: 0.05,
   });
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
@@ -176,8 +180,8 @@ export function createScene(canvas) {
     const sz = SCENE_Z_NORTH + yn * (SCENE_Z_SOUTH - SCENE_Z_NORTH);
     return [sx, sz];
   }
-  const MAINLAND_COLOR = 0x2f3a2a;  // dark olive
-  const ISLAND_COLOR   = 0x2b382c;  // slightly different tint
+  const MAINLAND_COLOR = 0x4a5e3a;  // lighter olive-green land
+  const ISLAND_COLOR   = 0x3e5240;  // slightly darker island tint
   const EXTRUDE_DEPTH  = 0.3;       // scene units = 300 m above sea level
   for (const poly of BOREAL_TERRAIN) {
     const shape = new THREE.Shape();
@@ -212,93 +216,219 @@ export function createScene(canvas) {
     scene.add(mesh);
   }
 
-  // Boreal Passage location landmarks — named air-bases, capitals, and
-  // major cities parsed from the Saab CSV. Each location gets a small 3D
-  // structure sitting on top of the extruded terrain (terrain top is at
-  // y=0.3, structures start at y=0.32) and a canvas-textured Sprite label
-  // above it. Side tinting: north = red accent, south = blue accent, so
-  // a judge can spot which coast owns which at a glance.
+  // Boreal Passage location landmarks — richer per-subtype 3D structures.
+  // Terrain top is at y=0.3; all structures start from y=0.32 (group offset).
+  // Side tinting: north = red emissive accent, south = blue emissive accent.
+  const landmarkHitMeshes = [];
   for (const loc of BOREAL_LOCATIONS) {
     const [sx, sz] = saabToScene(loc.x, loc.y);
     const group = new THREE.Group();
-    const tint = loc.side === 'north' ? 0x442020 : 0x202a44;
+    const isNorth  = loc.side === 'north';
+    const tint     = isNorth ? 0x441515 : 0x1a2a44;
+    const litColor = isNorth ? 0xff3020 : 0x4488ff;
+
+    // Helper: box mesh placed relative to group origin (y = half-height).
+    const bld = (w, h, d, color, emissive, ei, x = 0, z = 0) => {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: ei, roughness: 0.75 }),
+      );
+      m.position.set(x, h / 2, z);
+      group.add(m);
+      return m;
+    };
+    const cyl = (rt, rb, h, seg, color, emissive, ei, x = 0, cy = 0, z = 0, rx = 0) => {
+      const m = new THREE.Mesh(
+        new THREE.CylinderGeometry(rt, rb, h, seg),
+        new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: ei, roughness: 0.6 }),
+      );
+      m.position.set(x, cy, z);
+      if (rx) m.rotation.x = rx;
+      group.add(m);
+      return m;
+    };
 
     if (loc.subtype === 'air_base') {
-      // 1 km runway oriented along X (concrete strip) + small control tower
-      // offset to one side. Box dims: X × Y × Z = 1.0 (length) × 0.02
-      // (height) × 0.15 (width).
-      const runway = new THREE.Mesh(
-        new THREE.BoxGeometry(1.0, 0.02, 0.15),
-        new THREE.MeshStandardMaterial({ color: 0xb8b8b0, roughness: 0.85 }),
-      );
-      runway.position.set(0, 0.01, 0);
-      group.add(runway);
-      const tower = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08, 0.12, 0.1),
-        new THREE.MeshStandardMaterial({
-          color: 0x8a8a88,
-          emissive: tint,
-          emissiveIntensity: 0.45,
-          roughness: 0.7,
-        }),
-      );
-      tower.position.set(0.35, 0.06, 0.2);
-      group.add(tower);
+      // ── Air base: runway, taxiway, hangars, control tower, radar, parked jet ──
+
+      // Primary runway (concrete strip)
+      bld(1.25, 0.02, 0.20, 0xb0b0a8, 0x000000, 0,  0,  0);
+      // Secondary taxiway (perpendicular, shorter)
+      bld(0.18, 0.015, 0.55, 0xa8a8a0, 0x000000, 0, 0.40, 0.18);
+
+      // Hangar 1 — large shed
+      bld(0.36, 0.16, 0.30, 0x8a8a84, tint, 0.18, -0.52, -0.30);
+      // Hangar roof ridge
+      bld(0.37, 0.05, 0.09, 0x7a7a74, tint, 0.12, -0.52, -0.30);
+      // Hangar 2 — smaller
+      bld(0.28, 0.12, 0.24, 0x7e7e7a, tint, 0.18, -0.52,  0.14);
+
+      // Control tower base
+      bld(0.09, 0.28, 0.10, 0x9a9a94, tint, 0.28, 0.56, -0.28);
+      // Control tower cab (glass-tinted)
+      {
+        const cab = new THREE.Mesh(
+          new THREE.BoxGeometry(0.14, 0.07, 0.15),
+          new THREE.MeshStandardMaterial({ color: 0x6090b8, emissive: litColor, emissiveIntensity: 0.55, roughness: 0.35 }),
+        );
+        cab.position.set(0.56, 0.315, -0.28);
+        group.add(cab);
+      }
+
+      // Radar mast + dish
+      cyl(0.022, 0.026, 0.32, 6, 0x888880, tint, 0.18, 0.56, 0.22, 0.22);
+      cyl(0.15,  0.15,  0.026, 12, 0xa0a098, tint, 0.28, 0.56, 0.50, 0.22);
+
+      // Parked aircraft silhouette (T-shape)
+      {
+        const fusMat = new THREE.MeshStandardMaterial({ color: 0xb0b8c8, roughness: 0.55 });
+        const fus = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.52, 6), fusMat);
+        fus.rotation.z = Math.PI / 2;
+        fus.position.set(0.10, 0.06, -0.04);
+        group.add(fus);
+        const wings = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.028, 0.11), fusMat);
+        wings.position.set(0.10, 0.06, -0.04);
+        group.add(wings);
+        const vtail = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.14, 0.09), fusMat);
+        vtail.position.set(-0.13, 0.12, -0.04);
+        group.add(vtail);
+      }
+
     } else if (loc.subtype === 'capital') {
-      // Cluster of 5 tall boxes (skyline). Varying heights 0.18..0.35.
-      const spec = [
-        { w: 0.16, d: 0.15, h: 0.35, x: 0,     z: 0 },
-        { w: 0.13, d: 0.13, h: 0.28, x: 0.18,  z: 0.05 },
-        { w: 0.15, d: 0.14, h: 0.22, x: -0.15, z: 0.1 },
-        { w: 0.12, d: 0.12, h: 0.3,  x: 0.05,  z: -0.15 },
-        { w: 0.1,  d: 0.1,  h: 0.18, x: -0.18, z: -0.1 },
-      ];
-      for (const p of spec) {
-        const box = new THREE.Mesh(
-          new THREE.BoxGeometry(p.w, p.h, p.d),
+      // ── Capital: dramatic skyline, dome civic hall, lit plaza, city glow ──
+
+      // City plaza (lit ground square)
+      {
+        const pl = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.95, 0.95),
+          new THREE.MeshStandardMaterial({ color: 0x1e1e28, emissive: tint, emissiveIntensity: 0.12, roughness: 1.0 }),
+        );
+        pl.rotation.x = -Math.PI / 2;
+        pl.position.y = 0.01;
+        group.add(pl);
+      }
+
+      // Main civic tower + pyramidal spire
+      bld(0.21, 0.62, 0.21, 0x38383e, tint, 0.55, 0, 0);
+      {
+        const spire = new THREE.Mesh(
+          new THREE.ConeGeometry(0.075, 0.24, 4),
+          new THREE.MeshStandardMaterial({ color: 0xb8b8c4, emissive: litColor, emissiveIntensity: 0.30, roughness: 0.40 }),
+        );
+        spire.position.set(0, 0.62 + 0.12, 0);
+        group.add(spire);
+      }
+
+      // Glass tower (reflective)
+      {
+        const gt = new THREE.Mesh(
+          new THREE.BoxGeometry(0.16, 0.48, 0.15),
           new THREE.MeshStandardMaterial({
-            color: 0x333338,
-            emissive: tint,
-            emissiveIntensity: 0.55,
-            roughness: 0.75,
+            color: isNorth ? 0x3a1820 : 0x1c2e40,
+            emissive: tint, emissiveIntensity: 0.78,
+            roughness: 0.30, metalness: 0.55,
           }),
         );
-        box.position.set(p.x, p.h / 2, p.z);
-        group.add(box);
+        gt.position.set(0.25, 0.24, 0.07);
+        group.add(gt);
       }
+
+      // Office blocks (varied heights)
+      const offices = [
+        { x: -0.21, z: 0.11, w: 0.17, h: 0.34, d: 0.14 },
+        { x:  0.10, z: -0.21, w: 0.19, h: 0.40, d: 0.15 },
+        { x: -0.23, z: -0.15, w: 0.14, h: 0.26, d: 0.13 },
+        { x:  0.27, z: -0.19, w: 0.12, h: 0.20, d: 0.11 },
+        { x:  0.08, z:  0.25, w: 0.15, h: 0.32, d: 0.13 },
+        { x: -0.09, z:  0.21, w: 0.12, h: 0.17, d: 0.11 },
+        { x: -0.31, z: -0.05, w: 0.10, h: 0.15, d: 0.10 },
+        { x:  0.32, z:  0.13, w: 0.09, h: 0.13, d: 0.09 },
+      ];
+      for (const p of offices) {
+        bld(p.w, p.h, p.d, 0x424248, tint, 0.50, p.x, p.z);
+      }
+
+      // Dome civic hall
+      bld(0.19, 0.13, 0.19, 0x4a4a52, tint, 0.38, -0.06, -0.09);
+      {
+        const dome = new THREE.Mesh(
+          new THREE.SphereGeometry(0.11, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+          new THREE.MeshStandardMaterial({ color: 0x6a6a74, emissive: litColor, emissiveIntensity: 0.22, roughness: 0.5 }),
+        );
+        dome.position.set(-0.06, 0.13, -0.09);
+        group.add(dome);
+      }
+
+      // City ambient PointLight (warm city glow)
+      const glow = new THREE.PointLight(litColor, 1.4, 28, 1.6);
+      glow.position.set(0, 3.5, 0);
+      group.add(glow);
+
     } else {
-      // major_city: 3 mid-rise buildings in a smaller footprint.
-      const spec = [
-        { w: 0.12, d: 0.11, h: 0.2,  x: 0,    z: 0 },
-        { w: 0.1,  d: 0.1,  h: 0.14, x: 0.1,  z: 0.05 },
-        { w: 0.1,  d: 0.09, h: 0.09, x: -0.09, z: -0.08 },
-      ];
-      for (const p of spec) {
-        const box = new THREE.Mesh(
-          new THREE.BoxGeometry(p.w, p.h, p.d),
-          new THREE.MeshStandardMaterial({
-            color: 0x444448,
-            emissive: tint,
-            emissiveIntensity: 0.5,
-            roughness: 0.75,
-          }),
+      // ── Major city: mid-rise cluster, water tower, plaza, ambient glow ──
+
+      // City plaza
+      {
+        const pl = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.58, 0.58),
+          new THREE.MeshStandardMaterial({ color: 0x1c1c24, emissive: tint, emissiveIntensity: 0.10, roughness: 1.0 }),
         );
-        box.position.set(p.x, p.h / 2, p.z);
-        group.add(box);
+        pl.rotation.x = -Math.PI / 2;
+        pl.position.y = 0.01;
+        group.add(pl);
       }
+
+      // Building cluster
+      const citySpec = [
+        { x:  0,     z:  0,     w: 0.15, h: 0.28, d: 0.14 },
+        { x:  0.17,  z:  0.06,  w: 0.13, h: 0.20, d: 0.12 },
+        { x: -0.15,  z:  0.09,  w: 0.12, h: 0.15, d: 0.11 },
+        { x:  0.07,  z: -0.17,  w: 0.14, h: 0.23, d: 0.12 },
+        { x: -0.13,  z: -0.11,  w: 0.11, h: 0.11, d: 0.10 },
+        { x:  0.21,  z: -0.11,  w: 0.10, h: 0.15, d: 0.10 },
+      ];
+      for (const p of citySpec) {
+        bld(p.w, p.h, p.d, 0x444448, tint, 0.50, p.x, p.z);
+      }
+
+      // Water tower (mast + tank)
+      cyl(0.030, 0.035, 0.22, 6, 0x808088, tint, 0.18, -0.22, 0.11, 0.17);
+      cyl(0.075, 0.075, 0.11, 8, 0x909098, tint, 0.22, -0.22, 0.28, 0.17);
+
+      // City ambient glow (dimmer than capital)
+      const glow = new THREE.PointLight(litColor, 0.7, 18, 2.0);
+      glow.position.set(0, 2.2, 0);
+      group.add(glow);
     }
 
+    // Scale landmarks up dramatically so cities dominate the landscape.
+    // Per-location scale override supported via loc.scale field.
+    const locScale = loc.scale ?? 10.0;
+    group.scale.setScalar(locScale);
+    if (loc.rotation_y) group.rotation.y = loc.rotation_y;
     group.position.set(sx, 0.32, sz);
     scene.add(group);
 
+    // Invisible hit volume for drag_visual.js. Added as a child of the group
+    // so it moves with the landmark when dragged. Geometry is given in local
+    // coords (before scale) so the compensated radius keeps the world-space
+    // click target at a fixed ~3 km radius regardless of loc.scale.
+    const hitR = 3.0 / locScale;   // world 3 km → local units
+    const hitH = 10.0 / locScale;  // world 10 km tall hit volume
+    const lmHitGeo = new THREE.CylinderGeometry(hitR, hitR, hitH, 12);
+    const lmHitMat = new THREE.MeshBasicMaterial({ visible: false });
+    const lmHitMesh = new THREE.Mesh(lmHitGeo, lmHitMat);
+    lmHitMesh.position.set(0, hitH / 2, 0);  // centre vertically above origin
+    group.add(lmHitMesh);
+    landmarkHitMeshes.push(lmHitMesh);
+
     const label = makeTextSprite(loc.name, loc.side);
-    // Sit the label ~700 m above sea so it clears the tallest (0.35 tall)
-    // capital buildings with headroom and reads well from the default
-    // overhead camera.
-    label.position.set(sx, 1.0, sz);
-    label.scale.set(4, 1, 1);
+    label.position.set(sx, 14.0, sz);
+    label.scale.set(18.0, 4.5, 1);
     scene.add(label);
   }
+
+  // Forest patches removed — cone trees appeared as mountains at arena scale.
 
   // The old blue base cylinder (CylinderGeometry(2.0, 2.5, 1.2, 12) at
   // BASE_POS) was removed in Milestone G: the base is now just one site
@@ -322,6 +452,117 @@ export function createScene(canvas) {
   nLabel.position.set(nx, 2, ny);
   scene.add(nLabel);
 
+  // ── Radar Stations — visual only, no fog of war ───────────────────────────
+  // Each station is a single THREE.Group so drag_radars.js can move the
+  // whole thing (mast + dish + sweep + ring) by updating group.position.
+  const RADAR_SITES = [
+    { x: -28, z: -18, range: 55, speed: 0.40, color: 0x44aaff },
+    { x:  22, z: -28, range: 70, speed: 0.28, color: 0x44ddaa },
+    { x: -48, z: -52, range: 45, speed: 0.55, color: 0x5599ff },
+    { x:  38, z: -44, range: 60, speed: 0.35, color: 0x44ccff },
+  ];
+
+  function makeRadarSite(rx, rz, range, color) {
+    const group = new THREE.Group();
+    group.position.set(rx, 0, rz);
+    group.userData.isRadar = true;
+
+    const mat = new THREE.MeshStandardMaterial({
+      color, emissive: color, emissiveIntensity: 0.6, roughness: 0.4,
+    });
+
+    // Mast — visual only.
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.10, 2.2, 8), mat);
+    mast.position.set(0, 1.4, 0);
+    group.add(mast);
+
+    // Invisible large hit volume — wide cylinder covering the whole station.
+    // Radius 2.0 scene units (~2 km) makes the radar easy to grab at any
+    // camera distance without needing pixel-perfect aim on the thin mast.
+    const hitGeo = new THREE.CylinderGeometry(2.0, 2.0, 4.0, 12);
+    const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+    const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+    hitMesh.position.set(0, 2.0, 0);
+    hitMesh.userData.isRadarHit = true;  // drag_radars.js raycasts this
+    group.add(hitMesh);
+
+    // Rotating dish sub-group (local position above mast top).
+    const dishGroup = new THREE.Group();
+    dishGroup.position.set(0, 2.8, 0);
+    const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 0.08, 16), mat);
+    dish.rotation.x = Math.PI * 0.18;
+    dishGroup.add(dish);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.06, 6, 20), mat);
+    rim.rotation.x = Math.PI * 0.18;
+    dishGroup.add(rim);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.80, 6), mat);
+    arm.position.set(0, 0, -0.55);
+    arm.rotation.x = Math.PI / 2;
+    dishGroup.add(arm);
+    group.add(dishGroup);
+
+    // Sweep sector (pie slice, local coords — rotates around group Y).
+    const SWEEP_ANGLE = Math.PI / 6;
+    const SEGS = 24;
+    const pos = [0, 0.05, 0];
+    for (let i = 0; i <= SEGS; i++) {
+      const a = (i / SEGS) * SWEEP_ANGLE;
+      pos.push(Math.sin(a) * range, 0.05, -Math.cos(a) * range);
+    }
+    const sweepGeom = new THREE.BufferGeometry();
+    sweepGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+    const idx = [];
+    for (let i = 0; i < SEGS; i++) idx.push(0, i + 1, i + 2);
+    sweepGeom.setIndex(idx);
+    sweepGeom.computeVertexNormals();
+    const sweepPivot = new THREE.Group(); // child of group, rotated each frame
+    const sweep = new THREE.Mesh(sweepGeom, new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false,
+    }));
+    sweepPivot.add(sweep);
+    // Arc edge line
+    const arcPts = [];
+    for (let i = 0; i <= SEGS; i++) {
+      const a = (i / SEGS) * SWEEP_ANGLE;
+      arcPts.push(new THREE.Vector3(Math.sin(a) * range, 0.06, -Math.cos(a) * range));
+    }
+    const arcLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(arcPts),
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.35 }),
+    );
+    sweepPivot.add(arcLine);
+    group.add(sweepPivot);
+
+    // Static full range ring
+    const ringPts = [];
+    for (let i = 0; i <= 128; i++) {
+      const a = (i / 128) * Math.PI * 2;
+      ringPts.push(new THREE.Vector3(Math.sin(a) * range, 0.04, Math.cos(a) * range));
+    }
+    group.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(ringPts),
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.10 }),
+    ));
+
+    scene.add(group);
+    return { group, dishGroup, sweepPivot, mast, hitMesh };
+  }
+
+  const radarStations = RADAR_SITES.map(s =>
+    ({ ...makeRadarSite(s.x, s.z, s.range, s.color), speed: s.speed }),
+  );
+
+  // animateRadar(t) — call each RAF frame with elapsed seconds.
+  function animateRadar(t) {
+    for (const r of radarStations) {
+      r.dishGroup.rotation.y = t * r.speed * Math.PI * 2;
+      r.sweepPivot.rotation.y = t * r.speed * Math.PI * 2;
+    }
+  }
+
+  // Expose invisible hit volumes so drag_radars.js can raycast against them.
+  const radarHitMeshes = radarStations.map(r => r.hitMesh);
+
   // Resize
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -329,7 +570,7 @@ export function createScene(canvas) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  return { scene, camera, renderer, controls, resetCameraView };
+  return { scene, camera, renderer, controls, resetCameraView, animateRadar, radarHitMeshes };
 }
 
 // Backend coords: X=east, Y=north, Z=up (meters).

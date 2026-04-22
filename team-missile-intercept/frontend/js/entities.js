@@ -591,6 +591,9 @@ class EntityMesh {
     this.kind = kind;
 
     this.mesh = buildModel(kind, team, color);
+    // Scale up all entity models so they're clearly visible across the
+    // 150×250 km arena. Factor 3.0 keeps them readable without dominating.
+    this.mesh.scale.setScalar(2.0);
     // Tag the root Group so Raycaster intersections can resolve back to
     // this entity id by walking up .parent from the child Mesh hit.
     this.mesh.userData.entityId = id;
