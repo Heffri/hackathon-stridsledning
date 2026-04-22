@@ -184,6 +184,7 @@ class RedEnv(gym.Env):
         blue_policy_path: Optional[str] = None,
         blue_opponent_pool: Optional[List] = None,
         blue_opponent_weights: Optional[List[float]] = None,
+        layouts_pool: Optional[List[dict]] = None,
     ):
         super().__init__()
         self._seed = seed
@@ -241,6 +242,13 @@ class RedEnv(gym.Env):
         self.blue_policy = None
         self._active_opponent_path: Optional[str] = None
 
+        # Domain-randomization pool of Blue launcher layouts. See
+        # rl.env.MissileInterceptEnv for the full schema; None disables.
+        self._layouts_pool = layouts_pool
+        self._rng_layout_pool = np.random.default_rng(seed)
+        self._last_sampled_slot: Optional[str] = None
+        self._episode_count: int = 0
+
     def _build_spaces(self):
         mask_len = N_RED_KINDS + self._n_sites
         self.observation_space = spaces.Dict({
@@ -285,12 +293,18 @@ class RedEnv(gym.Env):
         # (mirroring env.py's MissileInterceptEnv ownership). In both
         # cases `self.blue_fleet` points at the active fleet so the obs
         # encoder has one uniform lookup.
+        override = self._sample_layout_override()
         if self.blue_policy is None:
             self.blue = BlueAI()
+            if override is not None:
+                self.blue.launchers = LauncherFleet(positions=override)
             self.blue_fleet = self.blue.launchers
         else:
             self.blue = None
-            self.blue_fleet = LauncherFleet()
+            self.blue_fleet = (
+                LauncherFleet(positions=override) if override is not None
+                else LauncherFleet()
+            )
         # Red launcher fleet is used only for `positions_for(kind)` /
         # `next_pos(kind)` lookups; no ammo / cooldown bookkeeping.
         self.red_launchers = RedLauncherFleet()
@@ -302,7 +316,33 @@ class RedEnv(gym.Env):
         self._total_site_hp = max(
             1, sum(s.hp_max for s in sites_module.SOUTH_SITES)
         )
+        self._episode_count += 1
+        if self._layouts_pool and self._episode_count % 50 == 1:
+            print(
+                f"[red_env] episode {self._episode_count} starting with "
+                f"layout slot={self._last_sampled_slot}",
+                flush=True,
+            )
         return self._encode_obs(), {}
+
+    # ------------------------------------------------------------------
+    def _sample_layout_override(self):
+        """Sample one layout roster from the pool (if set) and return a
+        dict-of-tuples ready for LauncherFleet(positions=...). Updates
+        `self._last_sampled_slot` for logging; returns None when no pool.
+        """
+        if not self._layouts_pool:
+            self._last_sampled_slot = None
+            return None
+        idx = int(self._rng_layout_pool.integers(0, len(self._layouts_pool)))
+        chosen = self._layouts_pool[idx]
+        roster = chosen.get("roster", {})
+        override = {
+            kind: [tuple(pos) for pos in positions]
+            for kind, positions in roster.items()
+        }
+        self._last_sampled_slot = chosen.get("slot", "?")
+        return override
 
     # ------------------------------------------------------------------
     def step(self, action):
@@ -417,6 +457,7 @@ class RedEnv(gym.Env):
             "blue_budget": self.world.blue_budget,
             "site_hp_total": sum(s.hp for s in sites_module.SOUTH_SITES),
             "cum_reward": self._cum_reward,
+            "layout_slot": self._last_sampled_slot,
         }
         return self._encode_obs(), float(reward), terminated, truncated, info
 

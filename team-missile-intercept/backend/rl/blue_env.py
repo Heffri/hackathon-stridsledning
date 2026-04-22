@@ -147,8 +147,9 @@ class BlueSelfPlayEnv(MissileInterceptEnv):
         reward_site_survival: float = 0.02,
         reward_intercept: float = 0.5,
         reward_red_drain: float = 5.0,
+        layouts_pool: Optional[List[dict]] = None,
     ):
-        kwargs = {"seed": seed}
+        kwargs = {"seed": seed, "layouts_pool": layouts_pool}
         if episode_time_limit is not None:
             kwargs["episode_time_limit"] = episode_time_limit
         super().__init__(**kwargs)
