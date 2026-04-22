@@ -193,19 +193,25 @@ def _primary_available_in_time(
     threat_vel: np.ndarray,
     t_impact: float,
     t_now: float,
+    blue_budget: float,
     margin: float = 3.0,
 ) -> bool:
     """True iff at least one `(kind, launcher)` pair of the primary
     `kinds` will be both in range and have that specific launcher ready
-    at some point before impact minus `margin`. Milestone H: per-
-    launcher range math replaces the Milestone F base-centred gate so
-    forward-deployed SLS / SLM aren't wrongly reported as "will reach
-    the threat" when their individual positions can't."""
+    at some point before impact minus `margin`.
+
+    Affordability gate: unaffordable kinds are skipped. Budget only
+    monotonically decreases within a match, so if we can't buy a kind
+    now we won't be able to later either — reporting "primary available"
+    for an unaffordable kind would just stall fallback forever.
+    """
     if t_impact == float("inf"):
         return True  # not closing, no pressure — keep waiting for primary
     deadline = t_impact - margin
     for kind in kinds:
         spec = INTERCEPTOR_SPECS[kind]
+        if spec.usd_cost > blue_budget:
+            continue
         for lch in launchers.launchers:
             if lch.kind != kind:
                 continue
@@ -245,6 +251,7 @@ def _try_fire(
     kinds: List[InterceptorType],
     launchers: LauncherFleet,
     t_now: float,
+    blue_budget: float,
 ) -> Tuple[Optional[InterceptorType], Optional[Launcher]]:
     """Iterate `kinds` in preference order. For each kind, iterate every
     launcher of that kind and return the first `(kind, launcher)` pair
@@ -252,14 +259,14 @@ def _try_fire(
     `max_range × LAUNCH_RANGE_MARGIN` AND whose state is ready to fire.
     None if nothing qualifies.
 
-    Milestone H: replaces the Milestone F base-distance gate. Forward-
-    deployed SLS / SLM no longer get cleared to fire on threats that
-    their actual position can't reach, and they now DO get cleared to
-    fire on flank threats that the base-distance check would have
-    rejected.
+    Affordability gate: kinds whose `usd_cost` exceeds `blue_budget` are
+    skipped entirely, so the selection falls through to cheaper kinds
+    rather than picking an unaffordable one and silently failing.
     """
     for kind in kinds:
         spec = INTERCEPTOR_SPECS[kind]
+        if spec.usd_cost > blue_budget:
+            continue
         gate_sq = (spec.max_range * config.LAUNCH_RANGE_MARGIN) ** 2
         for lch in launchers.launchers:
             if lch.kind != kind:
@@ -386,13 +393,16 @@ class BlueAI:
                     dx = float(threat_pos[0] - lch.pos[0])
                     dy = float(threat_pos[1] - lch.pos[1])
                     if dx * dx + dy * dy <= ciws_gate_sq:
-                        self._fire(
+                        # `_fire` returns True iff the interceptor was
+                        # actually launched (False when Blue can't afford
+                        # the kind). Only increment the CIWS lifetime
+                        # counter when a round truly went out the tube.
+                        fired = self._fire(
                             world, t_now, tid, threat, InterceptorType.CIWS,
                             lch, base, dist_to_base, tag=" [CIWS]",
                         )
-                        # Increment the lifetime counter; `self._fire`
-                        # already appended the iid to assignments.
-                        self.ciws_fired_count[tid] = ciws_already_fired + 1
+                        if fired:
+                            self.ciws_fired_count[tid] = ciws_already_fired + 1
                         break  # one CIWS launcher per tick per threat
 
             # --- Main saturation gate (excludes CIWS rounds) ---
@@ -406,7 +416,8 @@ class BlueAI:
             # in preference order — now computed per-launcher.
             primary_kinds = PRIMARY_RULES.get(threat_kind, [])
             kind, lch = _try_fire(
-                threat_pos, primary_kinds, self.launchers, t_now
+                threat_pos, primary_kinds, self.launchers, t_now,
+                world.blue_budget,
             )
             tag = ""
 
@@ -420,11 +431,13 @@ class BlueAI:
                 if _primary_available_in_time(
                     primary_kinds, self.launchers,
                     threat_pos, threat_vel, t_impact, t_now,
+                    world.blue_budget,
                 ):
                     continue  # wait for primary
                 fb_kinds = FALLBACK_RULES.get(threat_kind, [])
                 kind, lch = _try_fire(
-                    threat_pos, fb_kinds, self.launchers, t_now
+                    threat_pos, fb_kinds, self.launchers, t_now,
+                    world.blue_budget,
                 )
                 if kind is not None:
                     tag = " [FALLBACK]"
@@ -440,7 +453,8 @@ class BlueAI:
                     )
                     desperation = [k for k in _ALL_INTERCEPTORS if k not in tried]
                     kind, lch = _try_fire(
-                        threat_pos, desperation, self.launchers, t_now
+                        threat_pos, desperation, self.launchers, t_now,
+                        world.blue_budget,
                     )
                     if kind is not None:
                         tag = " [LAST RESORT]"
@@ -464,7 +478,23 @@ class BlueAI:
         base: np.ndarray,
         dist: float,
         tag: str,
-    ) -> None:
+    ) -> bool:
+        """Launch one interceptor at the threat and deduct its cost from
+        Blue's budget. Returns True iff the shot actually went out the
+        tube; False when `world.blue_budget < spec.usd_cost` and the
+        launch is aborted (affordability gate — defence-in-depth for
+        callers that bypass `_try_fire`'s cost filter, e.g. the CIWS
+        saturation loop in `step`).
+        """
+        # Affordability gate. Historic bug: the old `max(0, budget -
+        # cost)` clamp silently no-op'd the deduction once budget hit 0,
+        # so Blue fired unlimited free shots with a zero HUD balance.
+        # The gate below refuses to launch when we can't pay, and the
+        # unclamped `-=` below the launch keeps the ledger truthful.
+        cost = INTERCEPTOR_SPECS[kind].usd_cost
+        if world.blue_budget < cost:
+            return False
+
         # Milestone F: interceptors launch from the firing launcher's own
         # position, not the base. `base` / `dist` stay in the signature
         # because the HUD log line still reports threat-to-base range
@@ -485,19 +515,15 @@ class BlueAI:
         iid = world.spawn_interceptor(
             kind, launch_pos, tuple(initial_dir), tid, engagement_mode=mode,
         )
-        # Milestone I: Blue pays spec.usd_cost per launch. Budget floor
-        # at 0. Issue #21 (M-TIER2.8, 2026-04-20): budget depletion is
-        # no longer an instant Red win — Scenario.winner only ends the
-        # match on military-site HP=0 / all-waves-done-no-threats /
-        # max_sim_time, so running out of money just means "no more
-        # shots this match"; in-flight interceptors and magazine
-        # reserve can still resolve the fight. We deduct regardless of
-        # whether the launch was rational (the engagement-decision
-        # layer already gates via PRIMARY / FALLBACK / LAST_RESORT;
-        # this just wires the cost).
-        world.blue_budget = max(
-            0, world.blue_budget - INTERCEPTOR_SPECS[kind].usd_cost
-        )
+        # Milestone I: Blue pays spec.usd_cost per launch. Issue #21
+        # (M-TIER2.8, 2026-04-20): budget depletion is no longer an
+        # instant Red win — Scenario.winner only ends the match on
+        # military-site HP=0 / all-waves-done-no-threats / max_sim_time,
+        # so running out of money just means "no more shots this match";
+        # in-flight interceptors and magazine reserve can still resolve
+        # the fight. Unclamped subtraction — the affordability gate
+        # above guarantees `blue_budget >= cost` here.
+        world.blue_budget -= cost
         self.assignments.setdefault(tid, []).append(iid)
         threat_spec = THREAT_SPECS[ThreatType(threat.state.kind)]
         dmg = INTERCEPTOR_SPECS[kind].damage_prox
@@ -508,3 +534,4 @@ class BlueAI:
             f"{n_flight} in flight, inbound +{dmg} dmg, "
             f"rng {dist/1000:.1f} km)"
         )
+        return True
