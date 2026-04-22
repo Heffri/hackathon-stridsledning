@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "date": "2026-04-22",
+    "description": "Post-fix rule_Red vs rule_Blue balance baseline, captured after the budget-gate fix (blue_ai.py) and HGV-tuning balance pass (types.py).",
+    "n_matches": 20,
+    "per_match_sim_cap_s": 2000.0,
+    "scenario": "build_default_scenario (fixed wave plan)",
+    "sim_changes_applied": [
+      "fix(sim): Blue budget affordability gate — prevent free-fire when budget exhausted",
+      "balance(sim): HGV usd_cost 10M -> 25M",
+      "balance(sim): HGV max_g 10 -> 6"
+    ]
+  },
+  "results": {
+    "blue_wins": 14,
+    "draws": 6,
+    "red_wins": 0,
+    "blue_win_pct": 70.0,
+    "draw_pct": 30.0,
+    "red_win_pct": 0.0
+  },
+  "averages": {
+    "spawned_per_match": 26.0,
+    "intercepts_per_match": 18.1,
+    "leaks_per_match": 4.7,
+    "leaks_range": [2, 7]
+  },
+  "leaks_by_kind_total_over_20_matches": {
+    "hgv": 39,
+    "drone": 51,
+    "cruise_sub": 4,
+    "ballistic": 0
+  },
+  "spec_target_reference": {
+    "blue_win_pct_target": "30-55",
+    "draw_pct_target": "30-50",
+    "red_win_pct_target": "10-30",
+    "status": "Blue over ceiling (70 % vs 55 %); Draw within target (30 % vs 30-50); Red under (0 % vs 10-30). See balance retune commit body for why: rule_Red cannot drive Red wins against the easier-to-intercept HGV without also retuning the wave plan (out of scope). The core goal is diversifying learned Red in cross-eval, not this fixed-wave sweep."
+  },
+  "retune_history": {
+    "iter_0": "HGV cost=25M, HGV max_g=6, ballistic kill_radius=100 -> Blue 17, Draw 3, Red 0",
+    "iter_1": "Revert ballistic kill_radius 100->70 -> Blue 15, Draw 5, Red 0",
+    "iter_2": "HGV max_g 6->8 -> Blue 16, Draw 4, Red 0",
+    "final": "HGV cost=25M, HGV max_g=6, ballistic kill_radius=70 -> Blue 14, Draw 6, Red 0"
+  }
+}
