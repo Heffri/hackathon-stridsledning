@@ -35,6 +35,7 @@ from sim.types import (
     INTERCEPTOR_SPECS,
     InterceptorType,
     MatchPhase,
+    THREAT_SPECS,
     ThreatType,
 )
 from sim.world import World
@@ -203,14 +204,24 @@ class MissileInterceptEnv(gym.Env):
 
     # ------------------------------------------------------------------
     def _winner(self) -> Optional[str]:
-        # Inline winner check (mirrors Scenario.winner without re-importing
-        # Scenario — we manage the World directly).
-        for site in sites_module.SOUTH_SITES:
-            if site.hp <= 0:
-                return "red"
-        red_done = self.red.done or self.world.red_budget <= 0
+        # Mirrors Scenario.winner + cross_eval._cross_winner exactly (audit
+        # 2026-04-22 F2, F6): Red wins only when every MILITARY site
+        # (subtype air_base / base) is at hp<=0, not on ANY site dying.
+        # Red is "done spawning" when either the wave-driven rule AI
+        # reports done OR the budget can no longer afford the cheapest
+        # threat (not <=0 — the clamp gate from F1 means budget can stall
+        # above zero with no affordable action).
+        military = [
+            s for s in sites_module.SOUTH_SITES
+            if s.subtype in ("air_base", "base")
+        ]
+        if military and all(s.hp <= 0 for s in military):
+            return "red"
+        cheapest = min(spec.usd_cost for spec in THREAT_SPECS.values())
+        red_broke = self.world.red_budget < cheapest
+        red_cant_spawn = self.red.done or red_broke
         no_threats = all(not t.state.alive for t in self.world.threats.values())
-        if red_done and no_threats:
+        if red_cant_spawn and no_threats:
             return "blue"
         if self.world.t >= self._episode_time_limit:
             return None  # truncation, not terminal win

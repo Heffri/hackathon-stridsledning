@@ -311,6 +311,16 @@ class RedEnv(gym.Env):
         # making Blue burn interceptor money. Red's own budget is
         # snapshotted inside _apply_action via the returned cost.
         prev_blue_budget = self.world.blue_budget
+        # Snapshot how many MILITARY sites were already dead so we can
+        # issue a dense per-site-destroyed bonus this step (audit
+        # 2026-04-22 F2: _winner now requires ALL military dead, so the
+        # old +20 terminal fires only once at end-of-game. Dense +5 per
+        # kill preserves the partial-progress signal Red relied on when
+        # the terminal misfired on first-site-death.)
+        prev_military_dead = sum(
+            1 for s in sites_module.SOUTH_SITES
+            if s.subtype in ("air_base", "base") and s.hp <= 0
+        )
 
         # Learned Blue acts FIRST, using pre-Red-action world state.
         # Matches Boyu's training distribution: during Blue training,
@@ -363,8 +373,20 @@ class RedEnv(gym.Env):
         # so it doesn't dominate the leak signal.
         blue_spent = max(0, prev_blue_budget - self.world.blue_budget)
         blue_spend_bonus = 0.1 * (blue_spent / BLUE_BUDGET_START)
+        # Dense per-site-destroyed bonus (audit F2): +5 each time a new
+        # military site crosses hp<=0 this decision window. With 3
+        # military sites on the current map and a +5 terminal, the sum
+        # is 3*5 + 5 = +20 on a clean sweep — same magnitude as the
+        # prior fire-on-any-site-dead terminal, but correctly aligned
+        # with the canonical Scenario.winner condition.
+        now_military_dead = sum(
+            1 for s in sites_module.SOUTH_SITES
+            if s.subtype in ("air_base", "base") and s.hp <= 0
+        )
+        newly_military_dead = max(0, now_military_dead - prev_military_dead)
+        site_dense_bonus = 5.0 * newly_military_dead
 
-        reward = event_reward + spawn_penalty + blue_spend_bonus
+        reward = event_reward + spawn_penalty + blue_spend_bonus + site_dense_bonus
 
         terminated = self._winner() is not None
         truncated = (not terminated) and self.world.t >= self._episode_time_limit
@@ -372,8 +394,13 @@ class RedEnv(gym.Env):
         if terminated:
             w = self._winner()
             if w == "red":
-                reward += 20.0
+                # +5 terminal (was +20): dense +5 per site already
+                # delivered the "you made progress" signal; terminal
+                # only needs to flag "match ended in Red's favor".
+                reward += 5.0
             elif w == "blue":
+                # Blue-win terminal unchanged — symmetric death signal
+                # for Red when Blue denies enough to price Red out.
                 reward -= 20.0
         elif truncated:
             # Draw / timeout penalty. Stops the agent settling on
@@ -395,14 +422,20 @@ class RedEnv(gym.Env):
 
     # ------------------------------------------------------------------
     def _winner(self) -> Optional[str]:
-        # Red wins when any military site's HP is depleted.
-        for site in sites_module.SOUTH_SITES:
-            if site.hp <= 0:
-                return "red"
+        # Aligned with Scenario.winner + cross_eval._cross_winner (audit
+        # 2026-04-22 F2): Red only wins when every MILITARY site
+        # (subtypes air_base / base) is at hp<=0 — not on ANY site dying.
+        # Prior `for site: if site.hp <= 0: return "red"` variant optimized
+        # the policy for "kill one site fast" rather than "neutralize the
+        # defended side", diverging from tournament + demo scoring.
+        military = [
+            s for s in sites_module.SOUTH_SITES
+            if s.subtype in ("air_base", "base")
+        ]
+        if military and all(s.hp <= 0 for s in military):
+            return "red"
         # Blue wins when Red is priced out of spawning anything AND
-        # there are no live Red threats left on the board. Mirrors the
-        # future-ready win path that Scenario.winner gates on (see
-        # world.py M-TIER3-RED-BUDGET docstring).
+        # there are no live Red threats left on the board.
         cheapest = min(spec.usd_cost for spec in THREAT_SPECS.values())
         red_stuck = self.world.red_budget < cheapest
         no_threats = all(not t.state.alive for t in self.world.threats.values())
