@@ -1,0 +1,252 @@
+{
+  "meta": {
+    "date": "2026-04-22",
+    "source_shootout": "layout_shootout_2026-04-22.json",
+    "methodology": "Top 3 layouts by mean_site_damage_total ranking (tiebreak: mean_sites_destroyed asc, blue_budget_remaining desc). Used by auto_selfplay.py --layouts-pool for per-episode sampling.",
+    "ranking_summary": "1: slot C (dmg 57.3), 2: slot E (dmg 60.3), 3: slot A (dmg 62.8)"
+  },
+  "layouts": [
+    {
+      "slot": "C",
+      "name": "Heavy Saturation + Forward Catchers",
+      "rank": 1,
+      "mean_site_damage_total": 57.33,
+      "mean_sites_destroyed": 0.067,
+      "mean_blue_budget_remaining": 52525633.3,
+      "roster": {
+        "ciws": [
+          [
+            78625,
+            10331
+          ],
+          [
+            72303,
+            8161
+          ],
+          [
+            79064,
+            5394
+          ],
+          [
+            124226,
+            3170
+          ],
+          [
+            127577,
+            5178
+          ],
+          [
+            129062,
+            1370
+          ],
+          [
+            79567,
+            78313
+          ],
+          [
+            83655,
+            78446
+          ]
+        ],
+        "rbs_70": [
+          [
+            81757,
+            98185
+          ],
+          [
+            126422,
+            119517
+          ],
+          [
+            38711,
+            63703
+          ]
+        ],
+        "iris_t_sls": [
+          [
+            80492,
+            84902
+          ],
+          [
+            126750,
+            102093
+          ],
+          [
+            76686,
+            12972
+          ],
+          [
+            128737,
+            6810
+          ]
+        ],
+        "iris_t_slm": [
+          [
+            81612,
+            94141
+          ],
+          [
+            83023,
+            18841
+          ],
+          [
+            135844,
+            10732
+          ],
+          [
+            38453,
+            60796
+          ]
+        ],
+        "pac_2": [
+          [
+            127480,
+            114527
+          ],
+          [
+            39023,
+            62606
+          ]
+        ],
+        "pac_3": [
+          [
+            78981,
+            76401
+          ],
+          [
+            111457,
+            14345
+          ]
+        ]
+      }
+    },
+    {
+      "slot": "E",
+      "name": "Balanced Layered Shield",
+      "rank": 2,
+      "mean_site_damage_total": 60.33,
+      "mean_sites_destroyed": 0,
+      "mean_blue_budget_remaining": 61468300,
+      "roster": {
+        "ciws": [
+          [
+            76000,
+            7000
+          ],
+          [
+            88000,
+            14000
+          ],
+          [
+            117000,
+            7000
+          ]
+        ],
+        "rbs_70": [
+          [
+            40000,
+            55000
+          ],
+          [
+            132000,
+            9000
+          ]
+        ],
+        "iris_t_sls": [
+          [
+            83000,
+            79000
+          ],
+          [
+            125000,
+            102000
+          ]
+        ],
+        "iris_t_slm": [
+          [
+            79000,
+            93000
+          ],
+          [
+            125000,
+            92000
+          ]
+        ],
+        "pac_2": [
+          [
+            79000,
+            90000
+          ]
+        ],
+        "pac_3": [
+          [
+            83000,
+            85000
+          ],
+          [
+            100000,
+            10000
+          ]
+        ]
+      }
+    },
+    {
+      "slot": "A",
+      "name": "Forward HGV Hunter",
+      "rank": 3,
+      "mean_site_damage_total": 62.83,
+      "mean_sites_destroyed": 0.033,
+      "mean_blue_budget_remaining": 62581200,
+      "roster": {
+        "ciws": [
+          [
+            75000,
+            5000
+          ]
+        ],
+        "rbs_70": [
+          [
+            81000,
+            74000
+          ],
+          [
+            122000,
+            4000
+          ]
+        ],
+        "iris_t_sls": [
+          [
+            80000,
+            72000
+          ]
+        ],
+        "iris_t_slm": [
+          [
+            80000,
+            5000
+          ],
+          [
+            108000,
+            4000
+          ]
+        ],
+        "pac_2": [
+          [
+            74700,
+            8000
+          ]
+        ],
+        "pac_3": [
+          [
+            79000,
+            60000
+          ],
+          [
+            75300,
+            8000
+          ]
+        ]
+      }
+    }
+  ]
+}
