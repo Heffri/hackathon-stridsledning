@@ -24,3 +24,8 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# RL training artifacts — local iteration, not shared (Phase 2+ of self-play)
+team-missile-intercept/backend/rl/runs/red_[3-9]*/
+team-missile-intercept/backend/rl/runs/red_[1-9][0-9]*/
+team-missile-intercept/backend/rl/runs/blue_local/
