@@ -123,9 +123,14 @@ class LearnedRedAI:
     ``sim/scenarios.py`` and ``Scenario.snapshot``):
 
       * ``step(t_now, world)`` — called every sim tick by ``Scenario.step``.
-      * ``done`` — ``Scenario.winner`` gates Blue-victory on this. For learned
-        Red we use the same economic definition as ``cross_eval.py``:
-        ``world.red_budget < cheapest_threat_cost``.
+      * ``done`` — ``Scenario.winner`` gates Blue-victory on this. Learned
+        Red has no wave schedule, so we declare Red "done" via two rules:
+        (1) ``world.red_budget < cheapest_threat_cost`` — Red can't afford
+        any further spawn (same economic definition as ``cross_eval.py``).
+        (2) no successful spawn for ``IDLE_TIMEOUT_S`` consecutive sim
+        seconds — guards against a policy that hoards budget and never
+        acts. Once True the flag latches (mirrors rule ``RedAI.done``
+        which is also write-once).
       * ``log`` — tail shown in ``red_log`` snapshot key. Sparse one-liner
         per spawn decision.
       * ``launchers`` — a ``RedLauncherFleet`` so ``snap["red_launchers"]`` works.
@@ -138,10 +143,23 @@ class LearnedRedAI:
     training. Intermediate ticks are a no-op on Red's side.
     """
 
+    # Idle-timeout window. A learned Red that hoards budget and never
+    # spawns would otherwise run matches to the 3600 s safety cap; after
+    # this many seconds of no spawn, Scenario.winner treats Red as done.
+    IDLE_TIMEOUT_S = 120.0
+
     def __init__(self, policy_path: str, scenario):
         self._policy = _load_policy(policy_path)
         self._env = _LiveEnv(scenario)
         self._tick_counter = 0
+        # Termination state -----------------------------------------------
+        # `done` is latched once True — matches rule RedAI.done semantics
+        # (all waves exhausted) and avoids flip-flopping if any future
+        # bookkeeping change re-credits red_budget mid-match. Tracked
+        # alongside the last successful spawn time so the idle-timeout
+        # branch can fire against a hoarding policy.
+        self._done_latched = False
+        self._last_spawn_t = 0.0
         # Scenario attrs ---------------------------------------------------
         self.log: List[str] = []
         self.waves: List = []   # stub — see class docstring
@@ -154,8 +172,21 @@ class LearnedRedAI:
 
     @property
     def done(self) -> bool:
+        if self._done_latched:
+            return True
         cheapest = min(spec.usd_cost for spec in THREAT_SPECS.values())
-        return self._env.world.red_budget < cheapest
+        if self._env.world.red_budget < cheapest:
+            self._done_latched = True
+            return True
+        # Idle timeout — only meaningful after the match has actually
+        # been running. The `t_now > IDLE_TIMEOUT_S` guard stops the
+        # initial zero-initialized `_last_spawn_t` from tripping this
+        # at t=IDLE_TIMEOUT_S before Red has had a real chance to act.
+        t_now = self._env.world.t
+        if t_now > self.IDLE_TIMEOUT_S and (t_now - self._last_spawn_t) > self.IDLE_TIMEOUT_S:
+            self._done_latched = True
+            return True
+        return False
 
     def step(self, t_now: float, world) -> None:
         # Gate policy prediction to every DECISION_EVERY ticks to match
@@ -170,6 +201,7 @@ class LearnedRedAI:
             action_arr = np.asarray(action).reshape(-1)
             spawned, cost_usd = self._env._apply_action(action_arr)
             if spawned:
+                self._last_spawn_t = t_now
                 kind_idx = int(action_arr[0])
                 self.log.append(
                     f"[{t_now:6.1f}s] learned_red spawn k{kind_idx} "
