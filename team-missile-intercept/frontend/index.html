@@ -17,15 +17,8 @@
 <body>
   <canvas id="view"></canvas>
 
-  <div id="launch-banner" class="hidden"></div>
-
-  <!-- M-TIER2-J Part 1: SETUP ribbon. Thin top bar so the 3D canvas
-       stays visible for drag-drop launcher placement. Hidden in every
-       phase other than SETUP; Start Match lives here instead of inside
-       the centre-screen match overlay. M-TIER2-J Part 2 adds the
-       roster dropdown + Add/Remove buttons for buy-vehicle (Issue #6).
-       Budget is shown in the existing HUD budget bar — no duplicate
-       readout here. -->
+  <!-- SETUP ribbon: thin top bar visible only in SETUP phase.
+       Sibling combinator pushes #hud down while visible. -->
   <div id="setup-ribbon" class="setup-ribbon hidden">
     <span class="setup-ribbon-text">MATCH SETUP — drag, add/remove launchers, then Start Match</span>
     <span class="setup-ribbon-hint">Click launcher to inspect · Drag to reposition · R to reset camera</span>
@@ -82,27 +75,51 @@
     </div>
   </div>
 
+  <!-- Click-to-inspect status panel: floats in center area, right side -->
   <div id="status-panel" class="hidden"></div>
 
   <div id="hud">
-    <div id="hud-top">
-      <div class="hud-block">
+
+    <!-- ═══ LEFT COLUMN: title + Blue AI log ═══ -->
+    <div id="hud-left">
+      <div class="hud-block hud-brand">
         <div class="hud-title">Smart Stridsledning</div>
-        <div class="hud-sub">AI vs AI Missile Intercept — Milestone B</div>
+        <div class="hud-sub">AI vs AI Missile Intercept</div>
       </div>
-      <div class="hud-block phase-chip" id="phase-chip" data-phase="setup">
-        <div class="phase-chip-dot"></div>
-        <div class="phase-chip-label" id="phase-chip-label">SETUP</div>
+      <div class="log-col log-col-blue">
+        <div class="log-title">Blue AI — fire decisions</div>
+        <div id="log-blue" class="log-scroll"></div>
       </div>
-      <div class="hud-block stats">
-        <div>T <span id="stat-t">0.0</span>s</div>
-        <div>Wave <span id="stat-wave">0</span>/<span id="stat-waves">0</span></div>
+    </div>
+
+    <!-- ═══ CENTER COLUMN: top stats + bottom controls ═══ -->
+    <div id="hud-center">
+      <div id="hud-top">
+        <div class="hud-block phase-chip" id="phase-chip" data-phase="setup">
+          <div class="phase-chip-dot"></div>
+          <div class="phase-chip-label" id="phase-chip-label">SETUP</div>
+        </div>
+        <div class="hud-block stats">
+          <div>T <span id="stat-t">0.0</span>s &nbsp;·&nbsp; Wave <span id="stat-wave">0</span>/<span id="stat-waves">0</span></div>
+          <div>Active <span id="stat-active-t">0</span> &nbsp;·&nbsp; Intercepts <span id="stat-intercepts">0</span> &nbsp;·&nbsp; Leaked <span id="stat-leaked">0</span></div>
+        </div>
       </div>
-      <div class="hud-block stats">
-        <div>Threats: <span id="stat-active-t">0</span> active</div>
-        <div>Intercepts: <span id="stat-intercepts">0</span></div>
-        <div>Leaked: <span id="stat-leaked">0</span></div>
+
+      <div id="hud-bottom">
+        <button id="btn-pause" class="hidden">Pause</button>
+        <button id="btn-reset">Reset</button>
+        <button id="btn-reset-camera" title="Recenter the 3D camera (keyboard: R)">Reset Camera</button>
+        <label class="speed">
+          Speed
+          <input id="speed" type="range" min="0.5" max="50" step="0.5" value="1" />
+          <span id="speed-val">1.0x</span>
+        </label>
+        <span id="ws-status" class="disconnected">disconnected</span>
       </div>
+    </div>
+
+    <!-- ═══ RIGHT COLUMN: status panels + Red AI log ═══ -->
+    <div id="hud-right">
       <div class="hud-block site-damage" id="site-damage-panel">
         <div class="ammo-title">Site HP</div>
         <div id="site-damage-list" class="site-damage-list">
@@ -131,40 +148,19 @@
           <div id="red-budget-bar-inner" class="budget-bar-inner red-bar"></div>
         </div>
       </div>
-      <!-- Issue #25 (W11): Magazine panel now shows the currently
-           selected launcher's detailed status (ammo, reload/cooldown
-           countdown, base cost) rather than an aggregate per-kind view.
-           hud.js renders the body dynamically from snap.launchers
-           filtered by launcher_selection.getSelectedLauncherId(). -->
+      <!-- Issue #25 (W11): per-launcher detail view. hud.js renders
+           body dynamically from snap.launchers filtered by selection. -->
       <div class="hud-block ammo" id="ammo-panel">
         <div class="ammo-title" id="ammo-panel-title">Magazine</div>
         <div id="ammo-panel-body"></div>
-      </div>
-    </div>
-
-    <div id="hud-bottom">
-      <button id="btn-pause" class="hidden">Pause</button>
-      <button id="btn-reset">Reset</button>
-      <button id="btn-reset-camera" title="Recenter the 3D camera (keyboard: R)">Reset Camera</button>
-      <label class="speed">
-        Speed
-        <input id="speed" type="range" min="0.5" max="50" step="0.5" value="1" />
-        <span id="speed-val">1.0x</span>
-      </label>
-      <span id="ws-status" class="disconnected">disconnected</span>
-    </div>
-
-    <div id="log">
-      <div class="log-col log-col-blue">
-        <div class="log-title">Blue AI — fire decisions</div>
-        <div id="log-blue" class="log-scroll"></div>
       </div>
       <div class="log-col log-col-red">
         <div class="log-title">Red AI — wave launches</div>
         <div id="log-red" class="log-scroll"></div>
       </div>
     </div>
-  </div>
+
+  </div><!-- #hud -->
 
   <script type="module" src="/static/js/main.js"></script>
 </body>

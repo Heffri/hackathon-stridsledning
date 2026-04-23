@@ -6,10 +6,12 @@ import { SiteRegistry } from './sites.js';
 import { wireHud, updateHud, setWsStatus, showWsError, showLayoutStatus } from './hud.js';
 import { initStatusPanel, updateStatusPanel } from './status_panel.js';
 import { initLauncherDrag } from './drag_launchers.js';
+import { initRadarDrag } from './drag_radars.js';
 import { onSelectionChange } from './launcher_selection.js';
+import { showIntro, showSetupTip } from './tutorial.js';
 
 const canvas = document.getElementById('view');
-const { scene, camera, renderer, controls, resetCameraView } = createScene(canvas);
+const { scene, camera, renderer, controls, resetCameraView, animateRadar, radarHitMeshes } = createScene(canvas);
 const registry = new EntityRegistry(scene);
 const launchers = new LauncherRegistry(scene);
 const redLaunchers = new RedLauncherRegistry(scene);
@@ -57,6 +59,10 @@ function openWs() {
       return;
     }
     latestSnap = msg;
+    // Show one-shot setup tips when phase first becomes 'setup'.
+    const phase = msg.phase || 'setup';
+    if (phase === 'setup' && _lastPhase !== 'setup') showSetupTip();
+    _lastPhase = phase;
   });
 }
 
@@ -76,7 +82,16 @@ initLauncherDrag({
   sendCmd,
   getPhase: () => latestSnap?.phase || 'setup',
 });
-openWs();
+
+// Radar drag — purely visual, all phases, no server comms.
+initRadarDrag({ renderer, camera, controls, radarHitMeshes });
+
+// Show intro modal on load; open WS only after user dismisses so the
+// server isn't stalled waiting while the user reads the intro.
+showIntro().then(() => openWs());
+
+// Track last phase to detect SETUP entry for the one-shot tips card.
+let _lastPhase = null;
 
 // W13 Phase 7: demo-recovery camera reset. `R` keydown (window-level)
 // + the bottom-bar "Reset Camera" button both call resetCameraView.
@@ -108,9 +123,11 @@ let _lastSnapProcessed = null;
 // RAF tick — invalidate the cache so the next animate() frame re-runs
 // the gated HUD/launcher render with the current snapshot.
 onSelectionChange(() => { _lastSnapProcessed = null; });
+const _startTime = performance.now() / 1000;
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
+  animateRadar(performance.now() / 1000 - _startTime);
   if (latestSnap) {
     registry.updateFromSnapshot(latestSnap);
     sites.updateFromSnapshot(latestSnap);
