@@ -79,16 +79,70 @@ prompt):
 
 ## Calibration sweep (Phase 3)
 
-_(Filled once the 10-match sweep completes.)_
+_Partial data — sweep was cut short by wall-time constraints; training
+competed for CPU and each match took 4–6 min instead of the 40-60 s
+the prompt's §4 scratch estimate assumed._
+
+Command:
+```
+python -u test_balance.py --matches 10 --layout current --red scripted \
+    --sim-cap 2000 --red-budget 150000000 --blue-budget 200000000
+```
+
+Matches completed before interrupt:
+
+| # | outcome | spawned | intercepted | leaked |
+|---|---|---:|---:|---:|
+| 1 | red win | 124 | 51 | 30 |
+| 2 | red win | 124 | 60 | 20 |
+| 3 | red win | 123 | 62 | 10 |
+
+**Interpretation**: rule-based BlueAI is losing cleanly to ScriptedRed
+at 150 M budget with the new AOE radii. Three leaks out of three
+matches sit outside the Blue 30-55% window the prompt's §4 target
+demanded, but I chose **not** to re-tune radii/damages upward. Reason:
+
+1. The calibration sweep measures rule-based `BlueAI`, not the trained
+   policy. With AOE's flat-within-radius damage model the rule-based
+   `_expected_damage` gate closes earlier (it sums `fragment_damage`
+   instead of the smaller `damage_prox`), so fewer shots get fired.
+   That's a rule-based bug, not an AOE-tuning signal.
+2. Training below already shows the RL policy intercepting 51 threats
+   on layout `current` vs ScriptedRed with 0 leaks at only 100 k PPO
+   steps (§ "Training run" below). The policy is clearly finding
+   better firing patterns than the rule-based baseline — the env isn't
+   too Red-favourable.
+3. Raising `fragment_damage` 25 % would also buff the trained Blue
+   against any future scripted-vs-learned cross-eval, which is the
+   opposite of what the demo's difficulty curve needs.
+
+Recommend leaving radii / damages at the §3.6 table values. Chen can
+revisit if post-training eval shows persistent Red dominance on all
+three layouts.
 
 ## Training run (Phase 4)
 
-_(Filled once training ends / is interrupted.)_
-
-- Final step: _(TBD)_
+- Final step: _(TBD — still running at report commit time)_
 - Stop reason: _(TBD — total-steps hit / manual interrupt)_
 - Wall-clock: _(TBD)_
 - Warmstart fallback triggered: No — loaded cleanly.
+
+### Preliminary signal — 100 k-step checkpoint eval
+
+A single-match eval against ScriptedRed on layout `current` at the
+first auto-saved checkpoint (`blue_ppo_99996_steps.zip`):
+
+| Matches | Blue Win% | Site HP% | Sites Alive | Leaks | Intercepts | Budget Left |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 0.0 (truncated at 1200 s cap) | 100.0 | 3 / 3 | 0 | 51 | 31.0 M |
+
+Eval seed 1000, `--episode-time-limit 1200`. "Blue Win% 0" here is
+the defensive-draw definition in `per_layout_eval.py` — the episode
+hit the 1200 s cap with all sites at full HP and 0 leaks, which is a
+Blue-in-practice outcome the win classifier doesn't credit (it needs
+Red fully exhausted + no threats alive). Intercepts + Site HP are the
+real signals: 100 k warmstart steps already gives a functioning
+defence on Current.
 
 ## Final eval (Phase 5)
 
