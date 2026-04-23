@@ -1,8 +1,9 @@
 """Demo scenario wiring — combines Red AI waves, Blue AI, and World."""
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
-from . import config, sites
+from . import config, sites, terrain
 from .blue_ai import BlueAI
+from .launcher import LauncherFleet
 from .red_ai import RedAI, build_demo_waves
 from .types import MatchPhase
 from .world import World
@@ -25,6 +26,50 @@ class Scenario:
         self.world = World()
         self.red = RedAI(build_demo_waves())
         self.blue = BlueAI()
+
+    def set_layout(self, roster: Dict[str, List[Tuple[float, float]]]) -> None:
+        """Swap `config.BLUE_LAUNCHER_POSITIONS` to `roster` and rebuild
+        the Blue launcher fleet in-place. Live-demo hook for the front-
+        end layout selector (CANDIDATE_LAYOUTS_2026-04-22.json). Only
+        legal in SETUP phase — a layout swap mid-match would orphan any
+        in-flight interceptors against removed launchers, and the budget
+        accounting below assumes a fresh BLUE_BUDGET_START.
+
+        Every (x, y) in `roster` must pass
+        `terrain.point_on_south_land` — positions off south-side land
+        are rejected before any mutation, so a bad roster leaves the
+        scenario untouched.
+
+        Budget: reset to BLUE_BUDGET_START minus the sum of the new
+        roster's base costs, matching the initial scenario build so the
+        operator can Start the match with the same economics as a fresh
+        default layout.
+        """
+        if self.world.phase != MatchPhase.SETUP:
+            raise RuntimeError(
+                f"set_layout only legal in SETUP phase; current phase is "
+                f"{self.world.phase.value}"
+            )
+        for kind, positions in roster.items():
+            for (x, y) in positions:
+                if not terrain.point_on_south_land(float(x), float(y)):
+                    raise ValueError(
+                        f"layout roster[{kind!r}]: ({x}, {y}) not on "
+                        f"south-side land"
+                    )
+        config.BLUE_LAUNCHER_POSITIONS.clear()
+        config.BLUE_LAUNCHER_POSITIONS.update({
+            k: [(float(x), float(y)) for (x, y) in v]
+            for k, v in roster.items()
+        })
+        self.blue.launchers = LauncherFleet()
+        base_cost_total = 0
+        for kind_str, pos_list in config.BLUE_LAUNCHER_POSITIONS.items():
+            cost = config.LAUNCHER_BASE_COSTS.get(kind_str, 0)
+            base_cost_total += cost * len(pos_list)
+        self.world.blue_budget = max(
+            0, config.BLUE_BUDGET_START - base_cost_total
+        )
 
     def step(self, dt: float) -> None:
         """Advance one sim tick, respecting the Match Phase FSM.

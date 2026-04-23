@@ -193,7 +193,85 @@ class SimRunner:
             return self._remove_launcher_cmd(cmd)
         if kind == "ai_auto":
             return self._ai_auto_cmd()
+        if kind == "set_layout":
+            return self._set_layout_cmd(cmd)
         return None
+
+    # --- W16: live-demo defensive-layout selector (backed by
+    # team-missile-intercept/game-core/CANDIDATE_LAYOUTS_2026-04-22.json).
+    _LAYOUTS_JSON_PATH = (
+        ROOT.parent / "game-core" / "CANDIDATE_LAYOUTS_2026-04-22.json"
+    )
+
+    def _set_layout_cmd(self, cmd: dict) -> dict:
+        """Handle `{cmd: 'set_layout', slot}`. Reads the candidate
+        layouts JSON, matches `slot` case-insensitively against the
+        `layouts[*].slot` field, and calls `Scenario.set_layout` with
+        the matching roster. A `slot` value of 'current' is a no-op —
+        returned as an explicit ack so the frontend can report that
+        nothing changed. Only legal in SETUP phase (enforced again
+        inside `Scenario.set_layout`)."""
+        slot = cmd.get("slot")
+        if not isinstance(slot, str) or not slot:
+            return {
+                "type": "error",
+                "reason": "illegal_layout",
+                "detail": "missing or empty slot",
+            }
+        if slot.lower() == "current":
+            return {
+                "type": "layout_applied",
+                "slot": "current",
+                "name": "Current (from config)",
+                "launcher_count": sum(
+                    len(v) for v in config.BLUE_LAUNCHER_POSITIONS.values()
+                ),
+            }
+        try:
+            with open(self._LAYOUTS_JSON_PATH, "r", encoding="utf-8") as f:
+                layouts_data = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            return {
+                "type": "error",
+                "reason": "illegal_layout",
+                "detail": f"cannot read layouts JSON: {e}",
+            }
+        match = next(
+            (
+                l for l in layouts_data.get("layouts", [])
+                if str(l.get("slot", "")).upper() == slot.upper()
+            ),
+            None,
+        )
+        if match is None:
+            return {
+                "type": "error",
+                "reason": "illegal_layout",
+                "detail": f"unknown slot {slot!r}",
+            }
+        roster = {
+            kind: [tuple(pos) for pos in positions]
+            for kind, positions in match.get("roster", {}).items()
+        }
+        try:
+            self.scenario.set_layout(roster)
+        except (RuntimeError, ValueError) as e:
+            return {
+                "type": "error",
+                "reason": "illegal_layout",
+                "detail": str(e),
+            }
+        print(
+            f"[server] layout applied: {match.get('slot')} "
+            f"({match.get('launcher_count', 0)} launchers)",
+            flush=True,
+        )
+        return {
+            "type": "layout_applied",
+            "slot": match.get("slot"),
+            "name": match.get("name", match.get("slot")),
+            "launcher_count": match.get("launcher_count", 0),
+        }
 
     # --- M-TIER2-J Part 1: deployment-phase placement API ---
     def _place_launcher_cmd(self, cmd: dict) -> dict:

@@ -3,7 +3,7 @@ import { createScene } from './scene.js';
 import { EntityRegistry } from './entities.js';
 import { LauncherRegistry, RedLauncherRegistry } from './launchers.js';
 import { SiteRegistry } from './sites.js';
-import { wireHud, updateHud, setWsStatus, showWsError } from './hud.js';
+import { wireHud, updateHud, setWsStatus, showWsError, showLayoutStatus } from './hud.js';
 import { initStatusPanel, updateStatusPanel } from './status_panel.js';
 import { initLauncherDrag } from './drag_launchers.js';
 import { onSelectionChange } from './launcher_selection.js';
@@ -41,6 +41,16 @@ function openWs() {
       if (msg.type === 'error') {
         console.warn('ws error:', msg);
         showWsError(msg.reason || 'unknown');
+        // W16: layout-specific errors also echo to the SETUP ribbon
+        // status line so the operator sees which slot failed + why.
+        if (msg.reason === 'illegal_layout') {
+          showLayoutStatus(`Error: ${msg.detail || 'layout rejected'}`, false);
+        }
+      } else if (msg.type === 'layout_applied') {
+        // W16: ack from the backend set_layout handler.
+        const name = msg.name || msg.slot || 'layout';
+        const n = msg.launcher_count ?? 0;
+        showLayoutStatus(`Applied: ${name} (${n} launchers)`, true);
       } else if (msg.type !== 'phase_change') {
         console.warn('ws unknown typed frame:', msg);
       }

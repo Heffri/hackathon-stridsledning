@@ -89,6 +89,17 @@ export function wireHud(sendCmd) {
     if (!btn) return;
     btn.disabled = !id;
   });
+  // W16: Apply Layout — send set_layout with the selected slot. The
+  // backend reads the candidate layouts JSON and swaps the Blue fleet
+  // in-place; the next snapshot's `snap.launchers` will reflect the new
+  // positions, so the 3D scene re-renders without any extra frontend
+  // code. Ack/error is routed by main.js via `onLayoutResponse`.
+  document.getElementById('btn-apply-layout')?.addEventListener('click', () => {
+    const select = document.getElementById('layout-slot');
+    const slot = select?.value;
+    if (!slot) return;
+    sendCmd({ cmd: 'set_layout', slot });
+  });
   // Legacy btn-resume inside the match-overlay: no longer surfaced
   // (paused overlay is hidden; Pause button flips label instead). Click
   // handler kept for back-compat should the overlay ever re-expose it.
@@ -392,6 +403,24 @@ export function showWsError(reason) {
     el.title = '';
     _errorFlashTimer = null;
   }, 3000);
+}
+
+// W16: Apply-layout status line in the SETUP ribbon. `ok=true` ack
+// prints the slot + launcher count in green; `ok=false` (error frame)
+// prints the detail in red. Self-clearing after 4 s so the ribbon
+// doesn't accumulate stale status between presses.
+let _layoutStatusTimer = null;
+export function showLayoutStatus(text, ok) {
+  const el = document.getElementById('layout-status');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = ok ? '#8fe58f' : '#ff7a7a';
+  if (_layoutStatusTimer !== null) clearTimeout(_layoutStatusTimer);
+  _layoutStatusTimer = setTimeout(() => {
+    el.textContent = '';
+    el.style.color = '';
+    _layoutStatusTimer = null;
+  }, 4000);
 }
 
 // Bottom-bar Pause/Resume button (M-TIER2-J Part 1). Visible in RUNNING

@@ -42,6 +42,23 @@
     <button id="btn-add-launcher" class="setup-ribbon-btn">+ Add</button>
     <button id="btn-remove-launcher" class="setup-ribbon-btn" disabled>− Remove</button>
     <button id="btn-ai-auto" class="setup-ribbon-btn">AI Auto</button>
+    <!-- W16: defensive-layout selector — dropdown of pre-designed
+         rosters from CANDIDATE_LAYOUTS_2026-04-22.json. Apply swaps
+         the whole fleet + resets Blue budget to match the roster's
+         base cost. SETUP-phase-only (ribbon is hidden otherwise). -->
+    <label class="setup-ribbon-roster">
+      <select id="layout-slot" class="setup-ribbon-select" title="Defensive layout preset">
+        <option value="current">Layout: Current</option>
+        <option value="A">Layout A — Forward HGV Hunter (9)</option>
+        <option value="B">Layout B — East Reinforced (10)</option>
+        <option value="C">Layout C — Heavy Saturation (23)</option>
+        <option value="D">Layout D — Island HGV Hunter (19)</option>
+        <option value="E">Layout E — Balanced Shield (12)</option>
+        <option value="F">Layout F — PAC-3 Fence (4)</option>
+      </select>
+    </label>
+    <button id="btn-apply-layout" class="setup-ribbon-btn">Apply Layout</button>
+    <span id="layout-status" class="setup-ribbon-hint"></span>
     <button id="btn-start-match" class="setup-ribbon-btn">Start Match</button>
   </div>
 
