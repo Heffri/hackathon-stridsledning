@@ -29,6 +29,13 @@ from sim.types import InterceptorType, MatchPhase
 _RED_POLICY_PATH = os.environ.get("RED_POLICY_PATH")
 _BLUE_POLICY_PATH = os.environ.get("BLUE_POLICY_PATH")
 
+# Alternative Red driver: `RED_WAVE_MODE=scripted` swaps rule-based RedAI
+# for the event-driven `ScriptedRedAI` (3 parallel per-site chains with
+# drone / cruise / ballistic / HGV overlap). Only consulted when no
+# RED_POLICY_PATH is set — a learned Red policy always wins over the
+# scripted alternative since both replace the same `scenario.red` slot.
+_RED_WAVE_MODE = os.environ.get("RED_WAVE_MODE", "default").lower()
+
 
 ROOT = Path(__file__).resolve().parent
 FRONTEND_DIR = ROOT.parent / "frontend"
@@ -88,6 +95,14 @@ class SimRunner:
             self.scenario.red = LearnedRedAI(_RED_POLICY_PATH, self.scenario)
             print(
                 f"[server] Loaded learned Red policy: {_RED_POLICY_PATH}",
+                flush=True,
+            )
+        elif _RED_WAVE_MODE == "scripted":
+            from sim.red_ai import ScriptedRedAI
+            self.scenario.red = ScriptedRedAI(self.scenario)
+            print(
+                "[server] Red wave mode: scripted "
+                "(3 parallel chains per military site)",
                 flush=True,
             )
         if _BLUE_POLICY_PATH:
@@ -195,6 +210,59 @@ class SimRunner:
             return self._ai_auto_cmd()
         if kind == "set_layout":
             return self._set_layout_cmd(cmd)
+        if kind == "set_budget":
+            return self._set_budget_cmd(cmd)
+        return None
+
+    def _set_budget_cmd(self, cmd: dict) -> "dict | None":
+        """Handle `{cmd: 'set_budget', red_budget_usd, blue_budget_usd}`.
+
+        Only legal during SETUP. Both values must sit in [$10M, $1B]. On
+        success, `Scenario.set_initial_budgets` rewrites both the current
+        balance and the `_max` HUD denominator so the next snapshot shows
+        the new values; no ack is returned (operator sees the change on
+        the HUD budget bars within one tick).
+        """
+        phase = self.scenario.world.phase
+        if phase != MatchPhase.SETUP:
+            return {
+                "type": "error",
+                "reason": "illegal_budget_edit",
+                "detail": f"phase is {phase.value}, must be setup",
+            }
+        try:
+            red_usd = int(cmd.get("red_budget_usd"))
+            blue_usd = int(cmd.get("blue_budget_usd"))
+        except (TypeError, ValueError):
+            return {
+                "type": "error",
+                "reason": "illegal_budget_edit",
+                "detail": "red_budget_usd / blue_budget_usd must be integers",
+            }
+        # $10M .. $1B. Tight enough that a mis-typed 0 or a runaway
+        # 10**12 surfaces as an error rather than silently producing a
+        # match with no budget or effectively-infinite budget.
+        MIN_BUDGET = 10_000_000
+        MAX_BUDGET = 1_000_000_000
+        if not (MIN_BUDGET <= red_usd <= MAX_BUDGET):
+            return {
+                "type": "error",
+                "reason": "illegal_budget_edit",
+                "detail": (
+                    f"red_budget_usd {red_usd} out of range "
+                    f"[{MIN_BUDGET}, {MAX_BUDGET}]"
+                ),
+            }
+        if not (MIN_BUDGET <= blue_usd <= MAX_BUDGET):
+            return {
+                "type": "error",
+                "reason": "illegal_budget_edit",
+                "detail": (
+                    f"blue_budget_usd {blue_usd} out of range "
+                    f"[{MIN_BUDGET}, {MAX_BUDGET}]"
+                ),
+            }
+        self.scenario.set_initial_budgets(red_usd, blue_usd)
         return None
 
     # --- W16: live-demo defensive-layout selector (backed by

@@ -59,6 +59,17 @@
     </label>
     <button id="btn-apply-layout" class="setup-ribbon-btn">Apply Layout</button>
     <span id="layout-status" class="setup-ribbon-hint"></span>
+    <span class="setup-ribbon-sep"></span>
+    <label class="setup-ribbon-budget" title="Red starting budget ($M). Only editable in SETUP.">
+      Red $M
+      <input id="red-budget-input" class="setup-ribbon-budget-input" type="number" value="100" min="10" max="1000" step="10" />
+    </label>
+    <label class="setup-ribbon-budget" title="Blue starting budget ($M). Only editable in SETUP.">
+      Blue $M
+      <input id="blue-budget-input" class="setup-ribbon-budget-input" type="number" value="120" min="10" max="1000" step="10" />
+    </label>
+    <button id="btn-apply-budget" class="setup-ribbon-btn" title="Apply budget overrides to the current match (SETUP only).">Apply</button>
+    <span class="setup-ribbon-sep"></span>
     <button id="btn-start-match" class="setup-ribbon-btn">Start Match</button>
   </div>
 

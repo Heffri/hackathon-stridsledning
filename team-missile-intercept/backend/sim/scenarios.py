@@ -71,6 +71,31 @@ class Scenario:
             0, config.BLUE_BUDGET_START - base_cost_total
         )
 
+    def set_initial_budgets(self, red_usd: int, blue_usd: int) -> None:
+        """Override Red / Blue starting budgets. Legal only during SETUP.
+
+        The World constructor reads `config.RED_BUDGET_START` /
+        `config.BLUE_BUDGET_START` to seed `red_budget` / `red_budget_max`
+        / `blue_budget` / `blue_budget_max`; this method lets the live
+        demo operator tune those numbers at runtime from the Budget panel
+        on the SETUP ribbon without editing config.py.
+
+        Both `_max` (HUD bar denominator) and the current balance are
+        overwritten — during SETUP nothing has been spent yet so they
+        stay in sync. Post-SETUP edits are rejected by the caller
+        (`server.py::handle_command`) with an error frame; this method
+        also asserts on phase so bypass attempts via a test harness
+        surface loudly.
+        """
+        assert self.world.phase == MatchPhase.SETUP, (
+            f"set_initial_budgets only legal in SETUP (phase is "
+            f"{self.world.phase.value})"
+        )
+        self.world.red_budget = int(red_usd)
+        self.world.red_budget_max = int(red_usd)
+        self.world.blue_budget = int(blue_usd)
+        self.world.blue_budget_max = int(blue_usd)
+
     def step(self, dt: float) -> None:
         """Advance one sim tick, respecting the Match Phase FSM.
 

@@ -6,8 +6,18 @@ width and Z is randomised within an envelope tuned to each threat type.
 Cruise missiles additionally receive 1-2 intermediate waypoints to fly an
 S-shape instead of a straight line. Random samples are drawn at spawn time
 inside RedAI.step (not at module import) so every demo run looks different.
+
+`ScriptedRedAI` (opt-in via env var `RED_WAVE_MODE=scripted` on server.py)
+is an alternative driver that runs 3 parallel attack chains — one per
+military site — instead of a fixed wave schedule. Each chain layers drone
+→ cruise → ballistic → HGV subwaves whose triggers fire off estimated
+time-to-arrival of the previous layer, producing overlapping saturation
+attacks. Budget exhaustion naturally terminates the chain when Red's
+$100M pool runs out (typically somewhere in round 2).
 """
-from typing import List
+from dataclasses import dataclass, field
+import random
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -326,3 +336,419 @@ class RedAI:
     @property
     def done(self) -> bool:
         return self._next_wave >= len(self.waves)
+
+
+# =============================================================================
+# ScriptedRedAI — event-driven wave scheduler (opt-in via RED_WAVE_MODE=scripted)
+# =============================================================================
+
+# Progress fractions for each sub-chain trigger. Pulled out of the code
+# as named constants so the attack doctrine is editable in one place.
+_DRONE_NEXT_BATCH_PROGRESS = 0.50   # d2 spawns when d1 reaches 50% of its flight
+_DRONE_TO_CRUISE_PROGRESS  = 1.00   # cruise spawns when drone "arrives"
+_CRUISE_TO_BALLISTIC_PROGRESS = 0.90
+_BALLISTIC_PAIR_PROGRESS      = 0.55
+_BALLISTIC_TO_HGV_PROGRESS    = 0.50
+
+# Per-base batch sizes (public encyclopedia-level arcade balance numbers).
+_DRONE_BATCH_SIZE = 10
+_CRUISE_BATCH_SIZE = 5
+_BALLISTIC_PAIR_BALLISTICS = 1    # one ballistic fires per "b-slot" in the pair
+_HGV_BATCH_SIZE = 1
+
+
+@dataclass
+class _Trigger:
+    """Deferred spawn trigger — fires when world.t >= fire_t."""
+    fire_t: float
+    action: Callable[[], None]
+    desc: str = ""
+
+
+@dataclass
+class _AttackChain:
+    """All state for a single base's multi-round attack chain."""
+    target_site_id: int
+    target_name: str
+    target_xy: Tuple[float, float]
+    # Per-batch metadata: {batch_name: {"spawn_t", "ids", "spawn_pos", "dist"}}
+    batches: Dict[str, dict] = field(default_factory=dict)
+    rounds_scheduled: int = 0  # 0..3 — how many c/b/h chains have been fired
+
+
+def _straight_line_dist(spawn_xy: Tuple[float, float], target_xy: Tuple[float, float]) -> float:
+    dx = spawn_xy[0] - target_xy[0]
+    dy = spawn_xy[1] - target_xy[1]
+    return float(np.sqrt(dx * dx + dy * dy))
+
+
+class ScriptedRedAI:
+    """Event-driven wave scheduler.
+
+    Three parallel attack chains — one per military site — each running
+    up to 3 rounds of (drones → cruise → ballistic pair → HGV). Round
+    triggers fire off estimated arrival time of the previous layer so
+    overlap is baked into the doctrine rather than being an artefact of
+    tick scheduling. Red's $100M budget typically runs out during round
+    2 or early round 3; `world.spawn_threat` is gated on budget here
+    (not inside the World), so depletion just stops new spawns — chain
+    triggers continue to resolve but the spawn calls skip silently.
+
+    Exposes `log`, `done`, `_next_wave`, `waves`, `launchers` for
+    scenarios.snapshot() compatibility so swapping in this class doesn't
+    break the WebSocket contract.
+    """
+
+    def __init__(self, scenario):
+        self.scenario = scenario
+        self._chains: List[_AttackChain] = []
+        self._triggers: List[_Trigger] = []
+        self.log: List[str] = []
+        self._initialized = False
+        self._finished = False
+        self.rng = np.random.default_rng()
+        # --- Snapshot-compat shims ---
+        # The existing scenario.snapshot() reads `.waves`, `._next_wave`,
+        # `.log`, `.launchers`. We expose no-op waves + a real
+        # RedLauncherFleet so the HUD's "Wave N/M" indicator and visible
+        # red launcher boxes keep rendering (chain progress is logged via
+        # `.log`; the wave counter stays 0/0 — the scripted mode isn't
+        # wave-indexed, and the HUD treats 0 as "no waves yet" gracefully).
+        self.waves: List[WaveSpec] = []
+        self._next_wave: int = 0
+        self.launchers = RedLauncherFleet()
+
+    # ------------------------------------------------------------------
+    # Public interface: matches RedAI so scenario.red can be either class.
+    # ------------------------------------------------------------------
+    def step(self, t_now: float, world) -> None:
+        if not self._initialized:
+            self._init_chains(world)
+            self._initialized = True
+
+        # Fire all matured triggers in deterministic order (earliest first).
+        # A trigger's action may append new triggers; those evaluate next
+        # tick, which is fine — the chain is still acyclic per round.
+        due = [trig for trig in self._triggers if world.t >= trig.fire_t]
+        self._triggers = [trig for trig in self._triggers if world.t < trig.fire_t]
+        due.sort(key=lambda tr: tr.fire_t)
+        for trig in due:
+            try:
+                trig.action()
+            except Exception as exc:   # pragma: no cover — defensive
+                self.log.append(f"[{world.t:6.1f}s] trigger {trig.desc!r} raised {exc!r}")
+
+        # `.done` semantics: mirror RedAI — True once no more spawns will
+        # happen AND no live threats remain. Scenario.winner consumes this
+        # to decide Blue victory on "out of threats" side.
+        no_pending = not self._triggers
+        no_live = all(not th.state.alive for th in world.threats.values())
+        budget_dry = world.red_budget <= 0
+        if no_pending and no_live:
+            self._finished = True
+        # Edge: if budget dried and every pending trigger would spawn
+        # something unaffordable, we still flush pending triggers (they
+        # become no-ops) until the queue drains.
+
+    @property
+    def done(self) -> bool:
+        return self._finished
+
+    # ------------------------------------------------------------------
+    # Chain construction
+    # ------------------------------------------------------------------
+    def _init_chains(self, world) -> None:
+        """Build one AttackChain per military site, fire the initial
+        drone batch (d1) immediately, and register downstream triggers.
+
+        "Military" = subtype in {'base', 'air_base'} — same filter the
+        winner resolver uses. At the current arena crop that's Main Base,
+        Spear Point Base, Firewatch Station (3 sites). Targeting cities
+        / the capital is out of scope for this mode; those sites survive
+        the match untouched.
+        """
+        military_sites = [s for s in sites.SOUTH_SITES if s.subtype in ("base", "air_base")]
+        if not military_sites:
+            self.log.append("[ScriptedRed] no military sites found — nothing to attack")
+            self._finished = True
+            return
+
+        for site in military_sites:
+            chain = _AttackChain(
+                target_site_id=site.id,
+                target_name=site.name,
+                target_xy=(float(site.pos[0]), float(site.pos[1])),
+            )
+            self._chains.append(chain)
+            # Round 1: spawn d1 now, schedule d2/d3 + c1 triggers.
+            self._spawn_drone_batch(world, chain, batch_name="d1")
+            self._schedule_drone_and_cruise_triggers(world, chain, round_idx=1)
+
+        self.log.append(
+            f"[{world.t:6.1f}s] ScriptedRed init — {len(self._chains)} chain(s): "
+            + ", ".join(c.target_name for c in self._chains)
+        )
+
+    def _schedule_drone_and_cruise_triggers(
+        self, world, chain: _AttackChain, round_idx: int,
+    ) -> None:
+        """After d{round_idx} spawns, schedule its follow-ups.
+
+        Round 1: d2 at 50%-of-d1, c1 at 100%-of-d1.
+        Round 2: d3 at 50%-of-d2, c2 at 100%-of-d2.
+        Round 3: c3 at 100%-of-d3 (no d4).
+        """
+        drone_name = f"d{round_idx}"
+        batch = chain.batches.get(drone_name)
+        if batch is None:
+            # Drone batch failed to register (budget / no sites / ...).
+            return
+        drone_speed = THREAT_SPECS[ThreatType.DRONE].cruise_speed
+        flight_s = batch["dist"] / max(1.0, drone_speed)
+        # Sub-chain A: next drone batch (only for rounds 1 and 2).
+        if round_idx < 3:
+            next_drone_name = f"d{round_idx + 1}"
+            fire_t = batch["spawn_t"] + _DRONE_NEXT_BATCH_PROGRESS * flight_s
+            chain_ref = chain
+            def _spawn_next_drone(world=world, chain=chain_ref, name=next_drone_name, rd=round_idx + 1):
+                self._spawn_drone_batch(world, chain, batch_name=name)
+                self._schedule_drone_and_cruise_triggers(world, chain, round_idx=rd)
+            self._triggers.append(_Trigger(
+                fire_t=fire_t,
+                action=_spawn_next_drone,
+                desc=f"{chain.target_name}:{next_drone_name}_spawn",
+            ))
+        # Sub-chain B: cruise batch triggered by this drone batch.
+        cruise_name = f"c{round_idx}"
+        cruise_fire_t = batch["spawn_t"] + _DRONE_TO_CRUISE_PROGRESS * flight_s
+        chain_ref = chain
+        rd = round_idx
+        def _spawn_cruise(world=world, chain=chain_ref, name=cruise_name, rd=rd):
+            self._spawn_cruise_batch(world, chain, batch_name=name)
+            self._schedule_ballistic_pair_trigger(world, chain, round_idx=rd)
+        self._triggers.append(_Trigger(
+            fire_t=cruise_fire_t,
+            action=_spawn_cruise,
+            desc=f"{chain.target_name}:{cruise_name}_spawn",
+        ))
+
+    def _schedule_ballistic_pair_trigger(
+        self, world, chain: _AttackChain, round_idx: int,
+    ) -> None:
+        """After c{round_idx} spawns, register b1 (first of the pair)."""
+        cruise_name = f"c{round_idx}"
+        batch = chain.batches.get(cruise_name)
+        if batch is None:
+            return
+        cruise_speed = THREAT_SPECS[ThreatType.CRUISE_SUB].cruise_speed
+        flight_s = batch["dist"] / max(1.0, cruise_speed)
+        fire_t = batch["spawn_t"] + _CRUISE_TO_BALLISTIC_PROGRESS * flight_s
+        b1_name = f"b1_r{round_idx}"
+        chain_ref = chain
+        rd = round_idx
+        def _spawn_b1(world=world, chain=chain_ref, name=b1_name, rd=rd):
+            self._spawn_ballistic(world, chain, batch_name=name)
+            self._schedule_ballistic_to_ballistic_trigger(world, chain, round_idx=rd)
+        self._triggers.append(_Trigger(
+            fire_t=fire_t,
+            action=_spawn_b1,
+            desc=f"{chain.target_name}:{b1_name}_spawn",
+        ))
+
+    def _schedule_ballistic_to_ballistic_trigger(
+        self, world, chain: _AttackChain, round_idx: int,
+    ) -> None:
+        """After b1_r{round_idx} spawns, register b2 (55% along b1)."""
+        b1_name = f"b1_r{round_idx}"
+        batch = chain.batches.get(b1_name)
+        if batch is None:
+            return
+        ballistic_speed = THREAT_SPECS[ThreatType.BALLISTIC].cruise_speed
+        flight_s = batch["dist"] / max(1.0, ballistic_speed)
+        fire_t = batch["spawn_t"] + _BALLISTIC_PAIR_PROGRESS * flight_s
+        b2_name = f"b2_r{round_idx}"
+        chain_ref = chain
+        rd = round_idx
+        def _spawn_b2(world=world, chain=chain_ref, name=b2_name, rd=rd):
+            self._spawn_ballistic(world, chain, batch_name=name)
+            self._schedule_hgv_trigger(world, chain, round_idx=rd)
+        self._triggers.append(_Trigger(
+            fire_t=fire_t,
+            action=_spawn_b2,
+            desc=f"{chain.target_name}:{b2_name}_spawn",
+        ))
+
+    def _schedule_hgv_trigger(
+        self, world, chain: _AttackChain, round_idx: int,
+    ) -> None:
+        """After b2_r{round_idx} spawns, register HGV (50% along b2)."""
+        b2_name = f"b2_r{round_idx}"
+        batch = chain.batches.get(b2_name)
+        if batch is None:
+            return
+        ballistic_speed = THREAT_SPECS[ThreatType.BALLISTIC].cruise_speed
+        flight_s = batch["dist"] / max(1.0, ballistic_speed)
+        fire_t = batch["spawn_t"] + _BALLISTIC_TO_HGV_PROGRESS * flight_s
+        hgv_name = f"h_r{round_idx}"
+        chain_ref = chain
+        def _spawn_hgv(world=world, chain=chain_ref, name=hgv_name):
+            self._spawn_hgv(world, chain, batch_name=name)
+        self._triggers.append(_Trigger(
+            fire_t=fire_t,
+            action=_spawn_hgv,
+            desc=f"{chain.target_name}:{hgv_name}_spawn",
+        ))
+
+    # ------------------------------------------------------------------
+    # Spawn helpers — each enforces the budget gate + validate_location,
+    # records the batch metadata, and returns early if budget exhausted.
+    # ------------------------------------------------------------------
+    def _try_spawn(
+        self, world, kind: ThreatType, spawn_xyz, chain: _AttackChain,
+    ) -> Optional[int]:
+        """Budget-gated wrapper around world.spawn_threat. Returns the
+        new threat id or None if the spawn was skipped (insufficient
+        budget, or spawn_threat validation raised)."""
+        cost = THREAT_SPECS[kind].usd_cost
+        if world.red_budget < cost:
+            return None
+        try:
+            tid = world.spawn_threat(
+                kind, spawn_xyz, chain.target_xy,
+                target_site_id=chain.target_site_id,
+            )
+        except ValueError as exc:
+            self.log.append(
+                f"[{world.t:6.1f}s] spawn {kind.value} → {chain.target_name} "
+                f"rejected: {exc}"
+            )
+            return None
+        world.red_budget = max(0, world.red_budget - cost)
+        return tid
+
+    def _spawn_drone_batch(
+        self, world, chain: _AttackChain, batch_name: str,
+    ) -> None:
+        """Spawn up to `_DRONE_BATCH_SIZE` drones toward `chain.target_xy`.
+
+        Spawn position: one uniformly-random drone launcher (per spec).
+        All drones in the batch share the same launcher so the visual
+        is a single "swarm launch" from one island. Altitude varied
+        per-drone across DRONE_ALT_RANGE for visual spread.
+        """
+        positions = config.RED_LAUNCHER_POSITIONS.get("drone", [])
+        if not positions:
+            return
+        pos_xy = random.choice(positions)
+        ids: List[int] = []
+        for _ in range(_DRONE_BATCH_SIZE):
+            z = float(self.rng.uniform(*DRONE_ALT_RANGE))
+            spawn_xyz = (float(pos_xy[0]), float(pos_xy[1]), z)
+            tid = self._try_spawn(world, ThreatType.DRONE, spawn_xyz, chain)
+            if tid is None:
+                break
+            ids.append(tid)
+        dist = _straight_line_dist(pos_xy, chain.target_xy)
+        chain.batches[batch_name] = {
+            "spawn_t": world.t,
+            "ids": ids,
+            "spawn_pos": tuple(pos_xy),
+            "dist": dist,
+        }
+        self.log.append(
+            f"[{world.t:6.1f}s] {chain.target_name} {batch_name}: "
+            f"{len(ids)}/{_DRONE_BATCH_SIZE} drone(s) from ({pos_xy[0]:.0f},{pos_xy[1]:.0f})"
+        )
+
+    def _spawn_cruise_batch(
+        self, world, chain: _AttackChain, batch_name: str,
+    ) -> None:
+        """Spawn up to `_CRUISE_BATCH_SIZE` cruise missiles with S-shape
+        intermediate waypoints so each takes a slightly different route.
+        """
+        positions = config.RED_LAUNCHER_POSITIONS.get("cruise_sub", [])
+        if not positions:
+            return
+        pos_xy = random.choice(positions)
+        ids: List[int] = []
+        for _ in range(_CRUISE_BATCH_SIZE):
+            z = float(self.rng.uniform(*CRUISE_ALT_RANGE))
+            spawn_xyz = (float(pos_xy[0]), float(pos_xy[1]), z)
+            # Budget-check before building waypoints (cheap short-circuit).
+            cost = THREAT_SPECS[ThreatType.CRUISE_SUB].usd_cost
+            if world.red_budget < cost:
+                break
+            wps = _build_cruise_waypoints(spawn_xyz, chain.target_xy, self.rng)
+            try:
+                tid = world.spawn_threat(
+                    ThreatType.CRUISE_SUB, spawn_xyz, chain.target_xy,
+                    intermediate_waypoints=wps,
+                    target_site_id=chain.target_site_id,
+                )
+            except ValueError as exc:
+                self.log.append(
+                    f"[{world.t:6.1f}s] spawn cruise → {chain.target_name} "
+                    f"rejected: {exc}"
+                )
+                break
+            world.red_budget = max(0, world.red_budget - cost)
+            ids.append(tid)
+        dist = _straight_line_dist(pos_xy, chain.target_xy)
+        chain.batches[batch_name] = {
+            "spawn_t": world.t,
+            "ids": ids,
+            "spawn_pos": tuple(pos_xy),
+            "dist": dist,
+        }
+        self.log.append(
+            f"[{world.t:6.1f}s] {chain.target_name} {batch_name}: "
+            f"{len(ids)}/{_CRUISE_BATCH_SIZE} cruise from ({pos_xy[0]:.0f},{pos_xy[1]:.0f})"
+        )
+
+    def _spawn_strategic(
+        self,
+        world,
+        kind: ThreatType,
+        chain: _AttackChain,
+        batch_name: str,
+        alt_range: Tuple[float, float],
+        min_z: float,
+    ) -> None:
+        """Shared helper for ballistic / HGV spawns from the far-north
+        STRATEGIC_Y_BAND. One missile per call (spec says 1 per b-slot,
+        1 per HGV slot)."""
+        x = float(self.rng.uniform(5_000.0, 145_000.0))
+        y = float(self.rng.uniform(*STRATEGIC_Y_BAND))
+        z = max(min_z, float(self.rng.uniform(*alt_range)))
+        spawn_xyz = (x, y, z)
+        ids: List[int] = []
+        tid = self._try_spawn(world, kind, spawn_xyz, chain)
+        if tid is not None:
+            ids.append(tid)
+        dist = _straight_line_dist((x, y), chain.target_xy)
+        chain.batches[batch_name] = {
+            "spawn_t": world.t,
+            "ids": ids,
+            "spawn_pos": (x, y),
+            "dist": dist,
+        }
+        self.log.append(
+            f"[{world.t:6.1f}s] {chain.target_name} {batch_name}: "
+            f"{len(ids)} {kind.value} from ({x:.0f},{y:.0f})"
+        )
+
+    def _spawn_ballistic(
+        self, world, chain: _AttackChain, batch_name: str,
+    ) -> None:
+        self._spawn_strategic(
+            world, ThreatType.BALLISTIC, chain, batch_name,
+            alt_range=BALLISTIC_ALT_RANGE, min_z=BALLISTIC_MIN_Z,
+        )
+
+    def _spawn_hgv(
+        self, world, chain: _AttackChain, batch_name: str,
+    ) -> None:
+        self._spawn_strategic(
+            world, ThreatType.HGV, chain, batch_name,
+            alt_range=HGV_ALT_RANGE, min_z=HGV_MIN_Z,
+        )

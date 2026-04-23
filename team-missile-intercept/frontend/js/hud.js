@@ -100,6 +100,21 @@ export function wireHud(sendCmd) {
     if (!slot) return;
     sendCmd({ cmd: 'set_layout', slot });
   });
+  // Budget panel Apply button (SETUP-only). Server re-validates phase +
+  // range; we just pack the two inputs into a set_budget command. Next
+  // snapshot carries the updated Red/Blue budget totals to the HUD bars.
+  document.getElementById('btn-apply-budget')?.addEventListener('click', () => {
+    const redInput = document.getElementById('red-budget-input');
+    const blueInput = document.getElementById('blue-budget-input');
+    const redM = Number(redInput?.value);
+    const blueM = Number(blueInput?.value);
+    if (!Number.isFinite(redM) || !Number.isFinite(blueM)) return;
+    sendCmd({
+      cmd: 'set_budget',
+      red_budget_usd: Math.round(redM * 1_000_000),
+      blue_budget_usd: Math.round(blueM * 1_000_000),
+    });
+  });
   // Legacy btn-resume inside the match-overlay: no longer surfaced
   // (paused overlay is hidden; Pause button flips label instead). Click
   // handler kept for back-compat should the overlay ever re-expose it.

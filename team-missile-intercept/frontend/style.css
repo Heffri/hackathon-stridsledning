@@ -493,6 +493,43 @@ html, body {
   cursor: pointer;
 }
 .setup-ribbon-select:hover { border-color: #4a7acc; }
+/* Game-settings budget panel lives on the SETUP ribbon so the operator
+   can tune Red / Blue starting budget without leaving the setup flow.
+   Separator between the roster buttons and the budget inputs visually
+   groups "what to buy" vs. "how much money". */
+.setup-ribbon-sep {
+  display: inline-block;
+  width: 1px;
+  height: 22px;
+  background: #2a5a9a;
+  opacity: 0.6;
+  margin: 0 4px;
+}
+.setup-ribbon-budget {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #cfe1ff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.setup-ribbon-budget-input {
+  width: 64px;
+  background: #0c1b30;
+  color: #cfe1ff;
+  border: 1px solid #2a5a9a;
+  padding: 5px 6px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.setup-ribbon-budget-input:hover,
+.setup-ribbon-budget-input:focus { border-color: #4a7acc; outline: none; }
 /* Push HUD down by ribbon height while ribbon is visible. Sibling combinator
    works because #setup-ribbon precedes #hud in the DOM. */
 #setup-ribbon:not(.hidden) ~ #hud {
