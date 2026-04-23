@@ -46,7 +46,17 @@ BLUE_BASE_POS = (ARENA_X * 0.5, 5_000.0, 0.0)  # x, y, z
 # 3D sphere cleanly and ground-impacts 300-800 m from centre were
 # silently classified as "ground_crash"). 1500 m models an airfield-
 # class defended area and matches user intuition of "hit the base".
-BASE_HIT_RADIUS = 1500.0  # metres
+#
+# 2026-04-23: bumped 1500 → 3500 as an Issue #14 workaround. Ballistic
+# CEP in the current sim averages ~3300 m, so a 1500 m disc was putting
+# most ballistic impacts *outside* the site footprint — they scored as
+# "ground_crash" and the site HP bar never dropped from ballistic.
+# 3500 m captures the bulk of ballistic impacts while still being a
+# plausible "defended area" per the original Milestone-D comment
+# above. Side effect: cruise / HGV / drone also count as hits more
+# often, but their CEP is much smaller (HGV ~100 m, cruise ~50 m, drone
+# ~20 m) so the relative change is minor for those kinds.
+BASE_HIT_RADIUS = 3500.0  # metres (Issue #14 workaround)
 
 # --- Red spawn band (north edge) ---
 RED_SPAWN_Y = ARENA_Y - 5_000.0
