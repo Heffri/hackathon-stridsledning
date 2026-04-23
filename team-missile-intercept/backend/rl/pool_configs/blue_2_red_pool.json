@@ -1,0 +1,7 @@
+{
+  "_comment": "Round-2 Red opponent pool for Blue training. Uniform mix of red_1 (existing trained Red) + red_2 (this session, vs blue_1). Deterministic=false so Red explores. blue_2 trains against this mixture.",
+  "entries": [
+    {"name": "red_1", "type": "trained", "path": "rl/models/red/red_20260421_234425/model.zip", "deterministic": false, "weight": 0.5},
+    {"name": "red_2", "type": "trained", "path": "rl/runs/red_2/model.zip",                       "deterministic": false, "weight": 0.5}
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "_comment": "Round-3 Red opponent pool for Blue training. Uniform mix of all 3 Red generations.",
+  "entries": [
+    {"name": "red_1", "type": "trained", "path": "rl/models/red/red_20260421_234425/model.zip", "deterministic": false, "weight": 0.33},
+    {"name": "red_2", "type": "trained", "path": "rl/runs/red_2/model.zip",                       "deterministic": false, "weight": 0.33},
+    {"name": "red_3", "type": "trained", "path": "rl/runs/red_3/model.zip",                       "deterministic": false, "weight": 0.34}
+  ]
+}

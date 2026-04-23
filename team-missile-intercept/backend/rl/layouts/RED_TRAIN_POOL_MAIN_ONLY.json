@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "date": "2026-04-23",
+    "note": "Single-slot pool (MAIN/slot B) for Red side training. Forces Red to always train vs slot B Blue layout."
+  },
+  "layouts": [
+    {
+      "slot": "MAIN",
+      "author": "Claude",
+      "name": "East Reinforced",
+      "philosophy": "Cheaper defense-in-depth. Fix Firewatch weakness with CIWS + east SLS. Accept no PAC-3 HTK at Spear (same as default).",
+      "launcher_count": 10,
+      "base_cost_usd": 42000000,
+      "interceptor_budget_usd": 78000000,
+      "roster": {
+        "ciws": [
+          [
+            75000,
+            5000
+          ],
+          [
+            125000,
+            3000
+          ]
+        ],
+        "rbs_70": [
+          [
+            81000,
+            74000
+          ],
+          [
+            72000,
+            5000
+          ]
+        ],
+        "iris_t_sls": [
+          [
+            80000,
+            72000
+          ],
+          [
+            100000,
+            5000
+          ]
+        ],
+        "iris_t_slm": [
+          [
+            80000,
+            5000
+          ],
+          [
+            108000,
+            4000
+          ]
+        ],
+        "pac_2": [
+          [
+            74700,
+            8000
+          ]
+        ],
+        "pac_3": [
+          [
+            75300,
+            8000
+          ]
+        ]
+      },
+      "coverage": {
+        "Main Base": {
+          "defenders": 6,
+          "htk": 1,
+          "hgv_path_km": 119
+        },
+        "Spear Point Base": {
+          "defenders": 3,
+          "htk": 0,
+          "hgv_path_km": 0
+        },
+        "Firewatch Station": {
+          "defenders": 4,
+          "htk": 1,
+          "hgv_path_km": 119
+        }
+      },
+      "python_dict_literal": "BLUE_LAUNCHER_POSITIONS = {\n    \"ciws\":       [(75_000, 5_000), (125_000, 3_000)],\n    \"rbs_70\":     [(81_000, 74_000), (72_000, 5_000)],\n    \"iris_t_sls\": [(80_000, 72_000), (100_000, 5_000)],\n    \"iris_t_slm\": [(80_000, 5_000), (108_000, 4_000)],\n    \"pac_2\":      [(74_700, 8_000)],\n    \"pac_3\":      [(75_300, 8_000)],\n}",
+      "source_slot": "B"
+    }
+  ]
+}
