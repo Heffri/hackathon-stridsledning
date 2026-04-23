@@ -631,22 +631,31 @@ class ScriptedRedAI:
     ) -> None:
         """Spawn up to `_DRONE_BATCH_SIZE` drones toward `chain.target_xy`.
 
-        Spawn position: one uniformly-random drone launcher (per spec).
-        All drones in the batch share the same launcher so the visual
-        is a single "swarm launch" from one island. Altitude varied
-        per-drone across DRONE_ALT_RANGE for visual spread.
+        Spawn position: one uniformly-random drone launcher per spec.
+        Per-drone xy jitter (±1500m) and altitude jitter (DRONE_ALT_RANGE)
+        so drones don't visually stack. If a jittered position falls on
+        water (fails north-land validation), retry at the exact launcher
+        position.
         """
         positions = config.RED_LAUNCHER_POSITIONS.get("drone", [])
         if not positions:
             return
         pos_xy = random.choice(positions)
+        base_x, base_y = float(pos_xy[0]), float(pos_xy[1])
         ids: List[int] = []
         for _ in range(_DRONE_BATCH_SIZE):
             z = float(self.rng.uniform(*DRONE_ALT_RANGE))
-            spawn_xyz = (float(pos_xy[0]), float(pos_xy[1]), z)
+            # Per-drone xy jitter to avoid visual stack
+            jx = self.rng.uniform(-1500.0, 1500.0)
+            jy = self.rng.uniform(-1500.0, 1500.0)
+            spawn_xyz = (base_x + jx, base_y + jy, z)
             tid = self._try_spawn(world, ThreatType.DRONE, spawn_xyz, chain)
             if tid is None:
-                break
+                # Jitter pushed to sea — retry at exact launcher pos
+                spawn_xyz = (base_x, base_y, z)
+                tid = self._try_spawn(world, ThreatType.DRONE, spawn_xyz, chain)
+                if tid is None:
+                    break  # budget-exhausted or hard failure
             ids.append(tid)
         dist = _straight_line_dist(pos_xy, chain.target_xy)
         chain.batches[batch_name] = {
@@ -670,10 +679,16 @@ class ScriptedRedAI:
         if not positions:
             return
         pos_xy = random.choice(positions)
+        base_x, base_y = float(pos_xy[0]), float(pos_xy[1])
         ids: List[int] = []
         for _ in range(_CRUISE_BATCH_SIZE):
             z = float(self.rng.uniform(*CRUISE_ALT_RANGE))
-            spawn_xyz = (float(pos_xy[0]), float(pos_xy[1]), z)
+            # Per-cruise xy jitter (±800m, smaller than drone because cruise
+            # launchers are tighter mainland positions). Retry at launcher
+            # pos if jitter pushed to sea.
+            jx = self.rng.uniform(-800.0, 800.0)
+            jy = self.rng.uniform(-800.0, 800.0)
+            spawn_xyz = (base_x + jx, base_y + jy, z)
             # Budget-check before building waypoints (cheap short-circuit).
             cost = THREAT_SPECS[ThreatType.CRUISE_SUB].usd_cost
             if world.red_budget < cost:
@@ -685,12 +700,22 @@ class ScriptedRedAI:
                     intermediate_waypoints=wps,
                     target_site_id=chain.target_site_id,
                 )
-            except ValueError as exc:
-                self.log.append(
-                    f"[{world.t:6.1f}s] spawn cruise → {chain.target_name} "
-                    f"rejected: {exc}"
-                )
-                break
+            except ValueError:
+                # Jitter pushed to sea — retry at exact launcher pos
+                spawn_xyz = (base_x, base_y, z)
+                wps = _build_cruise_waypoints(spawn_xyz, chain.target_xy, self.rng)
+                try:
+                    tid = world.spawn_threat(
+                        ThreatType.CRUISE_SUB, spawn_xyz, chain.target_xy,
+                        intermediate_waypoints=wps,
+                        target_site_id=chain.target_site_id,
+                    )
+                except ValueError as exc:
+                    self.log.append(
+                        f"[{world.t:6.1f}s] spawn cruise → {chain.target_name} "
+                        f"rejected: {exc}"
+                    )
+                    break
             world.red_budget = max(0, world.red_budget - cost)
             ids.append(tid)
         dist = _straight_line_dist(pos_xy, chain.target_xy)
