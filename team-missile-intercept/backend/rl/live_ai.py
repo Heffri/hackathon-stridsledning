@@ -25,7 +25,7 @@ and advances 10 ticks. Skips gracefully if models are absent.
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import gymnasium as gym
@@ -39,10 +39,11 @@ import gymnasium as gym
 from rl.red_env import RedEnv, _patch_numpy_core_for_legacy_pickle
 _patch_numpy_core_for_legacy_pickle()
 
-from rl.env import DECISION_EVERY
+from rl.env import DECISION_EVERY, MAX_THREATS
 from sim import sites as sites_module
+from sim.config import LAUNCH_RANGE_MARGIN
 from sim.launcher import LauncherFleet, RedLauncherFleet
-from sim.types import THREAT_SPECS
+from sim.types import INTERCEPTOR_SPECS, InterceptorType, THREAT_SPECS
 
 
 def _load_policy(path: str):
@@ -234,7 +235,31 @@ class LearnedBlueAI:
     Decision cadence: policy predicts every ``DECISION_EVERY`` ticks. Fleet
     timers ``.tick(t_now)`` advance every call (matches rule BlueAI's line 1
     in ``BlueAI.step``) so reload/CD are consistent with training.
+
+    Safety filters on top of the policy (2026-04-23 live-demo audit):
+    the policy was observed (1) firing after Blue budget hit zero, (2)
+    dumping 7+ interceptors at a single drone while other threats were
+    ignored, and (3) leaving orphan interceptors flying at already-dead
+    targets. Root cause is that the training env
+    (``_LiveEnv._apply_blue_action``) clamps budget with ``max(0, ...)``
+    and has no saturation cap. Rather than retrain, this wrapper adds
+    three rule-layer gates between ``policy.predict`` and the actual
+    spawn, mirroring the discipline in ``sim/blue_ai.py``:
+
+      * Budget gate — hard refusal if ``world.blue_budget <
+        spec.usd_cost`` (no clamp).
+      * Saturation cap — at most ``MAX_SIMULTANEOUS_PER_THREAT``
+        non-CIWS interceptors in flight per threat. CIWS is a cannon,
+        exempt from the cap (same carve-out as ``BlueAI.step``).
+      * Orphan cleanup — interceptors whose assigned target is dead
+        are marked ``state.alive = False`` at the top of each tick, so
+        the sim prunes them instead of letting them fly to empty sky.
     """
+
+    # Mirror ``sim/blue_ai.py::MAX_SIMULTANEOUS_PER_THREAT``. Excludes
+    # CIWS (point-defense cannon — has its own per-threat shot budget
+    # in the rule AI; simpler here to just exempt it from this cap).
+    MAX_SIMULTANEOUS_PER_THREAT = 3
 
     def __init__(self, policy_path: str, scenario):
         self._policy = _load_policy(policy_path)
@@ -243,11 +268,52 @@ class LearnedBlueAI:
         self._env = _LiveEnv(scenario, own_blue_fleet=self.launchers)
         self._tick_counter = 0
         self.log: List[str] = []
+        # Saturation-cap bookkeeping: threat_id → list of live
+        # interceptor_ids assigned. Mirrors ``BlueAI.assignments`` in
+        # ``sim/blue_ai.py``. Pruned each tick before the policy
+        # decides.
+        self._assignments: Dict[int, List[int]] = {}
 
     def step(self, t_now: float, world) -> None:
         # Reload/CD timers MUST advance every tick — matches rule BlueAI
         # line 1 (launchers.tick). Policy only predicts at decision ticks.
         self.launchers.tick(t_now)
+
+        # Prune assignments: drop dead threats entirely, and inside each
+        # live threat's list drop dead/missing interceptors. Keeps the
+        # saturation-cap count accurate.
+        for tid in list(self._assignments.keys()):
+            threat = world.threats.get(tid)
+            if threat is None or not threat.state.alive:
+                self._assignments.pop(tid, None)
+                continue
+            live = [
+                iid for iid in self._assignments[tid]
+                if iid in world.interceptors
+                and world.interceptors[iid].state.alive
+            ]
+            if live:
+                self._assignments[tid] = live
+            else:
+                self._assignments.pop(tid, None)
+
+        # Orphan cleanup — interceptors whose target is gone/dead. The
+        # policy can fire several shots at one threat in a single
+        # decision tick; the first kill wins and the rest then chase
+        # an empty point in space until they stall. Marking
+        # ``state.alive = False`` is the same death signal the stall
+        # branch in ``entities.Interceptor`` uses, so World.prune_dead
+        # removes them on the next tick.
+        for inter in world.interceptors.values():
+            if not inter.state.alive:
+                continue
+            tid = inter.state.target_id
+            if tid is None:
+                continue
+            tgt = world.threats.get(tid)
+            if tgt is None or not tgt.state.alive:
+                inter.state.alive = False
+
         if self._tick_counter % DECISION_EVERY == 0:
             obs = self._env._encode_obs_blue()
             # Flat int8 mask for MaskablePPO consumption (parent uses
@@ -256,14 +322,85 @@ class LearnedBlueAI:
             action, _ = self._policy.predict(
                 obs, deterministic=True, action_masks=mask_flat
             )
-            n_fires = self._env._apply_blue_action(
-                np.asarray(action).reshape(-1)
+            n_fires = self._apply_action_gated(
+                np.asarray(action).reshape(-1), t_now,
             )
             if n_fires:
                 self.log.append(
                     f"[{t_now:6.1f}s] learned_blue fires={n_fires}"
                 )
         self._tick_counter += 1
+
+    def _apply_action_gated(self, action: np.ndarray, t_now: float) -> int:
+        """Execute the policy's action with rule-layer safety gates.
+
+        Replaces the direct ``_LiveEnv._apply_blue_action`` call. Same
+        action contract (``MAX_LAUNCHERS`` ints in ``[0, MAX_THREATS]``,
+        ``MAX_THREATS`` = hold, else target-slot index) but adds three
+        gates the training env doesn't enforce:
+
+          * Budget: refuse if ``world.blue_budget < spec.usd_cost`` —
+            hard refusal, not a ``max(0, ...)`` clamp (which was the
+            "free fires after $0" bug).
+          * Saturation: skip non-CIWS launches once this threat already
+            has ``MAX_SIMULTANEOUS_PER_THREAT`` non-CIWS interceptors
+            in flight. CIWS is exempt.
+          * Launcher readiness + range: defensive re-check (mask
+            already filters these in principle).
+
+        On a successful spawn the new interceptor's id is recorded in
+        ``self._assignments`` so the cap is honoured across ticks in
+        the same match. Returns the count of shots fired.
+        """
+        world = self._env.world
+        launchers = self.launchers.launchers
+        threats = self._env._alive_threats()
+        n_fires = 0
+        for l_idx, a in enumerate(action):
+            if l_idx >= len(launchers):
+                break
+            a_int = int(a)
+            if a_int >= MAX_THREATS:
+                continue  # hold
+            if a_int >= len(threats):
+                continue  # pad slot
+            lch = launchers[l_idx]
+            if lch.reloading or not lch.can_fire(t_now):
+                continue
+            threat = threats[a_int]
+            if not threat.state.alive:
+                continue
+            spec = INTERCEPTOR_SPECS[lch.kind]
+            # Gate 1: budget — hard refusal, no clamp.
+            if world.blue_budget < spec.usd_cost:
+                continue
+            # Gate 2: saturation cap (non-CIWS only).
+            tid_target = threat.state.id
+            if lch.kind != InterceptorType.CIWS:
+                if len(self._assignments.get(tid_target, [])) >= \
+                        self.MAX_SIMULTANEOUS_PER_THREAT:
+                    continue
+            # Defensive range re-check (mirrors _apply_blue_action).
+            t_pos = threat.state.pos
+            dx = float(t_pos[0] - lch.pos[0])
+            dy = float(t_pos[1] - lch.pos[1])
+            dz = float(t_pos[2])
+            if (dx * dx + dy * dy + dz * dz) > \
+                    (spec.max_range * LAUNCH_RANGE_MARGIN) ** 2:
+                continue
+            mode = lch.fire(t_now)
+            iid = world.spawn_interceptor(
+                lch.kind,
+                (lch.pos[0], lch.pos[1], 0.0),
+                (dx, dy, dz),
+                tid_target,
+                mode,
+            )
+            # Unclamped — gate above guarantees budget >= cost.
+            world.blue_budget -= spec.usd_cost
+            self._assignments.setdefault(tid_target, []).append(iid)
+            n_fires += 1
+        return n_fires
 
 
 # ----------------------------------------------------------------------
