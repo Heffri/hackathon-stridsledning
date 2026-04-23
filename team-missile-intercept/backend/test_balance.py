@@ -1,6 +1,6 @@
-"""Headless balance sweep: run the current 5-wave scenario N times and
-print the Blue/Red/Draw tally. Used to tune wave timing and ammo loadouts
-so Blue doesn't cruise at 100 % win rate.
+"""Headless balance sweep: run the current scenario N times and print the
+Blue/Red/Draw tally. Used to tune wave timing, ammo loadouts, and AOE
+mechanic calibration so Blue doesn't cruise at 100% win rate.
 
 Milestone I hybrid classifier — combines `scenario.winner` (the real
 game-loop outcome) with a leak-count nuance so the three-bucket spec
@@ -9,27 +9,23 @@ target "30-55 / 30-50 / 10-30 Blue / Draw / Red" remains measurable:
   * Red   if `scenario.winner == 'red'`  (site HP or budget hit 0).
   * Blue  if `scenario.winner == 'blue'` AND `leaks <= 5`.
   * Draw  if `scenario.winner == 'blue'` AND `leaks >= 6`.
-  * (Cap fallback: if the 2000 s per-match sim cap fires without a
-    winner, classify by leak count — ≤1 → blue, 2 → draw, ≥3 → red.)
+  * (Cap fallback: if the per-match sim cap fires without a winner,
+    classify by leak count — <=1 → blue, 2 → draw, >=3 → red.)
 
-Why `leaks <= 5` for the Blue threshold? Post-I straight-line HGV
-has a 100 % leak rate (3 HGVs per match, all clear PN precision's
-100-300 m CPA ceiling → 3 HGV leaks baseline). Pre-I the scripted
-S + jink caused HGVs to leak ~0.6 / match — a structural shift
-flagged explicitly in Task 3. Adding the pre-I ~2 leaks-per-match
-budget for cruise / drone / ballistic on top of the HGV baseline
-gives ≤5 as the "Blue won cleanly apart from the HGV tax" bar,
-which calibrates the sweep back inside the spec's 30-55 window.
-Expect Blue ≈ 50 %, Draw ≈ 40 %, Red ≈ 10-15 %.
-
-Per-match sim cap = 2000 s (longer than the longest natural
-Blue-win of ~1928 s but much shorter than the 3600 s
-`config.MAX_SIM_TIME` safety cap, so the sweep finishes in
-reasonable wall time).
+CLI:
+    python test_balance.py                 # 20 matches, default waves
+    python test_balance.py --matches 20 --layout current --red scripted
+    python test_balance.py --matches 10 --layout C --red scripted \
+        --layouts-pool-json rl/top3_layouts_CD.json
 """
-from sim.scenarios import build_default_scenario
+from __future__ import annotations
 
-_SWEEP_SIM_CAP = 2000.0
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from sim.scenarios import build_default_scenario
 
 
 def _classify_by_leaks(leaked: int) -> str:
@@ -48,21 +44,65 @@ def _classify(winner, leaked: int) -> str:
     return _classify_by_leaks(leaked)
 
 
-def run_once() -> str:
-    scn = build_default_scenario()
-    dt = 0.05
-    max_ticks = int(_SWEEP_SIM_CAP / dt) + 10
-    for _ in range(max_ticks):
-        scn.step(dt)
-        if scn.done:
-            break
-    return _classify(scn.winner, scn.world.leaked)
+def _load_layout_override(
+    layout_slot: str,
+    layouts_json_path: str,
+):
+    """Return a roster dict for the named slot, or None for 'current'."""
+    if layout_slot.lower() == "current":
+        return None
+    data = json.loads(Path(layouts_json_path).read_text())
+    for entry in data.get("layouts", []):
+        if str(entry.get("slot", "")).upper() == layout_slot.upper():
+            roster = entry.get("roster", {})
+            return {
+                kind: [tuple(pos) for pos in positions]
+                for kind, positions in roster.items()
+            }
+    raise SystemExit(
+        f"[test_balance] slot '{layout_slot}' not found in "
+        f"{layouts_json_path}; available: "
+        f"{[L.get('slot') for L in data.get('layouts', [])]}"
+    )
 
 
-def run_once_verbose(trace_leaks=None) -> tuple[str, int, int, int]:
-    scn = build_default_scenario()
+def _build_scenario(
+    layout_slot: str,
+    red_mode: str,
+    layouts_json_path: str,
+    red_budget: int | None,
+    blue_budget: int | None,
+):
+    override = _load_layout_override(layout_slot, layouts_json_path)
+    scn = build_default_scenario(layout_override=override, auto_start=False)
+    if red_mode == "scripted":
+        from sim.red_ai import ScriptedRedAI
+        scn.red = ScriptedRedAI(scn)
+    if red_budget is not None:
+        scn.world.red_budget = int(red_budget)
+        scn.world.red_budget_max = int(red_budget)
+    if blue_budget is not None:
+        scn.world.blue_budget = int(blue_budget)
+        scn.world.blue_budget_max = int(blue_budget)
+    from sim.types import MatchPhase
+    scn.world.transition(MatchPhase.RUNNING)
+    return scn
+
+
+def run_once_verbose(
+    sim_cap: float,
+    layout_slot: str,
+    red_mode: str,
+    layouts_json_path: str,
+    red_budget: int | None,
+    blue_budget: int | None,
+    trace_leaks=None,
+) -> tuple[str, int, int, int]:
+    scn = _build_scenario(
+        layout_slot, red_mode, layouts_json_path, red_budget, blue_budget,
+    )
     dt = 0.05
-    max_ticks = int(_SWEEP_SIM_CAP / dt) + 10
+    max_ticks = int(sim_cap / dt) + 10
     for _ in range(max_ticks):
         scn.step(dt)
         if trace_leaks is not None:
@@ -81,7 +121,24 @@ def run_once_verbose(trace_leaks=None) -> tuple[str, int, int, int]:
     return _classify(scn.winner, leaked), spawned, intercepts, leaked
 
 
-def main(n: int = 20) -> None:
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--matches", type=int, default=20)
+    ap.add_argument("--layout", default="current",
+                    help="Blue layout slot: 'current' or a letter (C/D/E/...)")
+    ap.add_argument("--red", default="default",
+                    choices=["default", "scripted"],
+                    help="Red AI variant: default (wave-based) or scripted")
+    ap.add_argument("--layouts-pool-json",
+                    default="rl/top3_layouts_CD.json",
+                    help="path to layouts JSON (used only when --layout != current)")
+    ap.add_argument("--sim-cap", type=float, default=3000.0,
+                    help="per-match sim-time cap (s)")
+    ap.add_argument("--red-budget", type=int, default=None)
+    ap.add_argument("--blue-budget", type=int, default=None)
+    args = ap.parse_args()
+
+    n = args.matches
     tally = {"blue": 0, "red": 0, "draw": 0}
     spawned_list = []
     intercept_list = []
@@ -89,13 +146,25 @@ def main(n: int = 20) -> None:
     leak_kinds = {}
     for i in range(n):
         leaks_trace = []
-        res, spawned, intercepts, leaked = run_once_verbose(leaks_trace)
+        res, spawned, intercepts, leaked = run_once_verbose(
+            sim_cap=args.sim_cap,
+            layout_slot=args.layout,
+            red_mode=args.red,
+            layouts_json_path=args.layouts_pool_json,
+            red_budget=args.red_budget,
+            blue_budget=args.blue_budget,
+            trace_leaks=leaks_trace,
+        )
         tally[res] += 1
         spawned_list.append(spawned)
         intercept_list.append(intercepts)
         leak_list.append(leaked)
         for _, k in leaks_trace:
             leak_kinds[k] = leak_kinds.get(k, 0) + 1
+        print(
+            f"[{i+1:3d}/{n}] {res:5s} spawn={spawned} int={intercepts} leaks={leaked}",
+            flush=True,
+        )
     print(
         f"Blue win {tally['blue']}/{n}, "
         f"draw {tally['draw']}/{n}, "
@@ -112,4 +181,4 @@ def main(n: int = 20) -> None:
 
 
 if __name__ == "__main__":
-    main(20)
+    main()

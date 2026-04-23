@@ -108,14 +108,33 @@ class MissileInterceptEnv(gym.Env):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, seed: Optional[int] = None, episode_time_limit: float = MAX_EPISODE_SIM_TIME):
+    def __init__(
+        self,
+        seed: Optional[int] = None,
+        episode_time_limit: float = MAX_EPISODE_SIM_TIME,
+        layouts_pool: Optional[List[dict]] = None,
+        red_mode: str = "default",
+        blue_budget_start: Optional[int] = None,
+        red_budget_start: Optional[int] = None,
+    ):
         super().__init__()
         self._seed = seed
         self._episode_time_limit = episode_time_limit
         self._build_spaces()
         self.world: Optional[World] = None
         self.fleet: Optional[LauncherFleet] = None
-        self.red: Optional[RedAI] = None
+        self.red = None
+        # Domain-randomization pool of Blue launcher layouts. Each entry
+        # is a dict with at least `roster` (kind->list[[x,y],...]) and
+        # optionally `slot` (short id for logging). None disables pool
+        # sampling — fleet is built from config.BLUE_LAUNCHER_POSITIONS.
+        self._layouts_pool = layouts_pool
+        self._red_mode = red_mode
+        self._blue_budget_start = blue_budget_start
+        self._red_budget_start = red_budget_start
+        self._rng_layout_pool = np.random.default_rng(seed)
+        self._last_sampled_slot: Optional[str] = None
+        self._episode_count: int = 0
 
     def _build_spaces(self):
         self.observation_space = spaces.Dict({
@@ -139,11 +158,51 @@ class MissileInterceptEnv(gym.Env):
             self._seed = seed
         sites_module.reset_leaks()
         self.world = World()
-        self.fleet = LauncherFleet()
-        self.red = RedAI(build_demo_waves())
+        if self._blue_budget_start is not None:
+            self.world.blue_budget = int(self._blue_budget_start)
+            self.world.blue_budget_max = int(self._blue_budget_start)
+        if self._red_budget_start is not None:
+            self.world.red_budget = int(self._red_budget_start)
+            self.world.red_budget_max = int(self._red_budget_start)
+        override = self._sample_layout_override()
+        self.fleet = (
+            LauncherFleet(positions=override) if override is not None
+            else LauncherFleet()
+        )
+        if self._red_mode == "scripted":
+            from sim.red_ai import ScriptedRedAI
+            self.red = ScriptedRedAI(None)
+        else:
+            self.red = RedAI(build_demo_waves())
         self.world.transition(MatchPhase.RUNNING)
         self._cum_reward = 0.0
+        self._episode_count += 1
+        if self._layouts_pool and self._episode_count % 50 == 1:
+            print(
+                f"[env] episode {self._episode_count} starting with "
+                f"layout slot={self._last_sampled_slot}",
+                flush=True,
+            )
         return self._encode_obs(), {}
+
+    # ------------------------------------------------------------------
+    def _sample_layout_override(self):
+        """Sample one layout from `self._layouts_pool` and return its
+        roster as a dict-of-tuples ready for LauncherFleet(positions=...).
+        Returns None if pool is unset. Updates `self._last_sampled_slot`.
+        """
+        if not self._layouts_pool:
+            self._last_sampled_slot = None
+            return None
+        idx = int(self._rng_layout_pool.integers(0, len(self._layouts_pool)))
+        chosen = self._layouts_pool[idx]
+        roster = chosen.get("roster", {})
+        override = {
+            kind: [tuple(pos) for pos in positions]
+            for kind, positions in roster.items()
+        }
+        self._last_sampled_slot = chosen.get("slot", "?")
+        return override
 
     # ------------------------------------------------------------------
     def step(self, action):
