@@ -6,12 +6,11 @@ import { SiteRegistry } from './sites.js';
 import { wireHud, updateHud, setWsStatus, showWsError, showLayoutStatus } from './hud.js';
 import { initStatusPanel, updateStatusPanel } from './status_panel.js';
 import { initLauncherDrag } from './drag_launchers.js';
-import { initRadarDrag } from './drag_radars.js';
 import { onSelectionChange } from './launcher_selection.js';
 import { showIntro, showSetupTip } from './tutorial.js';
 
 const canvas = document.getElementById('view');
-const { scene, camera, renderer, controls, resetCameraView, animateRadar, radarHitMeshes } = createScene(canvas);
+const { scene, camera, renderer, controls, resetCameraView, animateRadar } = createScene(canvas);
 const registry = new EntityRegistry(scene);
 const launchers = new LauncherRegistry(scene);
 const redLaunchers = new RedLauncherRegistry(scene);
@@ -82,9 +81,6 @@ initLauncherDrag({
   sendCmd,
   getPhase: () => latestSnap?.phase || 'setup',
 });
-
-// Radar drag — purely visual, all phases, no server comms.
-initRadarDrag({ renderer, camera, controls, radarHitMeshes });
 
 // Show intro modal on load; open WS only after user dismisses so the
 // server isn't stalled waiting while the user reads the intro.

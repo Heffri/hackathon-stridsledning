@@ -144,12 +144,16 @@ class LauncherMesh {
       this.group.add(m); return m;
     };
 
-    // addAxle: pair of tyres + hubs on left & right at given position
+    // addAxle: pair of tyres + hubs on left & right at given position.
+    // Wheel axle runs along Z (perpendicular to vehicle forward = X), so the
+    // Three.js CylinderGeometry (default axis = Y) gets `rx = π/2` — a prior
+    // version used `rz = π/2` which spun the axle along X, giving upright
+    // tyre discs that read as drums on end from the side view.
     const addAxle = (x, y, z, tyreR=0.22, tyreW=0.14, spread=0.52) => {
       for (const side of [-1, 1]) {
         const sz = z + side * spread;
-        mkM(new THREE.CylinderGeometry(tyreR, tyreR, tyreW, 16), tyreMat, x, y, sz, 0, 0, Math.PI/2);
-        mkM(new THREE.CylinderGeometry(tyreR*0.5, tyreR*0.5, tyreW*1.1, 8), hubMat, x, y, sz, 0, 0, Math.PI/2);
+        mkM(new THREE.CylinderGeometry(tyreR, tyreR, tyreW, 16), tyreMat, x, y, sz, Math.PI/2, 0, 0);
+        mkM(new THREE.CylinderGeometry(tyreR*0.5, tyreR*0.5, tyreW*1.1, 8), hubMat, x, y, sz, Math.PI/2, 0, 0);
       }
     };
 
@@ -204,19 +208,20 @@ class LauncherMesh {
         mkM(new THREE.BoxGeometry(hullL, 0.42, 0.12), tyreMat, 0, 0.21, s * (hullW/2 + 0.06));
         // Track top cover (sloped fender)
         this._mk(new THREE.BoxGeometry(hullL, 0.06, 0.14), 0, hullH, s * (hullW/2 + 0.07));
-        // Road wheels (5 per side, visible below hull)
+        // Road wheels (5 per side, visible below hull). Axle along Z matches
+        // addAxle() — see its comment for why rx is used instead of rz.
         for (let i = 0; i < 5; i++) {
           const wx = -hullL/2 + 0.18 + i * 0.30;
           mkM(new THREE.CylinderGeometry(0.155, 0.155, 0.10, 12), tyreMat,
-              wx, 0.12, s*(hullW/2+0.06), 0, 0, Math.PI/2);
+              wx, 0.12, s*(hullW/2+0.06), Math.PI/2, 0, 0);
           mkM(new THREE.CylinderGeometry(0.07, 0.07, 0.11, 8), hubMat,
-              wx, 0.12, s*(hullW/2+0.06), 0, 0, Math.PI/2);
+              wx, 0.12, s*(hullW/2+0.06), Math.PI/2, 0, 0);
         }
         // Drive sprocket front, idler rear
         mkM(new THREE.CylinderGeometry(0.18, 0.18, 0.10, 10), this.material,
-            -hullL/2 + 0.04, 0.18, s*(hullW/2+0.06), 0, 0, Math.PI/2);
+            -hullL/2 + 0.04, 0.18, s*(hullW/2+0.06), Math.PI/2, 0, 0);
         mkM(new THREE.CylinderGeometry(0.16, 0.16, 0.10, 10), this.material,
-             hullL/2 - 0.04, 0.14, s*(hullW/2+0.06), 0, 0, Math.PI/2);
+             hullL/2 - 0.04, 0.14, s*(hullW/2+0.06), Math.PI/2, 0, 0);
       }
       // Turret base ring
       this._mk(new THREE.CylinderGeometry(0.32, 0.34, 0.10, 12), 0, hullH + 0.05, 0);

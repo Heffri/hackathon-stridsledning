@@ -327,7 +327,69 @@ export function createRoads(scene, locations, saabToSceneFn) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 5. COASTLINE HIGHLIGHTS — shore edge lines at waterline
+// 5. RADAR SCAN DOME — reusable rotating pie-sweep for AWACS / other
+//    "this thing is scanning the airspace" visual cues.
+//
+//    Carries its own `userData.update(t)` callback so the caller just has
+//    to add the group to a parent and tick `update(elapsedSec)` per frame.
+//    `range` is in scene units (= km at the project's SCALE = 0.001) and
+//    sets the radius of both the static full-circle silhouette ring and
+//    the rotating sweep slice.
+// ═══════════════════════════════════════════════════════════════════════
+export function createRadarScanDome(range, color, speed = 0.5) {
+  const group = new THREE.Group();
+  const pivot = new THREE.Group();
+  group.add(pivot);
+
+  // Static full-range ring (doesn't rotate — silhouette only)
+  const ringPts = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    ringPts.push(new THREE.Vector3(Math.sin(a) * range, 0, Math.cos(a) * range));
+  }
+  group.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(ringPts),
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.25 }),
+  ));
+
+  // Rotating sweep pie slice
+  const SWEEP_ANGLE = Math.PI / 4;
+  const SEGS = 20;
+  const pos = [0, 0, 0];
+  for (let i = 0; i <= SEGS; i++) {
+    const a = (i / SEGS) * SWEEP_ANGLE;
+    pos.push(Math.sin(a) * range, 0, -Math.cos(a) * range);
+  }
+  const sweepGeom = new THREE.BufferGeometry();
+  sweepGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  const idx = [];
+  for (let i = 0; i < SEGS; i++) idx.push(0, i + 1, i + 2);
+  sweepGeom.setIndex(idx);
+  sweepGeom.computeVertexNormals();
+  const sweep = new THREE.Mesh(sweepGeom, new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false,
+  }));
+  pivot.add(sweep);
+
+  // Arc edge line (brighter outer rim of the sweep)
+  const arcPts = [];
+  for (let i = 0; i <= SEGS; i++) {
+    const a = (i / SEGS) * SWEEP_ANGLE;
+    arcPts.push(new THREE.Vector3(Math.sin(a) * range, 0.01, -Math.cos(a) * range));
+  }
+  pivot.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(arcPts),
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.55 }),
+  ));
+
+  group.userData.update = (t) => {
+    pivot.rotation.y = t * speed * Math.PI * 2;
+  };
+  return group;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 6. COASTLINE HIGHLIGHTS — shore edge lines at waterline
 // ═══════════════════════════════════════════════════════════════════════
 export function createCoastlines(scene, terrainPolys, saabToSceneFn) {
   for (const poly of terrainPolys) {

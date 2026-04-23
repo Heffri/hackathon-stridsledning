@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BOREAL_TERRAIN, BOREAL_LOCATIONS } from './terrain_data.js';
-import { enhanceTerrainGeometry, scatterTrees, createRoads, createCoastlines } from './scene_visuals.js';
+import { enhanceTerrainGeometry, scatterTrees, createRoads, createCoastlines, createRadarScanDome } from './scene_visuals.js';
 
 // World units: meters. Arena ~150km. We scale the whole world by 0.001 for
 // rendering so Three.js works in km (avoids z-fighting and huge numbers).
@@ -448,116 +448,113 @@ export function createScene(canvas) {
   nLabel.position.set(nx, 2, ny);
   scene.add(nLabel);
 
-  // ── Radar Stations — visual only, no fog of war ───────────────────────────
-  // Each station is a single THREE.Group so drag_radars.js can move the
-  // whole thing (mast + dish + sweep + ring) by updating group.position.
-  const RADAR_SITES = [
-    { x: -28, z: -18, range: 55, speed: 0.40, color: 0x44aaff },
-    { x:  22, z: -28, range: 70, speed: 0.28, color: 0x44ddaa },
-    { x: -48, z: -52, range: 45, speed: 0.55, color: 0x5599ff },
-    { x:  38, z: -44, range: 60, speed: 0.35, color: 0x44ccff },
-  ];
-
-  function makeRadarSite(rx, rz, range, color) {
+  // ── AWACS patrol aircraft — diegetic explanation for full-map vision ─────
+  // Two airborne radar platforms circle their side's territory, each with a
+  // rotating dome using createRadarScanDome from scene_visuals.js. Replaces
+  // the previous ground-radar stations (which were draggable but had no
+  // gameplay role). Pure frontend cosmetic — no backend / fog-of-war tie-in.
+  function makeAwacs(side) {
     const group = new THREE.Group();
-    group.position.set(rx, 0, rz);
-    group.userData.isRadar = true;
+    const isRed = side === 'red';
+    const bodyColor = isRed ? 0xcc4444 : 0x4488cc;
+    const trimColor = isRed ? 0xaa3333 : 0x3366aa;
+    const scanColor = isRed ? 0xff8888 : 0x88ccff;
 
-    const mat = new THREE.MeshStandardMaterial({
-      color, emissive: color, emissiveIntensity: 0.6, roughness: 0.4,
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: bodyColor, roughness: 0.55, metalness: 0.35,
+    });
+    const trimMat = new THREE.MeshStandardMaterial({
+      color: trimColor, roughness: 0.55, metalness: 0.35,
+    });
+    const domeMat = new THREE.MeshStandardMaterial({
+      color: 0x888890, roughness: 0.30, metalness: 0.55,
+      emissive: scanColor, emissiveIntensity: 0.15,
     });
 
-    // Mast — visual only.
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.10, 2.2, 8), mat);
-    mast.position.set(0, 1.4, 0);
-    group.add(mast);
-
-    // Invisible large hit volume — wide cylinder covering the whole station.
-    // Radius 2.0 scene units (~2 km) makes the radar easy to grab at any
-    // camera distance without needing pixel-perfect aim on the thin mast.
-    const hitGeo = new THREE.CylinderGeometry(2.0, 2.0, 4.0, 12);
-    const hitMat = new THREE.MeshBasicMaterial({ visible: false });
-    const hitMesh = new THREE.Mesh(hitGeo, hitMat);
-    hitMesh.position.set(0, 2.0, 0);
-    hitMesh.userData.isRadarHit = true;  // drag_radars.js raycasts this
-    group.add(hitMesh);
-
-    // Rotating dish sub-group (local position above mast top).
-    const dishGroup = new THREE.Group();
-    dishGroup.position.set(0, 2.8, 0);
-    const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 0.08, 16), mat);
-    dish.rotation.x = Math.PI * 0.18;
-    dishGroup.add(dish);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.06, 6, 20), mat);
-    rim.rotation.x = Math.PI * 0.18;
-    dishGroup.add(rim);
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.80, 6), mat);
-    arm.position.set(0, 0, -0.55);
-    arm.rotation.x = Math.PI / 2;
-    dishGroup.add(arm);
-    group.add(dishGroup);
-
-    // Sweep sector (pie slice, local coords — rotates around group Y).
-    const SWEEP_ANGLE = Math.PI / 6;
-    const SEGS = 24;
-    const pos = [0, 0.05, 0];
-    for (let i = 0; i <= SEGS; i++) {
-      const a = (i / SEGS) * SWEEP_ANGLE;
-      pos.push(Math.sin(a) * range, 0.05, -Math.cos(a) * range);
+    // All aircraft dimensions in scene units (1 unit = 1 km). A real AWACS
+    // is ~50 m long but would be invisible against a 150 km arena — these
+    // readable stats (fuselage ~2 km) match the same "arcade" scale used by
+    // the launcher meshes and capital-city landmarks.
+    const fuselage = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.25, 0.30), bodyMat);
+    group.add(fuselage);
+    // Nose cone
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.45, 8), bodyMat);
+    nose.rotation.z = -Math.PI / 2;
+    nose.position.set(1.22, 0, 0);
+    group.add(nose);
+    // Main wings (span across Z) — long thin box, slightly swept back position
+    const wings = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.06, 2.4), trimMat);
+    wings.position.set(-0.15, -0.02, 0);
+    group.add(wings);
+    // Horizontal tail
+    const htail = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.04, 0.95), trimMat);
+    htail.position.set(-0.90, 0.05, 0);
+    group.add(htail);
+    // Vertical stabiliser
+    const vtail = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.40, 0.04), trimMat);
+    vtail.position.set(-0.90, 0.25, 0);
+    group.add(vtail);
+    // Engine nacelles under wings (2)
+    for (const zSide of [-0.7, 0.7]) {
+      const nac = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.45, 10), bodyMat);
+      nac.rotation.z = Math.PI / 2;
+      nac.position.set(-0.10, -0.12, zSide);
+      group.add(nac);
     }
-    const sweepGeom = new THREE.BufferGeometry();
-    sweepGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
-    const idx = [];
-    for (let i = 0; i < SEGS; i++) idx.push(0, i + 1, i + 2);
-    sweepGeom.setIndex(idx);
-    sweepGeom.computeVertexNormals();
-    const sweepPivot = new THREE.Group(); // child of group, rotated each frame
-    const sweep = new THREE.Mesh(sweepGeom, new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false,
-    }));
-    sweepPivot.add(sweep);
-    // Arc edge line
-    const arcPts = [];
-    for (let i = 0; i <= SEGS; i++) {
-      const a = (i / SEGS) * SWEEP_ANGLE;
-      arcPts.push(new THREE.Vector3(Math.sin(a) * range, 0.06, -Math.cos(a) * range));
-    }
-    const arcLine = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(arcPts),
-      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.35 }),
-    );
-    sweepPivot.add(arcLine);
-    group.add(sweepPivot);
 
-    // Static full range ring
-    const ringPts = [];
-    for (let i = 0; i <= 128; i++) {
-      const a = (i / 128) * Math.PI * 2;
-      ringPts.push(new THREE.Vector3(Math.sin(a) * range, 0.04, Math.cos(a) * range));
+    // Pylons supporting the radar dome above the fuselage
+    for (const xOff of [-0.25, 0.25]) {
+      const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.30, 0.05), bodyMat);
+      pylon.position.set(xOff, 0.28, 0);
+      group.add(pylon);
     }
-    group.add(new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(ringPts),
-      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.10 }),
-    ));
+    // AWACS signature: flat rotating radar disc
+    const dome = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.07, 24), domeMat);
+    dome.position.set(0, 0.45, 0);
+    group.add(dome);
+    // Reuse the radar-scan helper for the sweep visual
+    const scan = createRadarScanDome(1.2, scanColor, 0.6);
+    scan.position.set(0, 0.49, 0);
+    group.add(scan);
 
-    scene.add(group);
-    return { group, dishGroup, sweepPivot, mast, hitMesh };
+    return { group, scan };
   }
 
-  const radarStations = RADAR_SITES.map(s =>
-    ({ ...makeRadarSite(s.x, s.z, s.range, s.color), speed: s.speed }),
-  );
+  // Patrol parameters per side. Scene coords: +X east, -Z north. Red circles
+  // deep in its own northern territory, Blue loops near its southern base.
+  const redAwacs = makeAwacs('red');
+  redAwacs.group.userData.patrol = {
+    cx: 0, cz: -180, radius: 28, altitude: 12,
+    angle: 0, angSpeed: 0.08,  // ~78 s per loop
+  };
+  scene.add(redAwacs.group);
 
-  // animateRadar(t) — call each RAF frame with elapsed seconds.
+  const blueAwacs = makeAwacs('blue');
+  blueAwacs.group.userData.patrol = {
+    cx: 0, cz: -45, radius: 22, altitude: 10,
+    angle: Math.PI, angSpeed: -0.06,  // counter-direction, offset phase
+  };
+  scene.add(blueAwacs.group);
+
+  const awacsList = [redAwacs, blueAwacs];
+
+  // animateRadar(t) — keeps main.js's call site; now drives AWACS patrol +
+  // each aircraft's radar-scan sweep.
   function animateRadar(t) {
-    for (const r of radarStations) {
-      r.dishGroup.rotation.y = t * r.speed * Math.PI * 2;
-      r.sweepPivot.rotation.y = t * r.speed * Math.PI * 2;
+    for (const a of awacsList) {
+      const p = a.group.userData.patrol;
+      p.angle = p.angSpeed * t;
+      const x = p.cx + Math.cos(p.angle) * p.radius;
+      const z = p.cz + Math.sin(p.angle) * p.radius;
+      a.group.position.set(x, p.altitude, z);
+      // Nose along tangent direction. Derivation: position derivative gives
+      // (-sin, 0, cos) when angSpeed > 0; rotating default +X forward to
+      // that vector with a Y-rotation means θ = -angle - π/2 (also valid
+      // for negative angSpeed via the signed angle).
+      a.group.rotation.y = -p.angle - Math.PI / 2;
+      a.scan.userData.update(t);
     }
   }
-
-  // Expose invisible hit volumes so drag_radars.js can raycast against them.
-  const radarHitMeshes = radarStations.map(r => r.hitMesh);
 
   // Resize
   window.addEventListener('resize', () => {
@@ -566,7 +563,7 @@ export function createScene(canvas) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  return { scene, camera, renderer, controls, resetCameraView, animateRadar, radarHitMeshes };
+  return { scene, camera, renderer, controls, resetCameraView, animateRadar };
 }
 
 // Backend coords: X=east, Y=north, Z=up (meters).
