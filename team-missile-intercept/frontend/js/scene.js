@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BOREAL_TERRAIN, BOREAL_LOCATIONS } from './terrain_data.js';
+import { enhanceTerrainGeometry, scatterTrees, createRoads, createCoastlines } from './scene_visuals.js';
 
 // World units: meters. Arena ~150km. We scale the whole world by 0.001 for
 // rendering so Three.js works in km (avoids z-fighting and huge numbers).
@@ -180,16 +181,11 @@ export function createScene(canvas) {
     const sz = SCENE_Z_NORTH + yn * (SCENE_Z_SOUTH - SCENE_Z_NORTH);
     return [sx, sz];
   }
-  const MAINLAND_COLOR = 0x4a5e3a;  // lighter olive-green land
-  const ISLAND_COLOR   = 0x3e5240;  // slightly darker island tint
   const EXTRUDE_DEPTH  = 0.3;       // scene units = 300 m above sea level
   for (const poly of BOREAL_TERRAIN) {
     const shape = new THREE.Shape();
     for (let i = 0; i < poly.coords.length; i++) {
       const [sx, sz] = saabToScene(poly.coords[i][0], poly.coords[i][1]);
-      // Shape lives in local (X, Y); we'll rotate the mesh -π/2 around X
-      // so local +Y maps to world -Z. To place the vertex at world Z=sz
-      // we therefore pass -sz as the shape's local Y coordinate.
       if (i === 0) shape.moveTo(sx, -sz);
       else shape.lineTo(sx, -sz);
     }
@@ -198,19 +194,16 @@ export function createScene(canvas) {
       bevelEnabled: false,
     });
     const isIsland = poly.subtype !== 'mainland';
+    // Stylized low-poly: vertex noise for faceted look + biome colors
+    enhanceTerrainGeometry(geom, EXTRUDE_DEPTH, isIsland, poly.side);
     const mat = new THREE.MeshStandardMaterial({
-      color: isIsland ? ISLAND_COLOR : MAINLAND_COLOR,
-      roughness: 0.92,
+      vertexColors: true,
+      roughness: 0.88,
       metalness: 0.0,
-      // DoubleSide: shape is built with a Y-flip (see shape.moveTo above)
-      // which inverts winding, so the top cap's normal would otherwise
-      // point down and back-face cull against the overhead camera.
+      flatShading: true,
       side: THREE.DoubleSide,
     });
     const mesh = new THREE.Mesh(geom, mat);
-    // Shape lives in the XY plane; ExtrudeGeometry grows along +Z. Rotate
-    // -90° around X so the shape ends up on the ground plane (XZ) and
-    // the extrusion grows upward (+Y).
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.y = 0;
     scene.add(mesh);
@@ -428,7 +421,10 @@ export function createScene(canvas) {
     scene.add(label);
   }
 
-  // Forest patches removed — cone trees appeared as mountains at arena scale.
+  // Stylized terrain decorations: trees, roads, coastline shore lines.
+  scatterTrees(scene, BOREAL_TERRAIN, saabToScene, BOREAL_LOCATIONS);
+  createRoads(scene, BOREAL_LOCATIONS, saabToScene);
+  createCoastlines(scene, BOREAL_TERRAIN, saabToScene);
 
   // The old blue base cylinder (CylinderGeometry(2.0, 2.5, 1.2, 12) at
   // BASE_POS) was removed in Milestone G: the base is now just one site
