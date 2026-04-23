@@ -86,6 +86,24 @@ ALLOWED_INTERCEPTORS: Dict[ThreatType, Set[InterceptorType]] = {
 }
 
 
+# Per-threat saturation cap (W2, 2026-04-23). Cheap threats get a
+# tighter cap so the policy can't dump 3 IRIS-T SLM ($3 M) on a single
+# $30 K drone — the rule version is one cap-3 across all kinds, which
+# is fine when expected-damage gates also stop SLM piling on a low-HP
+# target, but the wrapper has no such gate so a per-kind cap is the
+# cheapest way to bound over-engagement on cheap targets. CIWS rounds
+# stay exempt (cannon class — see Gate 2 below). The 2/3 split mirrors
+# the operator brief: hard targets (BALLISTIC / HGV) earn saturation,
+# cheap targets (DRONE / CRUISE) don't.
+SATURATION_CAP_BY_KIND: Dict[ThreatType, int] = {
+    ThreatType.DRONE:      2,
+    ThreatType.CRUISE_SUB: 2,
+    ThreatType.BALLISTIC:  3,
+    ThreatType.HGV:        3,
+}
+DEFAULT_SATURATION_CAP = 3
+
+
 def _load_policy(path: str):
     """Load a MaskablePPO policy from disk for CPU inference. Same pattern as
     ``rl/cross_eval.py`` — the numpy shim has already run at module load."""
@@ -292,17 +310,26 @@ class LearnedBlueAI:
       * Cost-exchange filter — see ``ALLOWED_INTERCEPTORS``.
       * Budget gate — hard refusal if ``world.blue_budget <
         spec.usd_cost`` (no clamp).
-      * Saturation cap — at most ``MAX_SIMULTANEOUS_PER_THREAT``
-        non-CIWS interceptors in flight per threat. CIWS is a cannon,
+      * Saturation cap — per-kind via ``SATURATION_CAP_BY_KIND``
+        (DRONE / CRUISE: 2; BALLISTIC / HGV: 3). CIWS is a cannon,
         exempt from the cap (same carve-out as ``BlueAI.step``).
       * Orphan cleanup — interceptors whose assigned target is dead
         are marked ``state.alive = False`` at the top of each tick, so
         the sim prunes them instead of letting them fly to empty sky.
+
+    W2 (2026-04-23) adds a post-policy ballistic safety net:
+    ``_force_ballistic_fallback`` originates a PAC-3/PAC-2 dispatch
+    at any ballistic the policy left unengaged, since the trained
+    policy never selects PAC-2 launchers and would otherwise leak
+    every ballistic that arrives while PAC-3 is on cooldown.
     """
 
     # Mirror ``sim/blue_ai.py::MAX_SIMULTANEOUS_PER_THREAT``. Excludes
     # CIWS (point-defense cannon — has its own per-threat shot budget
     # in the rule AI; simpler here to just exempt it from this cap).
+    # W2 (2026-04-23): per-kind cap via ``SATURATION_CAP_BY_KIND``;
+    # this constant kept as the legacy default for callers that haven't
+    # been migrated.
     MAX_SIMULTANEOUS_PER_THREAT = 3
 
     def __init__(self, policy_path: str, scenario):
@@ -381,6 +408,16 @@ class LearnedBlueAI:
                 self.log.append(
                     f"[{t_now:6.1f}s] learned_blue fires={n_fires}"
                 )
+        # Post-policy safety net: force-dispatch PAC-3/PAC-2 at any
+        # ballistic the policy is leaving unengaged. Runs every tick
+        # (not just decision ticks) so a ballistic that arrives between
+        # decision boundaries still gets covered. See
+        # ``_force_ballistic_fallback`` for design.
+        n_forced = self._force_ballistic_fallback(t_now)
+        if n_forced:
+            self.log.append(
+                f"[{t_now:6.1f}s] learned_blue ballistic_fallback={n_forced}"
+            )
         self._tick_counter += 1
 
     def _apply_action_gated(self, action: np.ndarray, t_now: float) -> int:
@@ -439,11 +476,17 @@ class LearnedBlueAI:
             # Gate 1: budget — hard refusal, no clamp.
             if world.blue_budget < spec.usd_cost:
                 continue
-            # Gate 2: saturation cap (non-CIWS only).
+            # Gate 2: saturation cap (non-CIWS only). Per-kind via
+            # ``SATURATION_CAP_BY_KIND`` (W2): cheap threats (DRONE /
+            # CRUISE) cap at 2 to stop the policy spending $3 M of SLM
+            # on a $30 K target, hard threats (BALLISTIC / HGV) keep
+            # cap-3 so layered defense can stack.
             tid_target = threat.state.id
             if lch.kind != InterceptorType.CIWS:
-                if len(self._assignments.get(tid_target, [])) >= \
-                        self.MAX_SIMULTANEOUS_PER_THREAT:
+                cap = SATURATION_CAP_BY_KIND.get(
+                    threat_kind, DEFAULT_SATURATION_CAP,
+                )
+                if len(self._assignments.get(tid_target, [])) >= cap:
                     continue
             # Defensive range re-check (mirrors _apply_blue_action).
             t_pos = threat.state.pos
@@ -466,6 +509,80 @@ class LearnedBlueAI:
             self._assignments.setdefault(tid_target, []).append(iid)
             n_fires += 1
         return n_fires
+
+    def _force_ballistic_fallback(self, t_now: float) -> int:
+        """Force-dispatch PAC-3/PAC-2 at any ballistic the policy left
+        unengaged.
+
+        Observed (W2 audit, 2026-04-23): the trained Blue policy never
+        activates PAC-2 launchers — it always picks PAC-3 for ballistic
+        and never routes to PAC-2 even when PAC-3 is on cooldown / out
+        of magazine. Without intervention a ballistic with no PAC-3
+        coverage just flies through and craters a site. Gate 0's
+        ``ALLOWED_INTERCEPTORS`` already permits ``LONG_SAM`` for
+        ballistic, but Gate 0 is filter-only — it never originates a
+        fire decision. This method is the originator: a rule-layer
+        safety net that mirrors the spirit of ``sim/blue_ai.py``'s
+        last-resort tier (try anything affordable + in range when the
+        primary kit is unavailable).
+
+        Activation: only fires at ballistics with zero in-flight
+        interceptors. Tries PAC-3 first (preferred — htk match for
+        Mach-13 RV), falls through to PAC-2 (acceptable — long_sam,
+        prox-mode, secondary). One launcher per threat per tick: the
+        next tick will try again if ammo is still available. Respects
+        budget + range gates exactly like ``_apply_action_gated`` so
+        the ledger and physical reach stay consistent.
+
+        Returns the number of force-dispatched interceptors (for log).
+        """
+        world = self._env.world
+        forced = 0
+        for tid, threat in world.threats.items():
+            if not threat.state.alive:
+                continue
+            if ThreatType(threat.state.kind) != ThreatType.BALLISTIC:
+                continue
+            if len(self._assignments.get(tid, [])) > 0:
+                continue  # policy or prior fallback already engaged it
+            # Try PAC-3 (HIT_TO_KILL) first, then PAC-2 (LONG_SAM).
+            # Order matches the rule ``BlueAI.PRIMARY_RULES[BALLISTIC]``.
+            for kind in (
+                InterceptorType.HIT_TO_KILL,
+                InterceptorType.LONG_SAM,
+            ):
+                spec = INTERCEPTOR_SPECS[kind]
+                if world.blue_budget < spec.usd_cost:
+                    continue
+                fired_this_kind = False
+                for lch in self.launchers.launchers:
+                    if lch.kind != kind:
+                        continue
+                    if lch.reloading or not lch.can_fire(t_now):
+                        continue
+                    t_pos = threat.state.pos
+                    dx = float(t_pos[0] - lch.pos[0])
+                    dy = float(t_pos[1] - lch.pos[1])
+                    dz = float(t_pos[2])
+                    if (dx * dx + dy * dy + dz * dz) > \
+                            (spec.max_range * LAUNCH_RANGE_MARGIN) ** 2:
+                        continue
+                    mode = lch.fire(t_now)
+                    iid = world.spawn_interceptor(
+                        lch.kind,
+                        (lch.pos[0], lch.pos[1], 0.0),
+                        (dx, dy, dz),
+                        tid,
+                        mode,
+                    )
+                    world.blue_budget -= spec.usd_cost
+                    self._assignments.setdefault(tid, []).append(iid)
+                    forced += 1
+                    fired_this_kind = True
+                    break  # one launcher per threat per tick
+                if fired_this_kind:
+                    break  # don't also fire PAC-2 in the same tick
+        return forced
 
 
 # ----------------------------------------------------------------------

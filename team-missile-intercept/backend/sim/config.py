@@ -56,7 +56,14 @@ BLUE_BASE_POS = (ARENA_X * 0.5, 5_000.0, 0.0)  # x, y, z
 # above. Side effect: cruise / HGV / drone also count as hits more
 # often, but their CEP is much smaller (HGV ~100 m, cruise ~50 m, drone
 # ~20 m) so the relative change is minor for those kinds.
-BASE_HIT_RADIUS = 3500.0  # metres (Issue #14 workaround)
+#
+# 2026-04-23 (W2): bumped 3500 → 5000. The 3500 m disc still cut off
+# the long tail of ballistic CEP — occasional impacts at 3.8-5 km
+# scored as "ground_crash" instead of damaging the site. 5000 m
+# catches that tail. Issue #14's permanent fix is a Route-3 PN
+# precision pass that's out of hackathon scope; this remains a
+# workaround.
+BASE_HIT_RADIUS = 5000.0  # metres (Issue #14 workaround, bumped W2)
 
 # --- Red spawn band (north edge) ---
 RED_SPAWN_Y = ARENA_Y - 5_000.0
@@ -89,14 +96,35 @@ TRAIL_LENGTH = 60        # samples client may keep; server does not cap
 # give area coverage against cruise + drone paths that previously flew
 # past all forward envelopes. Resulting 20-match balance:
 # Blue 6/20, draw 9/20, Red 5/20 (see REPORT Milestone H section).
+#
+# 2026-04-23 (W2): swapped to the "Slot E" demo layout — 12 launchers
+# spread across the southern mainland + forward islands, with PAC-2 /
+# PAC-3 / SLM pushed forward onto the south_central_peninsula so they
+# can engage ballistic / cruise on the way in rather than waiting at
+# the base for terminal handoff. W2 then adds 2 forward drone-lane
+# layers (1 CIWS + 1 RBS-70) on top of Slot E, bringing the roster to
+# 14 launchers — the Red drone swarm was reaching Spear Point /
+# Firewatch before any forward CIWS or RBS-70 could engage in Slot E.
+# Both new positions validated as south-side land below.
 BLUE_LAUNCHER_POSITIONS = {
     # kind: [ (x, y), ... ]  — one tuple per launcher instance
-    "ciws":       [(75_000,  5_000)],                          # point defence at base
-    "rbs_70":     [(80_000, 73_000), ( 38_100, 50_000)],       # forward-center (Spear Point drones) + south_small_island forward-west
-    "iris_t_sls": [(80_000, 70_000), (126_750, 102_093)],      # south_central_peninsula + south_forward_island
-    "iris_t_slm": [(82_000, 72_000), ( 85_000,  6_000)],       # forward-center (Spear Point area) + eastern base-side
-    "pac_2":      [(74_700,  8_000)],                          # near base (300 m west of centre); 70 km reach covers all 3 sites
-    "pac_3":      [(75_300,  8_000)],                          # near base (300 m east of centre); primary HGV / ballistic HIT-TO-KILL
+    # CIWS: Slot E base trio + 1 forward-center drone catcher (W2).
+    "ciws":       [(76_000,   7_000), ( 88_000, 14_000), (117_000,   7_000), ( 82_500, 95_000)],
+    # RBS-70: Slot E west_small_island + east-base + 1 forward-east on
+    # south_forward_island (W2). 8 km reach, point-defense for drone
+    # / cruise on the east approach lane.
+    "rbs_70":     [(40_000,  55_000), (132_000,  9_000), (122_500, 92_500)],
+    # IRIS-T SLS: Slot E south_central_peninsula + south_forward_island.
+    "iris_t_sls": [(83_000,  79_000), (125_000, 102_000)],
+    # IRIS-T SLM: Slot E forward-center (peninsula north tip) + east.
+    "iris_t_slm": [(79_000,  93_000), (125_000,  92_000)],
+    # PAC-2: Slot E forward at (79, 90); 70 km reach covers all 3 sites
+    # from forward, so ballistic / cruise enter range earlier than the
+    # near-base placement of Milestone H.
+    "pac_2":      [(79_000,  90_000)],
+    # PAC-3: Slot E forward + back-up at east-base; primary HGV /
+    # ballistic hit-to-kill platform.
+    "pac_3":      [(83_000,  85_000), (100_000, 10_000)],
 }
 
 # Validate every launcher sits on visible south-side land per the Saab
