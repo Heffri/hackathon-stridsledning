@@ -738,6 +738,11 @@ class Interceptor:
         # string; set at construction via `spec.default_engagement_mode`
         # when the caller doesn't override. See `ENGAGEMENT_MODE_DESIGN.md`.
         "engagement_mode",
+        # Arcade AOE reacquire-on-death (Phase 2 of blue_aoe_long). 2D
+        # ground-distance gate for retargeting uses the launcher's fixed
+        # position, not the interceptor's current pos. Populated from
+        # the same `launch_pos` passed to the constructor.
+        "_launcher_pos",
     )
 
     # Stall speed below which an unpowered interceptor loses aerodynamic
@@ -801,6 +806,10 @@ class Interceptor:
                 f"{self.spec.engagement_mode_choices}"
             )
         pos = np.array(launch_pos, dtype=np.float64).copy()
+        # AOE reacquire-on-death uses the launcher position (fixed) rather
+        # than the interceptor's current position for the max_range gate.
+        # Matches the per-launcher range math in blue_ai._try_fire.
+        self._launcher_pos = pos.copy()
 
         # Horizontal component of initial_dir (used as the boost-phase lean
         # for SAMs, and for CIWS as the actual launch direction).

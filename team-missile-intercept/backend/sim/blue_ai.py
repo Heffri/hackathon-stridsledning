@@ -231,9 +231,9 @@ def _primary_available_in_time(
 def _expected_damage(
     assigned_iids: List[int], world
 ) -> int:
-    """Sum of damage_prox over living assigned interceptors. Used as a
-    shots-in-flight gate so we stop firing once enough damage is inbound
-    to kill the threat."""
+    """Sum of fragment_damage over living assigned interceptors. Used as
+    a shots-in-flight gate so we stop firing once enough damage is
+    inbound to kill the threat (arcade AOE mechanic)."""
     total = 0
     for iid in assigned_iids:
         inter = world.interceptors.get(iid)
@@ -242,7 +242,7 @@ def _expected_damage(
         spec = INTERCEPTOR_SPECS.get(InterceptorType(inter.state.kind))
         if spec is None:
             continue
-        total += spec.damage_prox
+        total += spec.fragment_damage
     return total
 
 
@@ -356,9 +356,9 @@ class BlueAI:
             # counting every assigned interceptor (CIWS + non-CIWS).
             # Before the fix, CIWS would dump ~20-30 rounds at a 10-HP
             # drone — $40-$60k of ammunition on a $30k target. With
-            # the gate, ~2-4 rounds land the kill (drone hp 10 /
-            # ciws damage_prox 8 = 2 rounds ceiling), extras stop at
-            # the gate.
+            # the gate, ~1-2 rounds land the kill (drone hp 10 /
+            # ciws fragment_damage 12 = 1 round ceiling), extras stop
+            # at the gate.
             ciws_spec = INTERCEPTOR_SPECS[InterceptorType.CIWS]
             ciws_gate_sq = (
                 ciws_spec.max_range * config.LAUNCH_RANGE_MARGIN
@@ -374,13 +374,14 @@ class BlueAI:
             # bounds total expenditure per threat regardless of how many
             # previous rounds missed.
             #
-            # Formula: ceil(threat_spec.hp / ciws.damage_prox) + 2. The
-            # first term is the nominal kill count assuming every round
-            # lands a prox hit; the +2 is slack for CPA-miss tail cases.
-            # Per-kind values: DRONE=4, CRUISE=6, HGV=10, BALLISTIC=12.
+            # Formula: ceil(threat_spec.hp / ciws.fragment_damage) + 2.
+            # The first term is the nominal kill count assuming every
+            # round lands an AOE hit; the +2 is slack for CPA-miss tail
+            # cases. With fragment_damage=12 per-kind values are:
+            # DRONE=3, CRUISE=5, BALLISTIC=9, HGV=7.
             threat_spec = THREAT_SPECS[threat_kind]
             ciws_shot_cap = (
-                math.ceil(threat_spec.hp / ciws_spec.damage_prox) + 2
+                math.ceil(threat_spec.hp / ciws_spec.fragment_damage) + 2
             )
             ciws_already_fired = self.ciws_fired_count.get(tid, 0)
             ciws_cap_reached = ciws_already_fired >= ciws_shot_cap
@@ -526,7 +527,7 @@ class BlueAI:
         world.blue_budget -= cost
         self.assignments.setdefault(tid, []).append(iid)
         threat_spec = THREAT_SPECS[ThreatType(threat.state.kind)]
-        dmg = INTERCEPTOR_SPECS[kind].damage_prox
+        dmg = INTERCEPTOR_SPECS[kind].fragment_damage
         n_flight = len(self.assignments[tid])
         self.log.append(
             f"[{t_now:6.1f}s] {kind.value}{tag} → {threat.state.kind} "

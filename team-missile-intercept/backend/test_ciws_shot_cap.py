@@ -6,7 +6,7 @@ kill the threat. But because each CIWS round self-destructs at
 fuel_s=4, the gate reopens when live rounds age out — and against a
 slow-crossing threat the launcher can still spray many rounds over
 time. Issue #24 adds a per-threat lifetime counter and caps total
-CIWS launches at ceil(threat_spec.hp / ciws.damage_prox) + 2.
+CIWS launches at ceil(threat_spec.hp / ciws.fragment_damage) + 2.
 
 Per-kind caps:
   * DRONE       hp=10  -> ceil(10/8)+2 = 4
@@ -85,7 +85,7 @@ def test_cap_holds_under_hp_bump() -> bool:
     drone_cap = (
         math.ceil(
             THREAT_SPECS[ThreatType.DRONE].hp
-            / INTERCEPTOR_SPECS[InterceptorType.CIWS].damage_prox
+            / INTERCEPTOR_SPECS[InterceptorType.CIWS].fragment_damage
         )
         + 2
     )

@@ -103,11 +103,17 @@ class InterceptorSpec:
     color: str
     # Propulsion:
     fuel_s: float = 10.0     # seconds of powered flight (boost+sustain motor)
-    # Damage model (see WEAPON_SPECS.md):
-    damage_direct: int = 40       # damage if CPA < radius_direct
-    damage_prox: int = 20         # max damage at radius 0, falling quadratically to 0 at radius_prox
-    radius_direct: float = 0.5    # direct-hit radius in metres
-    radius_prox: float = 8.0      # proximity-fuse radius
+    # Damage model — arcade fragmentation AOE (Phase 2 of blue_aoe_long).
+    # On detonation every alive threat within `fragment_radius` of the
+    # detonation point takes a flat `fragment_damage`. No CPA-based
+    # falloff (flat within radius is cleaner for the RL gradient and
+    # legible on-screen). Direct-hit damage is the same `fragment_damage`
+    # since the primary target sits at d≈0 from the detonation.
+    damage_direct: int = 40       # retained for log/event display only
+    fragment_radius: float = 0.0  # AOE radius in metres (0 → pure HTK)
+    fragment_damage: int = 20     # flat damage to every threat inside radius
+    radius_direct: float = 0.5    # detonation-gate — htk mode fires when d_min < this
+    radius_prox: float = 8.0      # detonation-gate — prox mode fires when d_min < this
     usd_cost: int = 175_000       # cost-exchange reference price
     # Engagement-mode infrastructure (M-TIER2.5). Each spec declares the
     # legal modes it can be fired in and a default. Modes:
@@ -209,23 +215,21 @@ THREAT_SPECS = {
 }
 
 # --- Interceptor specs ---
-# kill_radius is the CPA gate used to decide "this tick produced a hit";
-# damage is resolved from the CPA distance using (damage_direct, damage_prox,
-# radius_direct, radius_prox) per WEAPON_SPECS.md.
+# Arcade AOE model (blue_aoe_long Phase 2): kill_radius is the CPA gate
+# that decides "this tick produced a detonation"; on detonation every
+# alive threat inside `fragment_radius` of the detonation point takes a
+# flat `fragment_damage`. No per-CPA falloff anymore.
 INTERCEPTOR_SPECS = {
-    # Note on radius_prox vs WEAPON_SPECS.md: real-world warhead fuse radii
-    # (5–20 m) are much smaller than typical miss distances from our
-    # grid-limited PN implementation (~20–60 m CPA). We scale each
-    # radius_prox up so the damage model interacts meaningfully with the
-    # guidance error; damage magnitudes are kept at spec, so the visible
-    # "needs multiple shots for hardened targets" tension survives.
-    # Design: kill_radius is the CPA-gate (roughly sized to typical PN
-    # miss distance). radius_prox is the damage-falloff scale — set larger
-    # than kill_radius so that even near-edge hits (CPA ≈ kill_radius)
-    # still deal a meaningful fraction of damage_prox via the
-    # (1 - d/radius_prox)² falloff. Bigger, harder targets need a wider
-    # warhead to be reliably lethal; this is where the LONG-SAM/PAC-2's
-    # blast-frag pattern advantage shows up.
+    # Calibration targets (§3.6 of the worker prompt):
+    #   CIWS        r=30  dmg=12  — flak-like, kills tight drone pairs
+    #   RBS-70      r=50  dmg=18  — MANPADS-scale HE
+    #   IRIS-T SLS  r=100 dmg=35  — clears 3-4 drone cluster
+    #   IRIS-T SLM  r=120 dmg=50  — clears 4-6 drone cluster
+    #   PAC-2       r=150 dmg=80  — kills a cruise pair, chips ballistic
+    #   PAC-3       r=0   dmg=120 — pure HTK, primary-only via d<=r gate
+    # radius_prox / radius_direct below are retained as detonation-gate
+    # inputs for future mode routing (not the damage falloff). Every
+    # detonation currently fires via kill_radius; see World.step block 3.
     InterceptorType.CIWS: InterceptorSpec(
         kind=InterceptorType.CIWS,
         max_speed=1000.0,
@@ -236,7 +240,8 @@ INTERCEPTOR_SPECS = {
         color="#ffd24a",
         fuel_s=4.0,
         damage_direct=15,
-        damage_prox=8,
+        fragment_radius=30.0,
+        fragment_damage=12,
         radius_direct=1.0,
         radius_prox=80.0,
         usd_cost=2_000,
@@ -251,7 +256,8 @@ INTERCEPTOR_SPECS = {
         color="#4a8a3a",  # matches rbs_70 mesh (olive green)
         fuel_s=13.0,
         damage_direct=40,
-        damage_prox=20,
+        fragment_radius=50.0,
+        fragment_damage=18,
         radius_direct=1.0,
         radius_prox=120.0,
         usd_cost=175_000,
@@ -271,7 +277,8 @@ INTERCEPTOR_SPECS = {
         color="#ff9944",
         fuel_s=30.0,
         damage_direct=50,
-        damage_prox=25,
+        fragment_radius=100.0,
+        fragment_damage=35,
         radius_direct=1.0,
         radius_prox=100.0,
         usd_cost=500_000,
@@ -287,7 +294,8 @@ INTERCEPTOR_SPECS = {
         color="#ff8c1a",  # matches iris_t_slm mesh (orange)
         fuel_s=39.0,
         damage_direct=50,
-        damage_prox=25,
+        fragment_radius=120.0,
+        fragment_damage=50,
         radius_direct=2.0,
         radius_prox=150.0,
         usd_cost=1_000_000,
@@ -304,7 +312,8 @@ INTERCEPTOR_SPECS = {
         color="#ff69b4",  # matches pac_2 mesh (pink)
         fuel_s=41.0,
         damage_direct=80,
-        damage_prox=40,
+        fragment_radius=150.0,
+        fragment_damage=80,
         radius_direct=3.0,
         radius_prox=180.0,
         usd_cost=3_000_000,
@@ -328,7 +337,12 @@ INTERCEPTOR_SPECS = {
         color="#a855f7",  # matches pac_3 mesh (purple)
         fuel_s=35.0,
         damage_direct=200,
-        damage_prox=25,
+        # PAC-3 stays pure HTK — fragment_radius=0 means no splash; the
+        # primary target at d≈0 still takes fragment_damage thanks to the
+        # `d <= radius` gate in resolve_aoe. One-shots ballistic (hp 80)
+        # and HGV (hp 60) by design.
+        fragment_radius=0.0,
+        fragment_damage=120,
         # Bumped from 40 m → 60 m: at Mach 13 ballistic closing (6159
         # m/s relative to PAC-3), per-tick relative displacement is
         # ~308 m, and typical PN CPA drifts 30-80 m. 40 m was borderline

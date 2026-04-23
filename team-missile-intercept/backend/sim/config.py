@@ -1,7 +1,17 @@
 """Central tunable parameters for the Milestone B demo.
 
 All physics, arena, guidance, and rendering parameters live here.
+
+Arcade-AOE note (blue_aoe_long Phase 2): every detonation applies a flat
+`fragment_damage` to threats within `fragment_radius`. Final calibrated
+values live on each InterceptorSpec in `sim/types.py` (§3.6 of the worker
+prompt). AOE_ENABLED below is a circuit-breaker for regression testing
+the legacy CPA-falloff damage path — production runs leave it True.
 """
+
+# --- Arcade fragmentation AOE ---
+AOE_ENABLED = True
+
 
 # --- Arena ---
 ARENA_X = 150_000.0  # east-west extent (m)
