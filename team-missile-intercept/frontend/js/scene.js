@@ -525,14 +525,14 @@ export function createScene(canvas) {
   const redAwacs = makeAwacs('red');
   redAwacs.group.userData.patrol = {
     cx: 0, cz: -180, radius: 28, altitude: 12,
-    angle: 0, angSpeed: 0.08,  // ~78 s per loop
+    phase: 0, angSpeed: 0.08,  // ~78 s per loop
   };
   scene.add(redAwacs.group);
 
   const blueAwacs = makeAwacs('blue');
   blueAwacs.group.userData.patrol = {
     cx: 0, cz: -45, radius: 22, altitude: 10,
-    angle: Math.PI, angSpeed: -0.06,  // counter-direction, offset phase
+    phase: Math.PI, angSpeed: -0.06,  // counter-direction, offset phase
   };
   scene.add(blueAwacs.group);
 
@@ -543,15 +543,19 @@ export function createScene(canvas) {
   function animateRadar(t) {
     for (const a of awacsList) {
       const p = a.group.userData.patrol;
-      p.angle = p.angSpeed * t;
+      p.angle = p.phase + p.angSpeed * t;
       const x = p.cx + Math.cos(p.angle) * p.radius;
       const z = p.cz + Math.sin(p.angle) * p.radius;
       a.group.position.set(x, p.altitude, z);
-      // Nose along tangent direction. Derivation: position derivative gives
-      // (-sin, 0, cos) when angSpeed > 0; rotating default +X forward to
-      // that vector with a Y-rotation means θ = -angle - π/2 (also valid
-      // for negative angSpeed via the signed angle).
-      a.group.rotation.y = -p.angle - Math.PI / 2;
+      // Nose along tangent direction. Position derivative is
+      // (-sin, 0, cos) · angSpeed; for angSpeed > 0 the tangent is
+      // (-sin, cos), for angSpeed < 0 it is (+sin, -cos) — opposite
+      // direction. Rotating default +X forward onto that vector
+      // gives θ = -angle - π/2 for the positive case and an
+      // additional π for the negative case. Without the π the
+      // counter-rotating Blue AWACS was rendering tail-first.
+      const reverse = p.angSpeed < 0 ? Math.PI : 0;
+      a.group.rotation.y = -p.angle - Math.PI / 2 + reverse;
       a.scan.userData.update(t);
     }
   }
