@@ -27,5 +27,5 @@ export const BOREAL_LOCATIONS = [
   { name: "Spear Point Base", side: "south", subtype: "air_base", x: 918.3, y: 835.0, rotation_y: Math.PI / 2, scale: 4.0 },
   { name: "Meridia (Capital Y)", side: "south", subtype: "capital", x: 1225.0, y: 1208.3 },
   { name: "Callhaven", side: "south", subtype: "major_city", x: 96.7, y: 1150.0 },
-  { name: "Solano", side: "south", subtype: "major_city", x: 576.7, y: 1236.7 },
+  { name: "Main Base", side: "south", subtype: "major_city", x: 833.65, y: 1064.0 },
 ];
