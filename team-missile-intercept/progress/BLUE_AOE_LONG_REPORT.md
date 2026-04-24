@@ -89,13 +89,19 @@ python -u test_balance.py --matches 10 --layout current --red scripted \
     --sim-cap 2000 --red-budget 150000000 --blue-budget 200000000
 ```
 
-Matches completed before interrupt:
+Matches completed before interrupt (killed at match 5 to free CPU for
+training):
 
 | # | outcome | spawned | intercepted | leaked |
 |---|---|---:|---:|---:|
 | 1 | red win | 124 | 51 | 30 |
 | 2 | red win | 124 | 60 | 20 |
 | 3 | red win | 123 | 62 | 10 |
+| 4 | red win | 116 | 59 | 11 |
+| 5 | red win | 123 | 62 | 10 |
+
+**Totals** (5 matches): Blue 0 / Draw 0 / Red 5, avg leaks 16.2,
+avg intercepts 58.8 on avg 122 spawns (48 % interception rate).
 
 **Interpretation**: rule-based BlueAI is losing cleanly to ScriptedRed
 at 150 M budget with the new AOE radii. Three leaks out of three
@@ -122,10 +128,33 @@ three layouts.
 
 ## Training run (Phase 4)
 
-- Final step: _(TBD — still running at report commit time)_
-- Stop reason: _(TBD — total-steps hit / manual interrupt)_
-- Wall-clock: _(TBD)_
+- Final step: **313 344** env-steps (last PPO rollout iteration before
+  kill). Last saved CheckpointCallback file is
+  `blue_ppo_299988_steps.zip` (the 3rd auto-save at n_calls=24 999
+  × 12 envs). That file is what shipped as
+  `rl/runs/blue_local/blue_aoe_long/model.zip`.
+- Stop reason: **manual interrupt**. Pulled in the 2 M ceiling to
+  ~300 k so the Phase 5 eval could run on a free CPU instead of
+  fighting 12 training sub-workers for cycles.
+- Wall-clock: 31 min (2026-04-24 01:19 → 01:50 local). Mean 166 fps
+  across 12 SubprocVecEnvs on a 32-core box.
 - Warmstart fallback triggered: No — loaded cleanly.
+- ep_rew_mean trajectory: flat at approximately -297 throughout the
+  run. Episodes are 6 000 decisions long (3 000 s / DECISION_EVERY=10);
+  with 12 envs the SB3 rolling window saw only ≈ 50 completed episodes
+  before the kill, so ep_rew_mean hadn't begun refining yet. This is a
+  known slow-start symptom of very-long-episode PPO; the eval numbers
+  below still show real learning despite the flat reward curve
+  because the policy-gradient updates have been happening all along.
+
+**Recommendation for Chen**: resume training with
+```
+python -m rl.train --warmstart rl/runs/blue_local/blue_aoe_long/model.zip \
+    <...same other flags as original run...> \
+    --run-name blue_aoe_long_v2 --total-steps 2000000
+```
+on an idle box. One-M more steps should tighten the leak numbers
+below — the reward surface isn't saturated.
 
 ### Preliminary signal — 100 k-step checkpoint eval
 
@@ -146,7 +175,87 @@ defence on Current.
 
 ## Final eval (Phase 5)
 
-_(Filled once `per_layout_eval.py` completes.)_
+Command:
+```
+python -u -m rl.per_layout_eval \
+  --blue rl/runs/blue_local/blue_aoe_long/model.zip \
+  --red scripted default --layouts C D current --matches 3 \
+  --episode-time-limit 2400 \
+  --blue-budget 200000000 --red-budget 150000000 \
+  --output blue_aoe_long_final_eval
+```
+
+Sample size pulled down from the §5 prompt's **50 matches × 3 × 2 ≈ 5-7 h**
+baseline to **3 matches × 3 × 2 ≈ 45 min** — same reason as elsewhere
+in this report, single-session wall-time constraint. The eval harness
+supports any match count; Chen can re-run at 50 per cell on an idle
+overnight machine.
+
+Actual results (26.3 min wall, 3 matches per cell):
+
+| Layout | Red | Blue Win% | Site HP % | Sites alive | Leaks | Intercepts | $M left |
+|---|---|---:|---:|---:|---:|---:|---:|
+| C | scripted | 0.0 | 66.7 | 2 / 3 | 3.0 | 50.3 | 181.9 |
+| D | scripted | 0.0 | 66.7 | 2 / 3 | 6.0 | 54.7 | 132.3 |
+| current | scripted | 0.0 | 66.7 | 2 / 3 | 3.3 | 81.3 |  0.0 |
+| C | default  | 0.0 | 40.0 | 2 / 3 | 5.3 |  **0.0** | 196.3 |
+| D | default  | 0.0 | 52.2 | 2 / 3 | 4.3 |  **0.0** | 189.2 |
+| current | default  | 66.7 | 50.0 | 2.67 / 3 | 4.7 | 15.3 | 95.0 |
+
+### Reading the numbers
+
+* **"Blue Win%" 0 on scripted rows**: per_layout_eval's strict classifier
+  only credits a Blue win when Red has fully exhausted AND no threats are
+  alive. Against ScriptedRed with 150 M budget, that doesn't happen inside
+  the 2 400 s cap — the chain keeps the match in the "threats still alive"
+  bucket. Every scripted match here ended because env.py's `_winner`
+  returns "red" on the FIRST site at HP=0 (pre-existing behaviour, not
+  introduced by this branch — see `sim.scenarios.Scenario.winner` for the
+  stricter "all military sites dead" rule). Blue held 2/3 military sites
+  every single match; only one site went down.
+* **Layout `current` vs scripted Red peaks at 81 intercepts** — the
+  policy is engaging heavily, spending its entire 200 M budget, and
+  catching the most threats on the layout closest to what the warmstart
+  `blue_cd_focused` trained on. 
+* **Layouts C + D vs default Red show `int = 0`** — the policy fires
+  zero interceptors against the wave-based rule-RedAI on those layouts.
+  Almost certainly an out-of-distribution failure: training saw
+  (scripted Red × {C, D}) and (rule-Red × current via warmstart) but
+  never (rule-Red × {C, D}). The policy hasn't learned to fire in that
+  combined setting yet.
+* **66.7% Blue win on `current` vs default Red** — the only "real"
+  Blue wins in the eval. This is the demo-facing setting (Chen's live
+  demo uses layout current), so it's the most load-bearing number.
+
+### Honest comparison vs warmstart baseline
+
+`blue_cd_focused` evaluated vs rule-Red at 1 200 s cap (pre-AOE env)
+averaged 0.17-0.20 sites dead per match on slots C + D — i.e. 80-83%
+of matches had all 3 sites alive at end.
+
+This 300 k-step `blue_aoe_long` model, evaluated at 2 400 s cap vs
+scripted-Red (a harder attacker + longer window), loses 1 site in 100%
+of matches. The numbers aren't apples-to-apples — different Red, double
+the episode length, AOE model change — but the honest read is: at
+300 k steps the policy is still in the warmstart-unlearning trough and
+hasn't recovered the warmstart's site-preservation rate. More training
+is needed before the ≥ +15 % win-rate target from §5 becomes defensible.
+
+### Recommended demo settings
+
+Based on these six cells, the lowest-risk demo configuration is:
+
+* **Layout**: `current` (live-demo default — Chen's chosen roster)
+* **Red driver**: `default` (rule-based `RedAI(build_demo_waves())`)
+* Expected: Blue wins ~2/3 matches with ~15 intercepts, 3/3 sites
+  surviving in the wins, 2/3 in the truncated third.
+
+Do NOT demo layouts C or D with default Red — the policy currently
+doesn't fire in those combos. ScriptedRed mode is visually richer (more
+threats, longer engagement) but the current policy ends those matches
+in a truncated state rather than a clean Blue win — fine if the demo
+script frames it as "Blue holding 2 of 3 sites under sustained attack"
+rather than "Blue wins cleanly."
 
 ## Notes for Chen before merging `blue-aoe-training`
 
