@@ -62,15 +62,44 @@ def _load_layouts_pool(path: str) -> list:
     return layouts
 
 
+def _synthesize_current_slot() -> dict:
+    """Build a layouts-pool entry for the live-demo roster
+    (`config.BLUE_LAUNCHER_POSITIONS`). Used when the `--layouts-pool-slots`
+    whitelist includes `current` but the source JSON doesn't carry a
+    slot by that name — keeps the JSON data file honest while still
+    letting training mix the live-demo layout into the pool.
+    """
+    from sim import config as sim_config
+    roster = {
+        kind: [list(pos) for pos in positions]
+        for kind, positions in sim_config.BLUE_LAUNCHER_POSITIONS.items()
+    }
+    return {
+        "slot": "current",
+        "name": "Live-demo default roster",
+        "roster": roster,
+        "synthesized": True,
+    }
+
+
 def _filter_layouts_pool(pool: list, slot_whitelist: list) -> list:
     """If `slot_whitelist` is non-empty, keep only entries whose `slot`
-    field matches. Empty whitelist means no filter. Exits with code 2
-    if the filter drops everything.
+    field matches. Empty whitelist means no filter. If the whitelist
+    includes `current` and no entry carries that slot, synthesize one
+    from `config.BLUE_LAUNCHER_POSITIONS` so the pool covers the live-
+    demo roster too. Exits with code 2 if the filter drops everything.
     """
     if not slot_whitelist:
         return pool
     wl = {s.upper() for s in slot_whitelist}
     filtered = [L for L in pool if str(L.get("slot", "")).upper() in wl]
+    # Synthesize `current` if requested and not present. Done here rather
+    # than in _load_layouts_pool so the synthesized entry is always fresh
+    # from live config (avoids stale copy if config is edited).
+    if "CURRENT" in wl and not any(
+        str(L.get("slot", "")).upper() == "CURRENT" for L in filtered
+    ):
+        filtered.append(_synthesize_current_slot())
     if not filtered:
         slots = sorted({str(L.get("slot", "?")) for L in pool})
         print(f"[layouts-pool] filter {sorted(wl)} matched nothing "
@@ -104,6 +133,7 @@ def make_env(
     episode_time_limit: float,
     layouts_pool=None,
     red_mode: str = "default",
+    red_mode_pool=None,
     blue_budget_start=None,
     red_budget_start=None,
 ):
@@ -113,6 +143,7 @@ def make_env(
             episode_time_limit=episode_time_limit,
             layouts_pool=layouts_pool,
             red_mode=red_mode,
+            red_mode_pool=red_mode_pool,
             blue_budget_start=blue_budget_start,
             red_budget_start=red_budget_start,
         )
@@ -128,6 +159,7 @@ def build_vec_env(
     base_seed: int = 0,
     layouts_pool=None,
     red_mode: str = "default",
+    red_mode_pool=None,
     blue_budget_start=None,
     red_budget_start=None,
 ):
@@ -137,6 +169,7 @@ def build_vec_env(
             episode_time_limit,
             layouts_pool=layouts_pool,
             red_mode=red_mode,
+            red_mode_pool=red_mode_pool,
             blue_budget_start=blue_budget_start,
             red_budget_start=red_budget_start,
         )
@@ -171,6 +204,12 @@ def main():
     ap.add_argument("--red-mode", default="default",
                     choices=["default", "scripted"],
                     help="'scripted' swaps rule-RedAI for ScriptedRedAI")
+    ap.add_argument("--red-mode-pool", nargs="+", default=None,
+                    choices=["scripted", "rule", "default"],
+                    help="per-episode Red-mode sampling pool (mixes rule "
+                         "and scripted Red in one run). Overrides "
+                         "--red-mode when set. e.g. 'scripted rule' → "
+                         "each episode picks uniformly between the two")
     ap.add_argument("--blue-budget", type=int, default=None,
                     help="override config.BLUE_BUDGET_START for training")
     ap.add_argument("--red-budget", type=int, default=None,
@@ -201,11 +240,16 @@ def main():
     ckpt_dir = run_dir / "ckpt"
     ckpt_dir.mkdir(exist_ok=True)
 
+    if args.red_mode_pool:
+        print(f"[red-mode-pool] {args.red_mode_pool} — "
+              f"per-episode uniform sample", flush=True)
+
     vec = build_vec_env(
         args.n_envs,
         args.episode_time_limit,
         layouts_pool=layouts_pool,
         red_mode=args.red_mode,
+        red_mode_pool=args.red_mode_pool,
         blue_budget_start=args.blue_budget,
         red_budget_start=args.red_budget,
     )

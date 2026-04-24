@@ -79,12 +79,14 @@ def _run_match(
     obs, _ = env.reset(seed=seed)
     total_reward = 0.0
     steps = 0
+    last_info: dict = {}
     while True:
         mask = np.asarray(obs["action_mask"]).reshape(-1).astype(np.int8)
         action, _ = model.predict(obs, action_masks=mask, deterministic=True)
         obs, reward, terminated, truncated, info = env.step(action)
         total_reward += float(reward)
         steps += 1
+        last_info = info
         if terminated or truncated:
             break
     # Derive outcome from final world state
@@ -106,6 +108,7 @@ def _run_match(
         winner = "blue"
     else:
         winner = "truncated"
+    per_kind_fires = dict(last_info.get("per_kind_fires", {}))
     return {
         "winner": winner,
         "sim_t": float(env.world.t),
@@ -118,6 +121,7 @@ def _run_match(
         "red_budget_remaining": int(env.world.red_budget),
         "steps": steps,
         "total_reward": total_reward,
+        "per_kind_fires": per_kind_fires,
     }
 
 
@@ -126,6 +130,18 @@ def _summarise(results: List[dict]) -> dict:
     wins = sum(1 for r in results if r["winner"] == "blue")
     losses = sum(1 for r in results if r["winner"] == "red")
     truncs = sum(1 for r in results if r["winner"] == "truncated")
+    # Aggregate per-kind fire counts across matches in the cell. Two
+    # views: `total` (sum of all fires across every match) and `mean`
+    # (average fires per match). The Chen acceptance criterion is that
+    # CIWS and RBS-70 are non-zero in the total for every layout ×
+    # scripted-Red cell — i.e. the policy uses them at least once.
+    kind_keys = set()
+    for r in results:
+        kind_keys.update(r.get("per_kind_fires", {}).keys())
+    per_kind_total = {k: sum(r.get("per_kind_fires", {}).get(k, 0) for r in results)
+                      for k in kind_keys}
+    per_kind_mean = {k: (per_kind_total[k] / n if n else 0.0)
+                     for k in kind_keys}
     return {
         "n": n,
         "blue_wins": wins,
@@ -140,6 +156,8 @@ def _summarise(results: List[dict]) -> dict:
             r["blue_budget_remaining"] for r in results
         ),
         "mean_sim_t": statistics.mean(r["sim_t"] for r in results),
+        "per_kind_fires_total": per_kind_total,
+        "per_kind_fires_mean": per_kind_mean,
     }
 
 
@@ -260,6 +278,27 @@ def main():
             f"{s['mean_intercepts']:.1f} | "
             f"{s['mean_blue_budget_remaining']/1e6:.1f}M |"
         )
+    # Per-kind fire grid — one row per cell. Column order mirrors the
+    # launcher ladder: short-range → long-range. Total (cumulative across
+    # matches in the cell) is what acceptance criteria #2 / #3 care
+    # about ("CIWS and RBS-70 fire at least once per cell"). Mean-per-
+    # match is a readability aid for the eyeball check.
+    lines.append("")
+    lines.append("## Per-kind fire counts (total across matches in cell)")
+    lines.append("")
+    # InterceptorType.value strings — these are what env.py stores in
+    # per_kind_fires (string-Enum, .value is the wire format).
+    kind_cols = ["ciws", "rbs_70", "iris_t_sls", "iris_t_slm", "pac_2", "pac_3"]
+    header = "| Layout | Red | " + " | ".join(kind_cols) + " |"
+    sep = "|---|---" + "|---:" * len(kind_cols) + "|"
+    lines.append(header)
+    lines.append(sep)
+    for key, cell in all_cells.items():
+        s = cell["summary"]
+        pk = s.get("per_kind_fires_total", {})
+        row = (f"| {cell['layout']} | {cell['red']} | "
+               + " | ".join(str(int(pk.get(k, 0))) for k in kind_cols) + " |")
+        lines.append(row)
     out_md = Path(args.output + ".md")
     out_md.write_text("\n".join(lines) + "\n")
     print(f"[per_layout_eval] wrote {out_md}", flush=True)

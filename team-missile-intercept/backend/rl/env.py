@@ -16,6 +16,7 @@ where index MAX_THREATS means "hold fire". Invalid actions masked via
 """
 from __future__ import annotations
 
+import random
 from typing import List, Optional
 
 import numpy as np
@@ -114,6 +115,7 @@ class MissileInterceptEnv(gym.Env):
         episode_time_limit: float = MAX_EPISODE_SIM_TIME,
         layouts_pool: Optional[List[dict]] = None,
         red_mode: str = "default",
+        red_mode_pool: Optional[List[str]] = None,
         blue_budget_start: Optional[int] = None,
         red_budget_start: Optional[int] = None,
     ):
@@ -130,11 +132,21 @@ class MissileInterceptEnv(gym.Env):
         # sampling — fleet is built from config.BLUE_LAUNCHER_POSITIONS.
         self._layouts_pool = layouts_pool
         self._red_mode = red_mode
+        # Optional per-episode Red-mode sampling pool. When set, each
+        # reset() picks one entry uniformly and instantiates Red from
+        # it — letting training mix ScriptedRedAI and rule RedAI in the
+        # same run so the policy sees both distributions. None disables
+        # the pool and `red_mode` (single value) is used.
+        # Accepted values: "scripted" (→ ScriptedRedAI),
+        # "rule" / "default" (→ RedAI(build_demo_waves())).
+        self._red_mode_pool = list(red_mode_pool) if red_mode_pool else None
         self._blue_budget_start = blue_budget_start
         self._red_budget_start = red_budget_start
         self._rng_layout_pool = np.random.default_rng(seed)
         self._last_sampled_slot: Optional[str] = None
+        self._last_sampled_red_mode: Optional[str] = None
         self._episode_count: int = 0
+        self._red_rng = random.Random(seed)
 
     def _build_spaces(self):
         self.observation_space = spaces.Dict({
@@ -156,6 +168,7 @@ class MissileInterceptEnv(gym.Env):
         super().reset(seed=seed)
         if seed is not None:
             self._seed = seed
+            self._red_rng = random.Random(seed)
         sites_module.reset_leaks()
         self.world = World()
         if self._blue_budget_start is not None:
@@ -169,18 +182,39 @@ class MissileInterceptEnv(gym.Env):
             LauncherFleet(positions=override) if override is not None
             else LauncherFleet()
         )
-        if self._red_mode == "scripted":
+        # Pick Red mode — pool wins if set, else fall back to single flag.
+        if self._red_mode_pool:
+            red_mode = self._red_rng.choice(self._red_mode_pool)
+        else:
+            red_mode = self._red_mode
+        self._last_sampled_red_mode = red_mode
+        if red_mode == "scripted":
             from sim.red_ai import ScriptedRedAI
             self.red = ScriptedRedAI(None)
         else:
+            # "rule" / "default" / anything else → rule-based RedAI.
             self.red = RedAI(build_demo_waves())
         self.world.transition(MatchPhase.RUNNING)
         self._cum_reward = 0.0
+        # Per-kind fire counter, reset each episode. Consumed by
+        # per_layout_eval.py via the `info` dict so the 6-cell grid can
+        # report CIWS / RBS-70 participation (a key demo requirement).
+        self._per_kind_fires: dict = {k.value: 0 for k in INT_KIND_ORDER}
         self._episode_count += 1
+        # Bug 3 diag — confirm on-episode-1 that budget overrides actually
+        # took effect. Cheap one-shot per-env-process print; the prompt's
+        # complaint was that last night's worker silently used config
+        # defaults instead of the spec's 200M / 150M.
+        if self._episode_count == 1:
+            print(
+                f"[env] budgets: blue={self.world.blue_budget_max:,} "
+                f"red={self.world.red_budget_max:,} red_mode={red_mode}",
+                flush=True,
+            )
         if self._layouts_pool and self._episode_count % 50 == 1:
             print(
                 f"[env] episode {self._episode_count} starting with "
-                f"layout slot={self._last_sampled_slot}",
+                f"layout slot={self._last_sampled_slot} red_mode={red_mode}",
                 flush=True,
             )
         return self._encode_obs(), {}
@@ -257,16 +291,26 @@ class MissileInterceptEnv(gym.Env):
             "blue_budget": self.world.blue_budget,
             "site_hp_total": sum(s.hp for s in sites_module.SOUTH_SITES),
             "cum_reward": self._cum_reward,
+            "per_kind_fires": dict(self._per_kind_fires),
+            "red_mode": self._last_sampled_red_mode,
         }
         return self._encode_obs(), float(reward), terminated, truncated, info
 
     # ------------------------------------------------------------------
     def _winner(self) -> Optional[str]:
-        # Inline winner check (mirrors Scenario.winner without re-importing
-        # Scenario — we manage the World directly).
-        for site in sites_module.SOUTH_SITES:
-            if site.hp <= 0:
-                return "red"
+        # Mirrors Scenario.winner's military-only rule (Issue #9). Red wins
+        # only when every military site (subtype in {'base','air_base'}) is
+        # at HP 0; city / capital HP doesn't count. Pre-fix this function
+        # iterated every site and returned "red" on the first HP<=0, which
+        # (a) would fire on cities the winner spec explicitly excludes and
+        # (b) ended ScriptedRed episodes after ONE base died, blocking the
+        # "Blue holds 2/3 sites" outcomes from ever scoring as Blue wins.
+        military = [
+            s for s in sites_module.SOUTH_SITES
+            if s.subtype in ("base", "air_base")
+        ]
+        if military and all(s.hp <= 0 for s in military):
+            return "red"
         red_done = self.red.done or self.world.red_budget <= 0
         no_threats = all(not t.state.alive for t in self.world.threats.values())
         if red_done and no_threats:
@@ -324,6 +368,9 @@ class MissileInterceptEnv(gym.Env):
             )
             self.world.blue_budget = max(0, self.world.blue_budget - spec.usd_cost)
             n_fires += 1
+            # Per-kind fire counter (for per_layout_eval).
+            kind_key = lch.kind.value if hasattr(lch.kind, "value") else str(lch.kind)
+            self._per_kind_fires[kind_key] = self._per_kind_fires.get(kind_key, 0) + 1
         return n_fires
 
     # ------------------------------------------------------------------
