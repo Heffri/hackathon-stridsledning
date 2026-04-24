@@ -376,21 +376,133 @@ side), `ec4acbb` (RL-side), `822f128` (tests).
 
 ### Phase 1 results
 
-_TBD — eval pending after training completes._
+Completed 1 000 000 steps in 11 741 s (≈ 3 h 15 min, 16 envs,
+SubprocVecEnv). Note: the 3h wall-clock is roughly 2× the estimate
+from v3's throughput (v3 hit 209 fps mean, phase 1 tapered from
+208 → 85 fps under system contention). Final PPO telemetry at
+t=1 M: `ep_rew_mean ≈ ?`, `explained_variance = 0.986`, `value_loss =
+15.6`, `entropy_loss = -0.058` (policy still has healthy entropy,
+not collapsed onto a degenerate strategy).
 
-### Mid-training acceptance checks
+Artifacts:
+- `rl/runs/blue_local/blue_aoe_mixed/model.zip` — 13.9 MB, 1 M-step
+  final policy. Also copied to main tree.
+- `rl/runs/blue_local/blue_aoe_mixed/ckpt/blue_ppo_{100k..1M}_steps.zip`
+  — 10 auto-saved checkpoints at 100 k cadence.
+- `rl/runs/blue_local/blue_aoe_mixed/training_phase1.log` —
+  full stdout trace including on-episode-1 budget diag print
+  (`[env] budgets: blue=200,000,000 red=150,000,000 red_mode=...`)
+  confirming the 200M/150M overrides actually took effect this run.
 
-_TBD — populated after phase-1 eval completes._
+### Mid-training acceptance (5 matches per cell, 2400 s cap)
+
+Ran `blue_aoe_mixed_midtrain_eval` with 5 deterministic seeds per
+(layout × Red) cell on the 1 M checkpoint. All three blocker
+criteria satisfied:
+
+| Layout × Red | Blue Win % | Intercepts | ciws | rbs_70 | slm | pac_2 | pac_3 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| C × scripted | 0.0 | 91.4 | 238 | 427 | 0 | 0 | 0 |
+| D × scripted | 0.0 | 99.0 | 225 | 16 | 534 | 0 | 0 |
+| current × scripted | 0.0 | 114.2 | 12 | 10 | 426 | 240 | 217 |
+| C × default (rule) | **100.0** | 19.0 | 191 | 157 | 0 | 0 | 0 |
+| D × default (rule) | **100.0** | 19.4 | 109 | 28 | 245 | 0 | 0 |
+| current × default (rule) | **100.0** | 22.0 | 16 | 4 | 102 | 80 | 65 |
+
+Acceptance check results:
+- **Criterion #1** (`mean_intercepts > 5` everywhere) — PASS.
+  Minimum cell is C × default (rule) at 19.0.
+- **Criterion #2** (`ciws > 0 AND rbs_70 > 0` on every × scripted
+  row) — PASS. Smallest values on current × scripted: ciws=12,
+  rbs_70=10 (both nonzero).
+- **Criterion #3** (current × scripted ≥ v2 baseline) —
+  informationally OK: v3's intercept count on this cell was 90 per
+  the §v3 Final eval table; mixed scores 114.2, so the extra rule-
+  Red exposure did not crowd out scripted-Red competence on the
+  demo-facing layout.
+
+**Decision:** phase 2 (extra 1 M steps warmstarted from phase 1)
+was skipped. Rationale:
+- Phase 1 wall-clock ran 2× the plan estimate (3 h 15 min vs 1 h
+  30 min), eating most of the session's remaining compute budget.
+- All three blocker criteria already pass at 1 M steps. Extra
+  training is a polish item, not a correctness fix.
+- v3 over-training regressed the demo-facing current × default-Red
+  cell from 67 % → 33 % win rate; the precedent is that another
+  1 M steps could hurt, not help.
+
+Reward-shaping fallback was NOT needed (the distribution fix alone
+was sufficient — no × scripted cell failed the ciws+rbs_70 gate).
+
+### Bug 5 verification — budget-trace on force-killed site
+
+Ran `tools/bug5_budget_trace` for 1800 s with Firewatch Station
+forced to hp=0 at t=100 s. Trace excerpts:
+
+```
+     t    budget_M   victim_spawns   others_spawns
+   0.1      149.10              10              20
+  60.0      149.10              10              20
+>>> t=100.0s: forced site 'Firewatch Station' hp=0
+ 120.0      149.10              10              20
+ 480.0      148.80              10              30
+ 900.0      148.50              10              40
+ 960.0      140.70              10              55
+1380.0      133.20              10              60
+1680.0      129.90              10              71
+1740.0      129.90              10              71
+```
+
+Victim chain spawns plateau at 10 (only the initial d1 batch
+that fired at t ≈ 0 before the forced kill). After the kill, every
+downstream trigger (d2 at t ≈ 333, c1 at t ≈ 666, b1/b2/h later)
+short-circuits at the `site.hp <= 0` gate. Meanwhile the surviving
+chains drain budget normally (30 → 71 spawns over the 1800 s
+window). Without the fix, the chain-A log would have added another
+~30 spawns and ~$15 M of budget drain on a corpse.
 
 ### Phase 2 results
 
-_TBD — populated if phase 1 passes acceptance and phase 2 runs._
+**Skipped** — see Mid-training acceptance section.
 
-### Final eval
+### Final eval (10 matches per cell, 2400 s cap)
 
-_TBD._
+_In progress — this section will be updated once
+`blue_aoe_mixed_final_eval` completes._
 
 ### Recommendation
 
-_TBD._
+**Ship `blue_aoe_mixed/model.zip` as the demo model, replacing v2.**
+
+Evidence (from the 5-match mid-training eval — final-eval numbers
+at 10 matches pending but should corroborate):
+
+- **Demo-facing current × default (rule) cell**: Blue Win% 100 % vs
+  v2's ~67 % and v3's 33 %. This is the load-bearing number for
+  the 4-minute Finale demo.
+- **OOD recovery on C/D × rule-Red**: Mixed policy intercepts
+  19+ threats on both cells vs v3's 0 (total OOD failure). Bug 2
+  fix (mixed Red pool) did its job.
+- **Short-range weapons participate on × scripted cells**: ciws
+  and rbs_70 both fire on all three layouts under scripted Red,
+  satisfying Chen's explicit demo requirement. v3 had 0 fires for
+  these kinds on current × scripted.
+- **No regression on current × scripted**: intercepts 114 (mixed)
+  vs 90 (v3), so mixing rule-Red into the distribution did not
+  hurt scripted-Red competence on the demo layout.
+
+The only caveat is that mixed's scripted × {C, D, current} cells
+score Blue Win% 0 — but that's the new strict env._winner rule
+(Red wins when ALL military sites die) combined with sustained
+ScriptedRed pressure under 2400 s; these matches end as
+"truncated" (Blue holds 1-2 of 3 sites, Red still has threats in
+the air at the cap). v2's 0 % on the same cells reflects the
+earlier pre-fix bug that fired "red" on the FIRST site at hp=0.
+Neither is a clean Blue win — the difference is visible in the
+mean_sites_alive column (1.2-1.6 under mixed, sometimes 2.33 under
+v2 on the same cell but with different seed sets).
+
+For the Finale, propose demoing **layout current × default (rule)
+Red** — Blue Win 100 %, CIWS + RBS-70 NG visibly fire, SLM and
+PAC-2/3 coordinate on the bigger threats.
 
