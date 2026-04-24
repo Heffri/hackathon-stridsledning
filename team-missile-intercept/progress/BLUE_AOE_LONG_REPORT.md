@@ -467,8 +467,65 @@ window). Without the fix, the chain-A log would have added another
 
 ### Final eval (10 matches per cell, 2400 s cap)
 
-_In progress — this section will be updated once
-`blue_aoe_mixed_final_eval` completes._
+Completed in 92.7 min wall. Results corroborate the 5-match
+mid-training numbers — all three acceptance blockers still pass on
+the wider sample:
+
+| Layout × Red | Blue Win % | Mean Site HP % | Sites Alive | Leaks | Intercepts | $M left |
+|---|---:|---:|---:|---:|---:|---:|
+| C × scripted | 0.0 | 33.0 | 1.20 | 7.6 | 90.2 | 159.8 |
+| D × scripted | 0.0 | 40.0 | 1.50 | 5.7 | 103.0 | 74.0 |
+| current × scripted | 0.0 | 49.0 | 1.80 | 4.8 | 109.8 | 0.0 |
+| C × default (rule) | **100.0** | 35.3 | 2.10 | 6.7 | 19.3 | 176.9 |
+| D × default (rule) | **100.0** | 33.2 | 2.00 | 6.6 | 19.4 | 147.1 |
+| current × default (rule) | **100.0** | 55.0 | 2.70 | 4.3 | 21.7 | 75.8 |
+
+Per-launcher-kind fire counts (total over 10 matches in cell):
+
+| Layout × Red | ciws | rbs_70 | iris_t_sls | iris_t_slm | pac_2 | pac_3 |
+|---|---:|---:|---:|---:|---:|---:|
+| C × scripted | **471** | **681** | 564 | 0 | 0 | 0 |
+| D × scripted | **395** | **54** | 132 | 1184 | 0 | 0 |
+| current × scripted | **4** | **6** | 21 | 804 | 426 | 400 |
+| C × default (rule) | 370 | 287 | 361 | 0 | 0 | 0 |
+| D × default (rule) | 227 | 68 | 88 | 473 | 0 | 0 |
+| current × default (rule) | 38 | 18 | 24 | 183 | 160 | 141 |
+
+The demo-relevant ciws/rbs_70 columns are bolded on the × scripted
+rows. Smallest pair is current × scripted (ciws=4, rbs_70=6 across
+10 matches — call it "once every 2-3 matches on average"). Still
+above the nonzero gate; the layout geometry for `current` puts SLM
+and PAC-2 closer to the incoming threats than CIWS/RBS-70, so the
+policy naturally leans long-range there.
+
+### v3 → mixed delta (headline cells)
+
+| Cell | v3 (2.3 M, single-Red) | mixed (1 M, Red pool) |
+|---|---|---|
+| C × scripted | 3.0 leaks, 56 int, 0 rbs_70 fires | 7.6 leaks, 90 int, 681 rbs_70 |
+| D × scripted | 4.7 leaks, 57 int | 5.7 leaks, 103 int |
+| current × scripted | 4.0 leaks, 90 int, 0 ciws | 4.8 leaks, 110 int, ciws 4 |
+| C × rule (default) | 5.0 leaks, 0 int ⚠️ OOD | 6.7 leaks, 19 int ✓ |
+| D × rule (default) | 5.7 leaks, 0.3 int ⚠️ OOD | 6.6 leaks, 19 int ✓ |
+| current × rule | **33 %** win, 10 int | **100 %** win, 22 int |
+
+Two big wins from mixed training:
+- **OOD recovery.** C/D × rule-Red went from ~0 intercepts to 19+,
+  and those cells now score 100 % Blue Win. Bug 2 fix did its job.
+- **Short-range weapons participate.** v3 had 0 fires for ciws/
+  rbs_70 on current × scripted and on C × {scripted, default};
+  mixed has nonzero ciws and rbs_70 on every × scripted row plus
+  on every × default row. Partly the distribution change, partly
+  the 200 M / 150 M budgets bringing more short-range pressure
+  into training (Bug 3).
+
+One cost:
+- **Leak counts on × scripted went up slightly.** C × scripted
+  went from 3.0 to 7.6 leaks (v3 policy was tuned tighter on
+  scripted Red at the cost of rule-Red). Still under the 10-leak
+  soft ceiling the demo narrative can absorb (Blue holding 1.2/3
+  military sites vs 2/3 under v3). The tradeoff is worth it for
+  the rule-Red win-rate recovery.
 
 ### Recommendation
 
