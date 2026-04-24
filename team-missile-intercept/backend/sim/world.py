@@ -367,6 +367,20 @@ class World:
                 )
                 if new_target is not None:
                     inter.target_id = new_target.state.id
+                    # Live-demo polish (2026-04-24, Bug 8): mirror the new
+                    # target_id onto EntityState too. `Interceptor.target_id`
+                    # (slot) drives PN guidance; `EntityState.target_id`
+                    # (dataclass field) is what the snapshot / HUD / RL obs
+                    # encoders read. Before the sync, LearnedBlueAI's orphan
+                    # cleanup looked at `inter.state.target_id`, saw the dead
+                    # original, and marked retargeted interceptors dead — so
+                    # they visibly swung onto the new threat, then vanished
+                    # a few frames later. Kept as a defensive belt even after
+                    # the orphan cleanup was removed, because any downstream
+                    # consumer of `state.target_id` (status panel, telemetry,
+                    # future RL obs) wants the current target, not the stale
+                    # one.
+                    inter.state.target_id = new_target.state.id
                     target = new_target
             target_state = target.state if target is not None else None
             inter.step(dt, target_state, self.t)
