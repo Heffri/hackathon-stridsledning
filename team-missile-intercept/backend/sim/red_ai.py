@@ -101,7 +101,10 @@ STRATEGIC_Y_BAND = (config.ARENA_Y - 15_000.0, config.ARENA_Y - 5_000.0)
 # altitude trade. Spawn Z is clamped to at least these values even if
 # the random sample from the per-kind range lands lower.
 BALLISTIC_MIN_Z = 20_000.0   # m — re-entry entry altitude
-HGV_MIN_Z       = 30_000.0   # m — glide ceiling
+HGV_MIN_Z       = 50_000.0   # m — glide ceiling (bumped 30→50 km after
+                             # ARENA_Y 250→350 so HGV has enough PE to
+                             # reach Main Base at y=5k from deep-rear
+                             # spawn at y=335k)
 
 # --- Per-kind spawn altitude envelopes (m AGL) ---
 # Three visual tiers on the 150 km × 150 km arena:
@@ -113,7 +116,8 @@ HGV_MIN_Z       = 30_000.0   # m — glide ceiling
 DRONE_ALT_RANGE = (500.0, 4_000.0)
 CRUISE_ALT_RANGE = (1_000.0, 6_000.0)
 BALLISTIC_ALT_RANGE = (30_000.0, 40_000.0)
-HGV_ALT_RANGE = (30_000.0, 40_000.0)
+HGV_ALT_RANGE = (50_000.0, 60_000.0)   # bumped 30-40k → 50-60k — see
+                                        # HGV_MIN_Z note above
 
 
 def build_demo_waves() -> List[WaveSpec]:
