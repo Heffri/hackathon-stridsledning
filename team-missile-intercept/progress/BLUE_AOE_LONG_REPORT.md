@@ -128,33 +128,42 @@ three layouts.
 
 ## Training run (Phase 4)
 
-- Final step: **313 344** env-steps (last PPO rollout iteration before
-  kill). Last saved CheckpointCallback file is
-  `blue_ppo_299988_steps.zip` (the 3rd auto-save at n_calls=24 999
-  × 12 envs). That file is what shipped as
-  `rl/runs/blue_local/blue_aoe_long/model.zip`.
-- Stop reason: **manual interrupt**. Pulled in the 2 M ceiling to
-  ~300 k so the Phase 5 eval could run on a free CPU instead of
-  fighting 12 training sub-workers for cycles.
-- Wall-clock: 31 min (2026-04-24 01:19 → 01:50 local). Mean 166 fps
-  across 12 SubprocVecEnvs on a 32-core box.
-- Warmstart fallback triggered: No — loaded cleanly.
-- ep_rew_mean trajectory: flat at approximately -297 throughout the
-  run. Episodes are 6 000 decisions long (3 000 s / DECISION_EVERY=10);
-  with 12 envs the SB3 rolling window saw only ≈ 50 completed episodes
-  before the kill, so ep_rew_mean hadn't begun refining yet. This is a
-  known slow-start symptom of very-long-episode PPO; the eval numbers
-  below still show real learning despite the flat reward curve
-  because the policy-gradient updates have been happening all along.
+Two training runs stacked on top of the `blue_cd_focused` warmstart:
 
-**Recommendation for Chen**: resume training with
+### v1 (warmstart → 300 k, 31 min)
+- Stopped at 313 344 env-steps; last auto-save `blue_ppo_299988_steps.zip`.
+- 12 SubprocVecEnvs, 166 fps mean, 2026-04-24 01:19 → 01:50 local.
+- Manual interrupt to free CPU for an interim eval.
+
+### v2 (300 k warmstart → 1.3 M cumulative, 80 min)
+- **Completed cleanly** at the `--total-steps 1_000_000` target. No
+  manual interrupt this run. SB3 wrote `model.zip` + 10 auto-save
+  checkpoints (blue_ppo_100000 → blue_ppo_900000_steps.zip).
+- 16 SubprocVecEnvs (bumped from 12 — no competing workloads after v1
+  eval killed off the v1 training process). Mean throughput: 208 fps
+  aggregate / ~4 819 s wall.
+- Warmstart from the v1 300 k model loaded clean (same obs/action
+  spaces). Effective cumulative training is 1.3 M steps from the
+  original `blue_cd_focused` base.
+- `ep_rew_mean` stayed near -297 the whole run. Long-episode PPO at
+  6 000 decisions per episode means the rolling-window reward takes
+  thousands of episodes to reflect policy improvement; eval numbers
+  below are the real learning signal.
+
+`rl/runs/blue_local/blue_aoe_long/model.zip` is the v2 model. v1's
+training log is preserved as `training.log`; v2's is `training_v2.log`
+in the same directory. Both main-tree and worktree copies are in
+sync.
+
+**Recommendation for Chen**: one more 1–2 M step pass would almost
+certainly push the site-preservation rate up (the D / scripted cell
+already moved 6 → 4 leaks between v1 and v2 with no change in any
+other knob). Resume with:
 ```
 python -m rl.train --warmstart rl/runs/blue_local/blue_aoe_long/model.zip \
     <...same other flags as original run...> \
-    --run-name blue_aoe_long_v2 --total-steps 2000000
+    --run-name blue_aoe_long_v3 --total-steps 2000000
 ```
-on an idle box. One-M more steps should tighten the leak numbers
-below — the reward surface isn't saturated.
 
 ### Preliminary signal — 100 k-step checkpoint eval
 
@@ -191,16 +200,39 @@ in this report, single-session wall-time constraint. The eval harness
 supports any match count; Chen can re-run at 50 per cell on an idle
 overnight machine.
 
-Actual results (26.3 min wall, 3 matches per cell):
+Actual results — **v2 final (1.3 M cumulative steps)**, 25.8 min wall,
+3 matches per cell:
 
 | Layout | Red | Blue Win% | Site HP % | Sites alive | Leaks | Intercepts | $M left |
 |---|---|---:|---:|---:|---:|---:|---:|
-| C | scripted | 0.0 | 66.7 | 2 / 3 | 3.0 | 50.3 | 181.9 |
-| D | scripted | 0.0 | 66.7 | 2 / 3 | 6.0 | 54.7 | 132.3 |
-| current | scripted | 0.0 | 66.7 | 2 / 3 | 3.3 | 81.3 |  0.0 |
-| C | default  | 0.0 | 40.0 | 2 / 3 | 5.3 |  **0.0** | 196.3 |
-| D | default  | 0.0 | 52.2 | 2 / 3 | 4.3 |  **0.0** | 189.2 |
-| current | default  | 66.7 | 50.0 | 2.67 / 3 | 4.7 | 15.3 | 95.0 |
+| C | scripted | 0.0 | 66.1 | 2 / 3 | 3.3 | 41.7 | 182.7 |
+| D | scripted | 0.0 | 66.7 | 2 / 3 | 4.3 | 60.0 | 133.9 |
+| current | scripted | 0.0 | 66.7 | 2 / 3 | 3.3 | 76.0 |  0.0 |
+| C | default  | 0.0 | 44.4 | 2 / 3 | 5.3 |  **0.0** | 196.4 |
+| D | default  | 0.0 | 46.7 | 2 / 3 | 5.0 |  **0.0** | 188.1 |
+| current | default  | 66.7 | 57.8 | 2.67 / 3 | 4.0 | 16.0 | 92.1 |
+
+### v1 → v2 delta
+
+For reference, the v1 300 k numbers (file was overwritten at v2 eval,
+but preserved in `blue_aoe_long_eval_200k`-style logs and the earlier
+commit `397d760`):
+
+| Cell | v1 (300 k) leaks | v2 (1.3 M) leaks | Δ |
+|---|---:|---:|:---|
+| C / scripted | 3.0 | 3.3 | +0.3 (noise) |
+| **D / scripted** | **6.0** | **4.3** | **−1.7 (real improvement)** |
+| current / scripted | 3.3 | 3.3 | 0 |
+| C / default | 5.3 | 5.3 | 0 (OOD, int=0 both runs) |
+| D / default | 4.3 | 5.0 | +0.7 (noise in OOD) |
+| current / default | 4.7 | 4.0 | −0.7 |
+
+Net: v2 is a **modest improvement** on the scripted-Red cells (best on
+D, the layout that trained most directly on the pool). The
+rule-Red-on-{C,D} zero-intercept failure carried straight through —
+expected, since training saw no rule-Red × {C, D} combos in either
+v1 or v2. More training won't fix that without layout-pool
+diversification of Red mode.
 
 ### Reading the numbers
 
