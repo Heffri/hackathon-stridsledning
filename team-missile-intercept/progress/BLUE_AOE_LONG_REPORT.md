@@ -318,3 +318,79 @@ rather than "Blue wins cleanly."
 4. `damage_prox` is fully removed from `InterceptorSpec`; every reader
    was updated in the same commit. `damage_direct` remains for event-
    log labelling only (the new damage path uses `fragment_damage`).
+
+---
+
+## Mixed retrain (blue_aoe_mixed)
+
+**Status:** in-flight. This section is updated as phase 1 + phase 2
+train + evals complete. Working branch `claude/heuristic-merkle-0e74cf`
+(worktree off `blue-aoe-training` tip `ddcd82d`).
+
+### Motivation — five bugs from post-run inspection of v3
+
+1. **env.py::_winner mirrored wrong rule.** Returned `'red'` on the
+   FIRST site at hp=0 instead of requiring every military site dead.
+   Cut ScriptedRed matches short after one base died and stopped the
+   "Blue holds 2/3 sites" outcome from ever scoring as a Blue win in
+   the RL reward signal.
+2. **Red distribution was scripted-only.** Today's `BlueEnv` only ever
+   instantiates one Red class per env (chosen by `--red-mode`). Policy
+   never saw rule-based `RedAI` on layouts C/D → 0 fires at eval time
+   against that combo (OOD).
+3. **Training used 120M / 100M budgets, not spec's 200M / 150M.**
+   Last night's worker didn't pass `--blue-budget` / `--red-budget`
+   and didn't edit config → training ran on Blue-favourable config
+   defaults. Weak Red → policy hoarded Blue budget → CIWS and RBS-70
+   barely fired (Chen's complaint).
+4. **Retargeting missing terminal-phase gate.** Interceptor 1s from
+   impact on a dead target swerved toward a new threat it physically
+   couldn't reach (turn-radius limited) and coasted to timeout. From
+   the operator's view, retarget feature "didn't work".
+5. **ScriptedRed wasted budget on dead sites.** Each `_AttackChain`
+   ran on independent timers with no alive-check on its target. Once
+   a site hit hp=0, Red kept burning ~30% of its 150M budget spawning
+   threats at the corpse for the rest of the match.
+
+All five fixed + regression tests added. See commits `6fadff4` (sim-
+side), `ec4acbb` (RL-side), `822f128` (tests).
+
+### Training config (phase 1)
+
+- **Warmstart:** `rl/runs/blue_local/blue_aoe_long/model_v2.zip`
+  (13.9 MB; v2 beat v3 on the demo-facing current × default cell —
+  don't compound v3's regression).
+- **Red driver:** mixed pool `--red-mode-pool scripted rule`
+  (Bug 2). Per-episode uniform sample.
+- **Layouts pool:** `--layouts-pool-slots C D current` (slot C and D
+  from `rl/top3_layouts_CD.json`, current synthesised from live
+  config via new `_synthesize_current_slot`).
+- **Budgets:** `--blue-budget 200000000 --red-budget 150000000`
+  (Bug 3 — both overrides explicit on the command line).
+- **Episode cap:** 3000 s sim.
+- **n_envs:** 16 (SubprocVecEnv).
+- **Target steps (phase 1):** 1 M — staged so a mid-training eval
+  catches distribution/reward issues before committing a full 2 M.
+- **Checkpoint cadence:** every 100 k steps under
+  `rl/runs/blue_local/blue_aoe_mixed/ckpt/`.
+
+### Phase 1 results
+
+_TBD — eval pending after training completes._
+
+### Mid-training acceptance checks
+
+_TBD — populated after phase-1 eval completes._
+
+### Phase 2 results
+
+_TBD — populated if phase 1 passes acceptance and phase 2 runs._
+
+### Final eval
+
+_TBD._
+
+### Recommendation
+
+_TBD._
+
