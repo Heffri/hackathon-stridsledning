@@ -386,6 +386,15 @@ class World:
                     )
                     if new_target is not None:
                         inter.target_id = new_target.state.id
+                        # Bug 8 mirror (2026-04-24): also update
+                        # EntityState.target_id so snapshot / HUD / RL obs
+                        # consumers see the new target. Interceptor.target_id
+                        # (slot) drives PN; EntityState.target_id is what
+                        # LearnedBlueAI's orphan cleanup + client renderer
+                        # read. Belt-and-braces even after the orphan cleanup
+                        # was removed — future telemetry / status-panel
+                        # consumers rely on this sync.
+                        inter.state.target_id = new_target.state.id
                         target = new_target
             target_state = target.state if target is not None else None
             inter.step(dt, target_state, self.t)

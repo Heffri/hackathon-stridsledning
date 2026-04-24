@@ -50,15 +50,13 @@ _VLS_BOOST_DURATION = 1.5  # seconds
 # energy at roughly bleed_rate × (current_G / max_G)² per second. Below
 # _HGV_STALL_SPEED it can no longer generate lift and falls out of its
 # glide (we just mark it dead; ground-collision finishes the visual).
-_HGV_BLEED_RATE = 120.0         # m/s per second at max_g — higher than the
-                                 # WEAPON_SPECS 50 m/s/s because at Mach 17
-                                 # the quadratic drag + turn-induced drag
-                                 # realistically pulls the HGV down much
-                                 # faster during evasion, and the demo
-                                 # needs visible speed loss so the turn
-                                 # radius (R = v²/a) tightens as manoeuvres
-                                 # accumulate. 120 gives 5 s of max-G
-                                 # jinking = ~600 m/s loss (~10 % of peak).
+_HGV_BLEED_RATE = 60.0          # m/s per second at max_g — halved from 120
+                                 # after ARENA_Y 250→350 so HGV preserves
+                                 # enough kinetic energy across the longer
+                                 # 330 km glide to reach Main Base without
+                                 # stalling mid-flight. Still quadratic in
+                                 # (current_G / max_G)², so straight-line
+                                 # HGV (no maneuver) pays no bleed.
 _HGV_STALL_SPEED = 500.0        # m/s floor below which the HGV crashes
 
 # M-TIER2.7 (Issue #13 option a): cruise_sub terminal-dive gate. Below

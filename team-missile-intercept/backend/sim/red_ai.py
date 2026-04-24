@@ -101,7 +101,10 @@ STRATEGIC_Y_BAND = (config.ARENA_Y - 15_000.0, config.ARENA_Y - 5_000.0)
 # altitude trade. Spawn Z is clamped to at least these values even if
 # the random sample from the per-kind range lands lower.
 BALLISTIC_MIN_Z = 20_000.0   # m — re-entry entry altitude
-HGV_MIN_Z       = 30_000.0   # m — glide ceiling
+HGV_MIN_Z       = 50_000.0   # m — glide ceiling (bumped 30→50 km after
+                             # ARENA_Y 250→350 so HGV has enough PE to
+                             # reach Main Base at y=5k from deep-rear
+                             # spawn at y=335k)
 
 # --- Per-kind spawn altitude envelopes (m AGL) ---
 # Three visual tiers on the 150 km × 150 km arena:
@@ -113,7 +116,8 @@ HGV_MIN_Z       = 30_000.0   # m — glide ceiling
 DRONE_ALT_RANGE = (500.0, 4_000.0)
 CRUISE_ALT_RANGE = (1_000.0, 6_000.0)
 BALLISTIC_ALT_RANGE = (30_000.0, 40_000.0)
-HGV_ALT_RANGE = (30_000.0, 40_000.0)
+HGV_ALT_RANGE = (50_000.0, 60_000.0)   # bumped 30-40k → 50-60k — see
+                                        # HGV_MIN_Z note above
 
 
 def build_demo_waves() -> List[WaveSpec]:
@@ -356,6 +360,16 @@ _CRUISE_BATCH_SIZE = 5
 _BALLISTIC_PAIR_BALLISTICS = 1    # one ballistic fires per "b-slot" in the pair
 _HGV_BATCH_SIZE = 1
 
+# Live-demo polish (2026-04-24, Bug 6): after every scheduled chain
+# trigger fires, Red may still have ~$800k left (HGV / ballistic /
+# cruise each cost > $1 M so the tail of the schedule gets skipped)
+# while early-spawned drones are still cruising south. Without a
+# mop-up phase the match idles until MAX_SIM_TIME (3600 s) → draw.
+# Mop-up spawns 1 drone every MOPUP_INTERVAL_S toward a random still-
+# alive military site until the budget drops below a drone's cost.
+MOPUP_INTERVAL_S = 30.0
+MOPUP_JITTER_M = 1500.0  # per-drone xy jitter (matches _spawn_drone_batch)
+
 
 @dataclass
 class _Trigger:
@@ -407,6 +421,13 @@ class ScriptedRedAI:
         self._initialized = False
         self._finished = False
         self.rng = np.random.default_rng()
+        # Live-demo polish (2026-04-24, Bug 6) — mop-up drone phase.
+        # Activated once the initial chain schedule exhausts; spawns
+        # 1 drone every MOPUP_INTERVAL_S at a random still-alive
+        # military site until budget drops below drone cost.
+        self._mopup_active = False
+        self._last_mopup_t: float = 0.0
+        self._mopup_count: int = 0
         # --- Snapshot-compat shims ---
         # The existing scenario.snapshot() reads `.waves`, `._next_wave`,
         # `.log`, `.launchers`. We expose no-op waves + a real
@@ -438,17 +459,36 @@ class ScriptedRedAI:
             except Exception as exc:   # pragma: no cover — defensive
                 self.log.append(f"[{world.t:6.1f}s] trigger {trig.desc!r} raised {exc!r}")
 
+        # Live-demo polish (2026-04-24, Bug 6) — mop-up drone phase.
+        # Once the initial chain schedule has fully exhausted, keep
+        # pressure on alive military sites with a 30 s-cadence drone
+        # spawn until Red's budget drops below drone cost. Without
+        # this, Red stops acting even with ~$800 k left on the table
+        # (HGV / ballistic / cruise are all too expensive) and the
+        # match idles to MAX_SIM_TIME.
+        schedule_done = self._initialized and not self._triggers
+        if schedule_done and not self._mopup_active:
+            self._mopup_active = True
+            self._last_mopup_t = world.t
+            self.log.append(
+                f"[{world.t:6.1f}s] mop-up phase active — drone pressure on alive military sites"
+            )
+        if self._mopup_active and (world.t - self._last_mopup_t) >= MOPUP_INTERVAL_S:
+            fired = self._fire_mopup_drone(world)
+            self._last_mopup_t = world.t
+            if not fired:
+                # No valid target or budget dry — mop-up is done.
+                self._mopup_active = False
+
         # `.done` semantics: mirror RedAI — True once no more spawns will
         # happen AND no live threats remain. Scenario.winner consumes this
-        # to decide Blue victory on "out of threats" side.
+        # to decide Blue victory on "out of threats" side. Mop-up must
+        # also be inactive (or permanently ended) or `done` would latch
+        # between mop-up spawns.
         no_pending = not self._triggers
         no_live = all(not th.state.alive for th in world.threats.values())
-        budget_dry = world.red_budget <= 0
-        if no_pending and no_live:
+        if no_pending and no_live and not self._mopup_active:
             self._finished = True
-        # Edge: if budget dried and every pending trigger would spawn
-        # something unaffordable, we still flush pending triggers (they
-        # become no-ops) until the queue drains.
 
     @property
     def done(self) -> bool:
@@ -488,6 +528,68 @@ class ScriptedRedAI:
             f"[{world.t:6.1f}s] ScriptedRed init — {len(self._chains)} chain(s): "
             + ", ".join(c.target_name for c in self._chains)
         )
+
+    # ------------------------------------------------------------------
+    # Mop-up phase (Bug 6) — fires after the chain schedule exhausts.
+    # ------------------------------------------------------------------
+    def _fire_mopup_drone(self, world) -> bool:
+        """Spawn 1 drone from the nearest launcher toward a random
+        still-alive military site. Returns True on successful spawn,
+        False if no valid target or budget exhausted (either caller
+        deactivates mop-up). Same jitter + sea-retry pattern as
+        `_spawn_drone_batch`."""
+        drone_cost = THREAT_SPECS[ThreatType.DRONE].usd_cost
+        if world.red_budget < drone_cost:
+            return False
+        military_alive = [
+            s for s in sites.SOUTH_SITES
+            if s.subtype in ("base", "air_base") and s.hp > 0
+        ]
+        if not military_alive:
+            return False
+        positions = config.RED_LAUNCHER_POSITIONS.get("drone", [])
+        if not positions:
+            return False
+
+        site = random.choice(military_alive)
+        target_xy = (float(site.pos[0]), float(site.pos[1]))
+        # Nearest drone launcher to this site (reduces absurdly long
+        # cross-arena flights — the mop-up is supposed to land, not
+        # coast forever).
+        launcher_xy = min(
+            positions,
+            key=lambda p: (p[0] - target_xy[0]) ** 2 + (p[1] - target_xy[1]) ** 2,
+        )
+        base_x, base_y = float(launcher_xy[0]), float(launcher_xy[1])
+        z = float(self.rng.uniform(*DRONE_ALT_RANGE))
+        jx = self.rng.uniform(-MOPUP_JITTER_M, MOPUP_JITTER_M)
+        jy = self.rng.uniform(-MOPUP_JITTER_M, MOPUP_JITTER_M)
+        spawn_xyz = (base_x + jx, base_y + jy, z)
+        try:
+            tid = world.spawn_threat(
+                ThreatType.DRONE, spawn_xyz, target_xy,
+                target_site_id=site.id,
+            )
+        except ValueError:
+            # Jittered to sea — retry at exact launcher position.
+            spawn_xyz = (base_x, base_y, z)
+            try:
+                tid = world.spawn_threat(
+                    ThreatType.DRONE, spawn_xyz, target_xy,
+                    target_site_id=site.id,
+                )
+            except ValueError as exc:
+                self.log.append(
+                    f"[{world.t:6.1f}s] mop-up drone → {site.name} rejected: {exc}"
+                )
+                return False
+        world.red_budget = max(0, world.red_budget - drone_cost)
+        self._mopup_count += 1
+        self.log.append(
+            f"[{world.t:6.1f}s] mop-up drone #{self._mopup_count} → {site.name} "
+            f"(id={tid}, budget=${world.red_budget/1e6:.2f}M)"
+        )
+        return True
 
     def _schedule_drone_and_cruise_triggers(
         self, world, chain: _AttackChain, round_idx: int,

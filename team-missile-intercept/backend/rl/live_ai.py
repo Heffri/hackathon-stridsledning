@@ -25,8 +25,7 @@ and advances 10 ticks. Skips gracefully if models are absent.
 """
 from __future__ import annotations
 
-from collections import defaultdict
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 
 import numpy as np
 import gymnasium as gym
@@ -45,45 +44,6 @@ from sim import sites as sites_module
 from sim.config import LAUNCH_RANGE_MARGIN
 from sim.launcher import LauncherFleet, RedLauncherFleet
 from sim.types import INTERCEPTOR_SPECS, InterceptorType, THREAT_SPECS, ThreatType
-
-
-# Cost-exchange filter: which interceptor kinds are allowed to engage
-# which threat kinds. Mirrors the economic logic of
-# ``sim/blue_ai.py::PRIMARY_RULES`` + ``FALLBACK_RULES`` (the union),
-# keeping the learned policy honest about cost-exchange and kinematics.
-# The wrapper gates the policy's chosen (launcher, target) pairs against
-# this table before any fire, so pairings the policy never quite
-# internalised (PAC-2 at a $30K drone, IRIS-T SLM chasing a Mach-13
-# ballistic it can't catch) are silently dropped instead of wasting
-# budget + interceptor inventory.
-#
-# Notes on two deliberate narrowings vs PRIMARY/FALLBACK_RULES:
-#   * BALLISTIC: MED_SAM / IRIS_T_SLS are in the rule AI's fallback list
-#     but are too slow to meaningfully engage a Mach-13 RV. Dropping them
-#     here fixes the observed "SLM launches, turns 1 s, gives up" visual.
-#   * HGV: LONG_SAM (PAC-2) is in PRIMARY_RULES but Mach 5 vs Mach 17 is
-#     hopeless — the demo is cleaner reserving PAC-2 for ballistic and
-#     making PAC-3 the sole anti-HGV platform.
-ALLOWED_INTERCEPTORS: Dict[ThreatType, Set[InterceptorType]] = {
-    ThreatType.DRONE: {
-        InterceptorType.CIWS,
-        InterceptorType.SHORT_SAM,
-        InterceptorType.IRIS_T_SLS,
-    },
-    ThreatType.CRUISE_SUB: {
-        InterceptorType.CIWS,
-        InterceptorType.SHORT_SAM,
-        InterceptorType.IRIS_T_SLS,
-        InterceptorType.MED_SAM,
-    },
-    ThreatType.BALLISTIC: {
-        InterceptorType.LONG_SAM,
-        InterceptorType.HIT_TO_KILL,
-    },
-    ThreatType.HGV: {
-        InterceptorType.HIT_TO_KILL,
-    },
-}
 
 
 # Per-threat saturation cap (W2, 2026-04-23). Cheap threats get a
@@ -294,34 +254,31 @@ class LearnedBlueAI:
     timers ``.tick(t_now)`` advance every call (matches rule BlueAI's line 1
     in ``BlueAI.step``) so reload/CD are consistent with training.
 
-    Safety filters on top of the policy (2026-04-23 live-demo audit):
-    the policy was observed (1) firing after Blue budget hit zero, (2)
-    dumping 7+ interceptors at a single drone while other threats were
-    ignored, (3) leaving orphan interceptors flying at already-dead
-    targets, and (4) dispatching cost-exchange-unsound pairings (PAC-2
-    at a drone, IRIS-T SLM at Mach-13 ballistic). Root cause is that
-    the training env (``_LiveEnv._apply_blue_action``) clamps budget
-    with ``max(0, ...)`` and has no saturation or pairing constraints,
-    and the policy never quite internalised the cost-exchange logic
-    from ``sim/blue_ai.py``. Rather than retrain, this wrapper adds
-    four rule-layer gates between ``policy.predict`` and the actual
-    spawn, mirroring the discipline in ``sim/blue_ai.py``:
+    Safety filters on top of the policy: the wrapper now trusts the
+    trained policy's cost-exchange and target-selection judgment (the
+    blue_aoe_mixed model — 2.3 M cumulative steps — is strong enough
+    that the earlier ALLOWED_INTERCEPTORS allowlist and the
+    force-ballistic fallback distorted its behaviour more than they
+    helped). Two gates remain, both economic:
 
-      * Cost-exchange filter — see ``ALLOWED_INTERCEPTORS``.
       * Budget gate — hard refusal if ``world.blue_budget <
-        spec.usd_cost`` (no clamp).
+        spec.usd_cost`` (no clamp). Prevents the training env's
+        ``max(0, ...)`` clamp from letting the policy fire for free
+        after the budget empties.
       * Saturation cap — per-kind via ``SATURATION_CAP_BY_KIND``
         (DRONE / CRUISE: 2; BALLISTIC / HGV: 3). CIWS is a cannon,
         exempt from the cap (same carve-out as ``BlueAI.step``).
-      * Orphan cleanup — interceptors whose assigned target is dead
-        are marked ``state.alive = False`` at the top of each tick, so
-        the sim prunes them instead of letting them fly to empty sky.
 
-    W2 (2026-04-23) adds a post-policy ballistic safety net:
-    ``_force_ballistic_fallback`` originates a PAC-3/PAC-2 dispatch
-    at any ballistic the policy left unengaged, since the trained
-    policy never selects PAC-2 launchers and would otherwise leak
-    every ballistic that arrives while PAC-3 is on cooldown.
+    Retarget-on-death of orphaned interceptors is handled in
+    ``World.step`` (the arcade AOE reacquire hook). The previous
+    wrapper-level orphan cleanup that marked any interceptor with a
+    dead ``state.target_id`` as dead was removed (2026-04-24, Bug 8):
+    it killed retargeted interceptors because retargeting only updates
+    ``inter.target_id``, not the mirrored ``state.target_id`` — so
+    freshly retargeted interceptors visibly swung onto a new threat,
+    then disappeared within a few frames. The live-fix pass also
+    restored ``state.target_id`` write-through in World.step so any
+    downstream consumer (HUD, telemetry) stays accurate.
     """
 
     # Mirror ``sim/blue_ai.py::MAX_SIMULTANEOUS_PER_THREAT``. Excludes
@@ -344,14 +301,6 @@ class LearnedBlueAI:
         # ``sim/blue_ai.py``. Pruned each tick before the policy
         # decides.
         self._assignments: Dict[int, List[int]] = {}
-        # Cost-exchange filter rejection counter: threat_kind →
-        # {launcher_kind: count}. Bumped whenever Gate 0 drops a
-        # policy-chosen (launcher, target) pair. Purely observational
-        # — surfaces in server.py stdout via a caller calling
-        # ``dict(blue._filter_rejects)`` so we can check post-match
-        # whether the filter is actually blocking anything.
-        self._filter_rejects: Dict[ThreatType, Dict[InterceptorType, int]] = \
-            defaultdict(dict)
 
     def step(self, t_now: float, world) -> None:
         # Reload/CD timers MUST advance every tick — matches rule BlueAI
@@ -376,22 +325,13 @@ class LearnedBlueAI:
             else:
                 self._assignments.pop(tid, None)
 
-        # Orphan cleanup — interceptors whose target is gone/dead. The
-        # policy can fire several shots at one threat in a single
-        # decision tick; the first kill wins and the rest then chase
-        # an empty point in space until they stall. Marking
-        # ``state.alive = False`` is the same death signal the stall
-        # branch in ``entities.Interceptor`` uses, so World.prune_dead
-        # removes them on the next tick.
-        for inter in world.interceptors.values():
-            if not inter.state.alive:
-                continue
-            tid = inter.state.target_id
-            if tid is None:
-                continue
-            tgt = world.threats.get(tid)
-            if tgt is None or not tgt.state.alive:
-                inter.state.alive = False
+        # Retargeting of orphaned interceptors (target died) is handled in
+        # ``World.step``'s arcade AOE reacquire hook — it picks the nearest
+        # alive threat still in launcher range and swaps ``inter.target_id``
+        # (with ``state.target_id`` mirrored since Bug 8). Interceptors
+        # that don't find a replacement coast to the
+        # ``config.INTERCEPT_TIMEOUT`` (80 s) or stall-out branch in
+        # ``entities.Interceptor``. The wrapper does not override this.
 
         if self._tick_counter % DECISION_EVERY == 0:
             obs = self._env._encode_obs_blue()
@@ -408,16 +348,6 @@ class LearnedBlueAI:
                 self.log.append(
                     f"[{t_now:6.1f}s] learned_blue fires={n_fires}"
                 )
-        # Post-policy safety net: force-dispatch PAC-3/PAC-2 at any
-        # ballistic the policy is leaving unengaged. Runs every tick
-        # (not just decision ticks) so a ballistic that arrives between
-        # decision boundaries still gets covered. See
-        # ``_force_ballistic_fallback`` for design.
-        n_forced = self._force_ballistic_fallback(t_now)
-        if n_forced:
-            self.log.append(
-                f"[{t_now:6.1f}s] learned_blue ballistic_fallback={n_forced}"
-            )
         self._tick_counter += 1
 
     def _apply_action_gated(self, action: np.ndarray, t_now: float) -> int:
@@ -425,21 +355,26 @@ class LearnedBlueAI:
 
         Replaces the direct ``_LiveEnv._apply_blue_action`` call. Same
         action contract (``MAX_LAUNCHERS`` ints in ``[0, MAX_THREATS]``,
-        ``MAX_THREATS`` = hold, else target-slot index) but adds four
-        gates the training env doesn't enforce:
+        ``MAX_THREATS`` = hold, else target-slot index) but adds two
+        economic gates the training env doesn't enforce:
 
-          * Cost-exchange: refuse pairings not in
-            ``ALLOWED_INTERCEPTORS`` (e.g. PAC-2 at a drone, IRIS-T
-            SLM at Mach-13 ballistic). Rejections are counted in
-            ``self._filter_rejects`` for post-match debug.
           * Budget: refuse if ``world.blue_budget < spec.usd_cost`` —
             hard refusal, not a ``max(0, ...)`` clamp (which was the
             "free fires after $0" bug).
           * Saturation: skip non-CIWS launches once this threat already
-            has ``MAX_SIMULTANEOUS_PER_THREAT`` non-CIWS interceptors
-            in flight. CIWS is exempt.
+            has the per-kind cap of non-CIWS interceptors in flight.
+            Cap table in ``SATURATION_CAP_BY_KIND`` (DRONE / CRUISE 2,
+            BALLISTIC / HGV 3). CIWS is exempt.
           * Launcher readiness + range: defensive re-check (mask
             already filters these in principle).
+
+        The earlier cost-exchange allowlist (``ALLOWED_INTERCEPTORS``)
+        and the post-policy ``_force_ballistic_fallback`` dispatcher
+        were removed 2026-04-24 (Bug 7) — the blue_aoe_mixed policy
+        (2.3 M cumulative steps) has internalised cost-exchange well
+        enough that the allowlist was distorting more than helping,
+        and the fallback was originating fires the policy had
+        deliberately deferred.
 
         On a successful spawn the new interceptor's id is recorded in
         ``self._assignments`` so the cap is honoured across ticks in
@@ -463,15 +398,7 @@ class LearnedBlueAI:
             threat = threats[a_int]
             if not threat.state.alive:
                 continue
-            # Gate 0: cost-exchange filter — refuse pairings the policy
-            # shouldn't be making (PAC-2 at drone, SLM at ballistic).
-            # See ALLOWED_INTERCEPTORS for the table + rationale.
             threat_kind = ThreatType(threat.state.kind)
-            allowed = ALLOWED_INTERCEPTORS.get(threat_kind, set())
-            if lch.kind not in allowed:
-                self._filter_rejects[threat_kind][lch.kind] = \
-                    self._filter_rejects[threat_kind].get(lch.kind, 0) + 1
-                continue
             spec = INTERCEPTOR_SPECS[lch.kind]
             # Gate 1: budget — hard refusal, no clamp.
             if world.blue_budget < spec.usd_cost:
@@ -509,80 +436,6 @@ class LearnedBlueAI:
             self._assignments.setdefault(tid_target, []).append(iid)
             n_fires += 1
         return n_fires
-
-    def _force_ballistic_fallback(self, t_now: float) -> int:
-        """Force-dispatch PAC-3/PAC-2 at any ballistic the policy left
-        unengaged.
-
-        Observed (W2 audit, 2026-04-23): the trained Blue policy never
-        activates PAC-2 launchers — it always picks PAC-3 for ballistic
-        and never routes to PAC-2 even when PAC-3 is on cooldown / out
-        of magazine. Without intervention a ballistic with no PAC-3
-        coverage just flies through and craters a site. Gate 0's
-        ``ALLOWED_INTERCEPTORS`` already permits ``LONG_SAM`` for
-        ballistic, but Gate 0 is filter-only — it never originates a
-        fire decision. This method is the originator: a rule-layer
-        safety net that mirrors the spirit of ``sim/blue_ai.py``'s
-        last-resort tier (try anything affordable + in range when the
-        primary kit is unavailable).
-
-        Activation: only fires at ballistics with zero in-flight
-        interceptors. Tries PAC-3 first (preferred — htk match for
-        Mach-13 RV), falls through to PAC-2 (acceptable — long_sam,
-        prox-mode, secondary). One launcher per threat per tick: the
-        next tick will try again if ammo is still available. Respects
-        budget + range gates exactly like ``_apply_action_gated`` so
-        the ledger and physical reach stay consistent.
-
-        Returns the number of force-dispatched interceptors (for log).
-        """
-        world = self._env.world
-        forced = 0
-        for tid, threat in world.threats.items():
-            if not threat.state.alive:
-                continue
-            if ThreatType(threat.state.kind) != ThreatType.BALLISTIC:
-                continue
-            if len(self._assignments.get(tid, [])) > 0:
-                continue  # policy or prior fallback already engaged it
-            # Try PAC-3 (HIT_TO_KILL) first, then PAC-2 (LONG_SAM).
-            # Order matches the rule ``BlueAI.PRIMARY_RULES[BALLISTIC]``.
-            for kind in (
-                InterceptorType.HIT_TO_KILL,
-                InterceptorType.LONG_SAM,
-            ):
-                spec = INTERCEPTOR_SPECS[kind]
-                if world.blue_budget < spec.usd_cost:
-                    continue
-                fired_this_kind = False
-                for lch in self.launchers.launchers:
-                    if lch.kind != kind:
-                        continue
-                    if lch.reloading or not lch.can_fire(t_now):
-                        continue
-                    t_pos = threat.state.pos
-                    dx = float(t_pos[0] - lch.pos[0])
-                    dy = float(t_pos[1] - lch.pos[1])
-                    dz = float(t_pos[2])
-                    if (dx * dx + dy * dy + dz * dz) > \
-                            (spec.max_range * LAUNCH_RANGE_MARGIN) ** 2:
-                        continue
-                    mode = lch.fire(t_now)
-                    iid = world.spawn_interceptor(
-                        lch.kind,
-                        (lch.pos[0], lch.pos[1], 0.0),
-                        (dx, dy, dz),
-                        tid,
-                        mode,
-                    )
-                    world.blue_budget -= spec.usd_cost
-                    self._assignments.setdefault(tid, []).append(iid)
-                    forced += 1
-                    fired_this_kind = True
-                    break  # one launcher per threat per tick
-                if fired_this_kind:
-                    break  # don't also fire PAC-2 in the same tick
-        return forced
 
 
 # ----------------------------------------------------------------------
