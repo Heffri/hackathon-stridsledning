@@ -10,7 +10,12 @@ export const SCALE = 0.001;
 
 // Arena constants (must stay in sync with backend config.py)
 export const ARENA_X = 150_000;
-export const ARENA_Y = 250_000;
+// Live-demo polish (2026-04-24, Bug 9): 250_000 → 350_000 to push the
+// ballistic / HGV spawn band 100 km further north, giving PAC-3 more
+// intercept runway against Mach-13/17 re-entry weapons. Saab landmass
+// still occupies y=0-250 km; the extra 100 km is empty open ocean /
+// "deep strategic rear" where strategic launchers sit off-map.
+export const ARENA_Y = 350_000;
 export const BASE_POS = [75_000, 5_000, 0];
 
 export function createScene(canvas) {

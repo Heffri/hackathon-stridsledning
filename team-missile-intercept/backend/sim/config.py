@@ -15,10 +15,17 @@ AOE_ENABLED = True
 
 # --- Arena ---
 ARENA_X = 150_000.0  # east-west extent (m)
-ARENA_Y = 250_000.0  # north-south extent (m) — deep enough for HGV's
-                      # 180 km spawn border and ballistic's 120 km, so
-                      # Blue can see the interceptors run out of fuel
-                      # during the long head-on engagement.
+# Live-demo polish (2026-04-24, Bug 9): bumped 250_000 → 350_000 so the
+# ballistic / HGV spawn band (STRATEGIC_Y_BAND = ARENA_Y - 15k .. ARENA_Y
+# - 5k) lands at y=335-345 km instead of 235-245 km. The old 235-245 km
+# strip was only ~160 km north of the northernmost military site (Spear
+# Point Base, y=76.5 km), giving PAC-3 ~12-16 s of intercept window
+# against Mach-13/17 re-entry weapons — shorter than PAC-3's 10-15 s
+# fly-out. Pushing 100 km further north makes it 260 km, restoring a
+# comfortable 2-3× safety margin. Saab landmass polygons stay in
+# y=0-250 km; y=250-350 km is intentional empty "deep strategic rear"
+# where ICBM / HGV launchers live off-map.
+ARENA_Y = 350_000.0  # north-south extent (m)
 ARENA_Z = 40_000.0   # ceiling (m)
 GROUND_Z = 0.0
 
