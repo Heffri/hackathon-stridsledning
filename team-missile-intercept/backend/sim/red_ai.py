@@ -608,7 +608,17 @@ class ScriptedRedAI:
     ) -> Optional[int]:
         """Budget-gated wrapper around world.spawn_threat. Returns the
         new threat id or None if the spawn was skipped (insufficient
-        budget, or spawn_threat validation raised)."""
+        budget, dead target site, or spawn_threat validation raised).
+
+        Bug 5 (blue_aoe_mixed): skip spawns whose target site is already
+        at HP 0. Pre-fix, ScriptedRed chains kept firing at a dead site
+        for the rest of the match — burning ~30% of Red's budget on a
+        corpse instead of concentrating pressure on the two surviving
+        sites. Gate preserves budget for the other chains.
+        """
+        site = sites.find_site_by_id(chain.target_site_id)
+        if site is not None and site.hp <= 0:
+            return None
         cost = THREAT_SPECS[kind].usd_cost
         if world.red_budget < cost:
             return None
@@ -639,6 +649,12 @@ class ScriptedRedAI:
         """
         positions = config.RED_LAUNCHER_POSITIONS.get("drone", [])
         if not positions:
+            return
+        # Bug 5: short-circuit the whole batch if the target site is
+        # already dead. Mirrors the cruise-batch gate — avoids a
+        # misleading "0/10 drones" log line and saves the RNG stream.
+        site = sites.find_site_by_id(chain.target_site_id)
+        if site is not None and site.hp <= 0:
             return
         pos_xy = random.choice(positions)
         base_x, base_y = float(pos_xy[0]), float(pos_xy[1])
@@ -681,6 +697,18 @@ class ScriptedRedAI:
         pos_xy = random.choice(positions)
         base_x, base_y = float(pos_xy[0]), float(pos_xy[1])
         ids: List[int] = []
+        # Bug 5: short-circuit the entire batch if the target site is
+        # already dead. Same rationale as `_try_spawn` — don't burn Red
+        # budget on threats targeting a corpse.
+        site = sites.find_site_by_id(chain.target_site_id)
+        if site is not None and site.hp <= 0:
+            chain.batches[batch_name] = {
+                "spawn_t": world.t,
+                "ids": [],
+                "spawn_pos": tuple(pos_xy),
+                "dist": _straight_line_dist(pos_xy, chain.target_xy),
+            }
+            return
         for _ in range(_CRUISE_BATCH_SIZE):
             z = float(self.rng.uniform(*CRUISE_ALT_RANGE))
             # Per-cruise xy jitter (±800m, smaller than drone because cruise

@@ -351,23 +351,42 @@ class World:
         # Arcade AOE reacquire-on-death (blue_aoe_long Phase 2): if the
         # interceptor's current target died, look for the nearest alive
         # threat still inside the launcher's max_range and swap to it.
-        # No new RL action — purely an environment behaviour. Interceptors
-        # that can't find a replacement keep their dead target_id; PN
-        # guidance decays to zero via Interceptor.step's existing fallback
-        # and the interceptor coasts to timeout.
+        # Bug 4 (blue_aoe_mixed): terminal-phase gate — if CPA on the
+        # dying target is < 2 s out, a fresh retarget will almost always
+        # fail (turn-radius limits). Better to coast on the dying target
+        # and timeout quietly than to flail toward a distant live target.
+        # Non-terminal death (CPA > 2 s or already-pruned target with no
+        # velocity info) falls through to the normal retarget path.
         for inter in list(self.interceptors.values()):
             prev_pos = inter.state.pos.copy()
             prev_vel = inter.state.vel.copy()
             target = self.threats.get(inter.target_id)
             if target is None or not target.state.alive:
-                new_target = self.nearest_alive_threat(
-                    inter.state.pos,
-                    max_range_m=inter.spec.max_range,
-                    launcher_pos=inter._launcher_pos,
-                )
-                if new_target is not None:
-                    inter.target_id = new_target.state.id
-                    target = new_target
+                retarget = True
+                if target is not None and not target.state.alive:
+                    # Target is present but just-died this tick — we still
+                    # have its prev_pos / prev_vel to estimate CPA time.
+                    # If CPA is < 2 s out, skip the retarget (terminal phase).
+                    try:
+                        cpa_t = physics.time_to_cpa(
+                            inter.state.pos,
+                            inter.state.vel,
+                            target._prev_pos,
+                            target._prev_vel,
+                        )
+                    except Exception:
+                        cpa_t = float("inf")
+                    if 0.0 <= cpa_t < 2.0:
+                        retarget = False
+                if retarget:
+                    new_target = self.nearest_alive_threat(
+                        inter.state.pos,
+                        max_range_m=inter.spec.max_range,
+                        launcher_pos=inter._launcher_pos,
+                    )
+                    if new_target is not None:
+                        inter.target_id = new_target.state.id
+                        target = new_target
             target_state = target.state if target is not None else None
             inter.step(dt, target_state, self.t)
             inter._prev_pos = prev_pos

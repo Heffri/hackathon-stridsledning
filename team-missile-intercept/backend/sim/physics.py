@@ -146,3 +146,23 @@ def closest_approach(
     t_star = max(0.0, min(dt, t_star))
     closest_vec = dp + dv * t_star
     return float(np.linalg.norm(closest_vec))
+
+
+def time_to_cpa(
+    p1: np.ndarray,
+    v1: np.ndarray,
+    p2: np.ndarray,
+    v2: np.ndarray,
+) -> float:
+    """Unbounded time-to-closest-approach assuming constant velocities.
+
+    Returns +inf if the two entities are stationary relative to each
+    other (no meaningful CPA time), and a negative value if the CPA is
+    in the past. Caller should clamp for physical semantics.
+    """
+    dp = p1 - p2
+    dv = v1 - v2
+    denom = float(np.dot(dv, dv))
+    if denom < 1e-9:
+        return float("inf")
+    return -float(np.dot(dp, dv)) / denom
