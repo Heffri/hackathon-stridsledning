@@ -7,7 +7,6 @@ import { wireHud, updateHud, setWsStatus, showWsError, showLayoutStatus } from '
 import { initStatusPanel, updateStatusPanel } from './status_panel.js';
 import { initLauncherDrag } from './drag_launchers.js';
 import { onSelectionChange } from './launcher_selection.js';
-import { showIntro, showSetupTip } from './tutorial.js';
 
 const canvas = document.getElementById('view');
 const {
@@ -74,10 +73,7 @@ function openWs() {
     if (aiSelect && msg.blue_ai_slot && aiSelect.value !== msg.blue_ai_slot) {
       aiSelect.value = msg.blue_ai_slot;
     }
-    // Show one-shot setup tips when phase first becomes 'setup'.
-    const phase = msg.phase || 'setup';
-    if (phase === 'setup' && _lastPhase !== 'setup') showSetupTip();
-    _lastPhase = phase;
+    _lastPhase = msg.phase || 'setup';
   });
 }
 
@@ -106,11 +102,8 @@ if (_speedSlider) {
   document.getElementById('speed-val').textContent = '1.0x';
 }
 
-// Show intro modal on load; open WS only after user dismisses so the
-// server isn't stalled waiting while the user reads the intro.
-showIntro().then(() => openWs());
-
-// Track last phase to detect SETUP entry for the one-shot tips card.
+// Connect immediately — no intro modal blocking the WS.
+openWs();
 let _lastPhase = null;
 
 // Keyboard shortcuts — demo-friendly hotkeys for the 4-minute presentation.
