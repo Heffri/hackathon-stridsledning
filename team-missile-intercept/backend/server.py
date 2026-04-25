@@ -32,6 +32,8 @@ BLUE_AI_MODELS = [
     ("aoe", "RL Aggressive (AOE shaped)", "rl/runs/blue_local/blue_aoe_aggressive_B_shaped/model.zip"),
     ("v3", "RL Site-Priority (weighted)", "rl/runs/blue_reward_v2_finetune/model.zip"),
     ("v4", "RL CIWS Active (v4)", "rl/runs/blue_reward_v4_finetune/model.zip"),
+    ("boyu_v2", "RL Boyu V2", "rl/runs/boyu_model_v2/model.zip"),
+    ("boyu_v2a", "RL Boyu V2a", "rl/runs/boyu_modedlV2a/model.zip"),
 ]
 
 # Available Red AI models — order matches the frontend dropdown.
