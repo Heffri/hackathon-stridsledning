@@ -477,14 +477,29 @@ class LearnedBlueAI:
         """
         world = self._env.world
         forced = 0
+        STRATEGIC_KINDS = (InterceptorType.HIT_TO_KILL, InterceptorType.LONG_SAM)
         for tid, threat in world.threats.items():
             if not threat.state.alive:
                 continue
             threat_kind = ThreatType(threat.state.kind)
             if threat_kind not in (ThreatType.BALLISTIC, ThreatType.HGV):
                 continue
-            if len(self._assignments.get(tid, [])) > 0:
-                continue  # policy or prior fallback already engaged
+            # Only skip if a STRATEGIC interceptor (PAC-2/PAC-3) is already
+            # in flight at this threat. A CIWS / RBS-70 / SLS at a Mach-13
+            # ballistic is a wasted shot (range / speed mismatch); Path C
+            # should still launch PAC-3 in that case so the threat is
+            # actually addressed.
+            existing = self._assignments.get(tid, [])
+            strategic_engaged = False
+            for iid in existing:
+                inter = world.interceptors.get(iid)
+                if inter is None or not inter.state.alive:
+                    continue
+                if inter.spec.kind in STRATEGIC_KINDS:
+                    strategic_engaged = True
+                    break
+            if strategic_engaged:
+                continue
             # PAC-3 first for both. PAC-2 backup only for ballistic.
             kinds_to_try = [InterceptorType.HIT_TO_KILL]
             if threat_kind == ThreatType.BALLISTIC:
