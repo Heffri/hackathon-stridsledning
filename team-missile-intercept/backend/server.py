@@ -31,6 +31,7 @@ BLUE_AI_MODELS = [
     ("blue2", "Blue-2 (1x penalty)", "rl/models/blue_ai_1m_1xpenalty/model.zip"),
     ("aoe", "Aggressive AOE", "rl/runs/blue_local/blue_aoe_aggressive_B_shaped/model.zip"),
     ("v3", "v3 Reward (Weighted Sites)", "rl/runs/blue_reward_v2_finetune/model.zip"),
+    ("v4", "v4 Reward (CIWS Active)", "rl/runs/blue_reward_v4_finetune/model.zip"),
 ]
 
 
