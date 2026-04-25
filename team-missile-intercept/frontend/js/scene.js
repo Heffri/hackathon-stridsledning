@@ -239,7 +239,9 @@ export function createScene(canvas) {
   // Boreal Passage location landmarks — richer per-subtype 3D structures.
   // Terrain top is at y=0.3; all structures start from y=0.32 (group offset).
   // Side tinting: north = red emissive accent, south = blue emissive accent.
-  const landmarkHitMeshes = [];
+  // Landmark hit meshes removed — drag_visual.js is unused dead code
+  // and the 10 km-tall invisible cylinders were blocking raycasts near
+  // bases (Spear Point, etc.) for launcher and entity click handlers.
   for (const loc of BOREAL_LOCATIONS) {
     const [sx, sz] = saabToScene(loc.x, loc.y);
     const group = new THREE.Group();
@@ -428,19 +430,6 @@ export function createScene(canvas) {
     if (loc.rotation_y) group.rotation.y = loc.rotation_y;
     group.position.set(sx, 0.32, sz);
     scene.add(group);
-
-    // Invisible hit volume for drag_visual.js. Added as a child of the group
-    // so it moves with the landmark when dragged. Geometry is given in local
-    // coords (before scale) so the compensated radius keeps the world-space
-    // click target at a fixed ~3 km radius regardless of loc.scale.
-    const hitR = 3.0 / locScale;   // world 3 km → local units
-    const hitH = 10.0 / locScale;  // world 10 km tall hit volume
-    const lmHitGeo = new THREE.CylinderGeometry(hitR, hitR, hitH, 12);
-    const lmHitMat = new THREE.MeshBasicMaterial({ visible: false });
-    const lmHitMesh = new THREE.Mesh(lmHitGeo, lmHitMat);
-    lmHitMesh.position.set(0, hitH / 2, 0);  // centre vertically above origin
-    group.add(lmHitMesh);
-    landmarkHitMeshes.push(lmHitMesh);
 
     const label = makeTextSprite(loc.name, loc.side);
     label.position.set(sx, 14.0, sz);

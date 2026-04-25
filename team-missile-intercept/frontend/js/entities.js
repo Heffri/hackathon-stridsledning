@@ -625,7 +625,8 @@ class EntityMesh {
     // Invisible hit sphere so in-flight entities are easy to click.
     // Radius is inversely proportional to kind scale so the clickable
     // area in screen-space is consistent across all entity sizes.
-    const hitRadius = 3.0 / kindScale;
+    // Generous radius — entities are viewed from 50-150 scene units away.
+    const hitRadius = 6.0 / kindScale;
     const hitGeo = new THREE.SphereGeometry(hitRadius, 8, 6);
     const hitMat = new THREE.MeshBasicMaterial({ visible: false });
     const hitMesh = new THREE.Mesh(hitGeo, hitMat);
