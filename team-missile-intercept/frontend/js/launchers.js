@@ -76,11 +76,11 @@ class LauncherMesh {
     this._buildVehicle(kind);
 
     // Invisible hit volume for drag_launchers.js (makes small weapons like RBS-70 easy to grab).
-    // Generous radius so launchers are easy to click even from a pulled-back camera.
-    const hitGeo = new THREE.CylinderGeometry(2.5, 2.5, 4.0, 12);
+    // r=3.0 × group scale 1.5 = 4.5 km effective radius, h=5.0×1.5 = 7.5 km tall.
+    const hitGeo = new THREE.CylinderGeometry(3.0, 3.0, 5.0, 12);
     const hitMat = new THREE.MeshBasicMaterial({ visible: false });
     this.hitMesh = new THREE.Mesh(hitGeo, hitMat);
-    this.hitMesh.position.set(0, 2.0, 0);
+    this.hitMesh.position.set(0, 2.5, 0);
     this.group.add(this.hitMesh);
 
     // Full-circle range ring in local coords centred on group origin.
