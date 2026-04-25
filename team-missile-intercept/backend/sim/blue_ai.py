@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from . import config
+from . import config, sites
 from .launcher import Launcher, LauncherFleet
 from .types import (
     INTERCEPTOR_SPECS,
@@ -322,6 +322,16 @@ class BlueAI:
         for tid, threat in world.threats.items():
             if not threat.state.alive:
                 continue
+
+            # Site-aware triage: don't waste interceptors on threats
+            # heading toward a site that's already destroyed (HP 0).
+            # Let them pass — save ammo/budget for threats targeting
+            # surviving sites. CIWS still fires (too cheap to skip).
+            tsid = getattr(threat, '_target_site_id', None)
+            if tsid is not None:
+                target_site = sites.find_site_by_id(tsid)
+                if target_site is not None and target_site.hp <= 0:
+                    continue
 
             threat_pos = threat.state.pos
             threat_vel = threat.state.vel

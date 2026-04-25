@@ -582,7 +582,8 @@ class ScriptedRedAI:
         if not positions:
             return False
 
-        site = random.choice(military_alive)
+        # Focus fire: prefer the weakest surviving site to finish it off.
+        site = min(military_alive, key=lambda s: s.hp)
         target_xy = (float(site.pos[0]), float(site.pos[1]))
         # Nearest drone launcher to this site (reduces absurdly long
         # cross-arena flights — the mop-up is supposed to land, not
