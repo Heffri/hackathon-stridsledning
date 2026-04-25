@@ -418,12 +418,14 @@ class Explosion:
     pos: np.ndarray
     t: float
     lifetime: float = 1.0
+    kind: str = ""
 
     def to_dict(self) -> dict:
         return {
             "pos": [float(self.pos[0]), float(self.pos[1]), float(self.pos[2])],
             "t": self.t,
             "lifetime": self.lifetime,
+            "kind": self.kind,
         }
 
 

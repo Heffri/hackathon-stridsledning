@@ -447,7 +447,7 @@ class World:
             primary_id = target.state.id
             primary_dmg = aoe_dmg.get(primary_id, 0)
             inter.state.alive = False   # interceptor consumed regardless
-            self.explosions.append(Explosion(pos=hit_pos, t=self.t))
+            self.explosions.append(Explosion(pos=hit_pos, t=self.t, kind=inter.state.kind))
 
             # Apply primary damage first so its event fires with the
             # usual "intercept"/"damage" labelling.
@@ -565,7 +565,7 @@ class World:
                     # Milestone I: per-kind HP damage on every leak.
                     dmg = config.SITE_LEAK_DAMAGE.get(threat.state.kind, 10)
                     site.hp = max(0, site.hp - dmg)
-                    self.explosions.append(Explosion(pos=threat.state.pos.copy(), t=self.t))
+                    self.explosions.append(Explosion(pos=threat.state.pos.copy(), t=self.t, kind=threat.state.kind))
                     self.events.append(
                         {
                             "type": "leak",
@@ -589,7 +589,7 @@ class World:
                 threat.state.alive = False
                 hit_pos = threat.state.pos.copy()
                 hit_pos[2] = config.GROUND_Z
-                self.explosions.append(Explosion(pos=hit_pos, t=self.t))
+                self.explosions.append(Explosion(pos=hit_pos, t=self.t, kind=threat.state.kind))
                 hit_site = None
                 for site in sites.SOUTH_SITES:
                     dx = hit_pos[0] - site.pos[0]
@@ -624,7 +624,7 @@ class World:
                 inter.state.alive = False
                 hit_pos = inter.state.pos.copy()
                 hit_pos[2] = config.GROUND_Z
-                self.explosions.append(Explosion(pos=hit_pos, t=self.t))
+                self.explosions.append(Explosion(pos=hit_pos, t=self.t, kind=inter.state.kind))
                 self.events.append(
                     {"type": "ground_crash", "interceptor": iid, "kind": inter.state.kind}
                 )

@@ -883,7 +883,7 @@ export class EntityRegistry {
       if (!this._exKeys) this._exKeys = new Set();
       if (!this._exKeys.has(key)) {
         this._exKeys.add(key);
-        this._spawnExplosion(ex.pos);
+        this._spawnExplosion(ex.pos, ex.kind || '');
         // prune old keys
         if (this._exKeys.size > 500) {
           this._exKeys = new Set(Array.from(this._exKeys).slice(-200));
@@ -938,11 +938,32 @@ export class EntityRegistry {
     });
   }
 
-  _spawnExplosion(pos) {
+  _spawnExplosion(pos, kind) {
     const [x, y, z] = worldToScene(pos[0], pos[1], pos[2]);
     const now = performance.now() / 1000;
 
-    // 1. Hot-white core flash (original)
+    // Scale explosion visuals by entity kind so CIWS pops are tiny
+    // and PAC-3/ballistic intercepts are dramatic but not nuke-sized.
+    // s = overall size multiplier, r = expansion rate, d = debris count
+    const EXPLOSION_SCALE = {
+      // Interceptors (blue)
+      ciws:    { s: 0.10, r: 2,  d: 3  },
+      rbs70:   { s: 0.15, r: 3,  d: 4  },
+      sls:     { s: 0.25, r: 4,  d: 5  },
+      slm:     { s: 0.30, r: 4,  d: 6  },
+      pac2:    { s: 0.40, r: 5,  d: 7  },
+      pac3:    { s: 0.45, r: 5,  d: 8  },
+      // Threats (red) — for leaks / ground crashes
+      drone:      { s: 0.10, r: 2,  d: 3  },
+      cruise:     { s: 0.25, r: 4,  d: 5  },
+      ballistic:  { s: 0.50, r: 6,  d: 8  },
+      hgv:        { s: 0.55, r: 6,  d: 10 },
+    };
+    const cfg = EXPLOSION_SCALE[kind] || { s: 0.25, r: 4, d: 5 };
+    const S = cfg.s;
+    const R = cfg.r;
+
+    // 1. Hot-white core flash
     const coreMat = new THREE.MeshBasicMaterial({
       color: 0xffffee,
       transparent: true,
@@ -950,12 +971,12 @@ export class EntityRegistry {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    const core = new THREE.Mesh(new THREE.SphereGeometry(0.8, 14, 12), coreMat);
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.8 * S, 10, 8), coreMat);
     core.position.set(x, y, z);
     this.scene.add(core);
-    this.explosions.push({ mesh: core, born: now, lifetime: 1.0 });
+    this.explosions.push({ mesh: core, born: now, lifetime: 0.6, scaleRate: R });
 
-    // 2. Orange-red fireball: slower expansion, longer duration
+    // 2. Orange-red fireball
     const fbMat = new THREE.MeshBasicMaterial({
       color: 0xff6620,
       transparent: true,
@@ -963,28 +984,28 @@ export class EntityRegistry {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    const fireball = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 10), fbMat);
+    const fireball = new THREE.Mesh(new THREE.SphereGeometry(1.0 * S, 10, 8), fbMat);
     fireball.position.set(x, y, z);
     this.scene.add(fireball);
-    this.explosions.push({ mesh: fireball, born: now, lifetime: 1.3, scaleRate: 10 });
+    this.explosions.push({ mesh: fireball, born: now, lifetime: 0.8, scaleRate: R * 0.7 });
 
-    // 3. Shockwave ring: expanding horizontal ring
+    // 3. Shockwave ring
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0xffaa44,
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.4,
       depthWrite: false,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     });
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.5, 24), ringMat);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.3 * S, 1.0 * S, 20), ringMat);
     ring.position.set(x, y, z);
     ring.rotation.x = -Math.PI / 2;
     this.scene.add(ring);
-    this.explosions.push({ mesh: ring, born: now, lifetime: 0.8, scaleRate: 25, isRing: true });
+    this.explosions.push({ mesh: ring, born: now, lifetime: 0.5, scaleRate: R * 1.5, isRing: true });
 
-    // 4. Debris particles: small spheres flung outward
-    for (let i = 0; i < 10; i++) {
+    // 4. Debris particles (count scaled by kind)
+    for (let i = 0; i < cfg.d; i++) {
       const dMat = new THREE.MeshBasicMaterial({
         color: Math.random() > 0.5 ? 0xffcc44 : 0xff6633,
         transparent: true,
@@ -992,16 +1013,17 @@ export class EntityRegistry {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       });
-      const debris = new THREE.Mesh(new THREE.SphereGeometry(0.15, 4, 3), dMat);
+      const debris = new THREE.Mesh(new THREE.SphereGeometry(0.1 * S, 4, 3), dMat);
       debris.position.set(x, y, z);
-      const vx = (Math.random() - 0.5) * 40;
-      const vy = (Math.random() - 0.3) * 30;
-      const vz = (Math.random() - 0.5) * 40;
+      const speed = 15 * S;
+      const vx = (Math.random() - 0.5) * speed * 2;
+      const vy = (Math.random() - 0.3) * speed * 1.5;
+      const vz = (Math.random() - 0.5) * speed * 2;
       this.scene.add(debris);
       this.explosions.push({
         mesh: debris,
         born: now,
-        lifetime: 0.6 + Math.random() * 0.4,
+        lifetime: 0.4 + Math.random() * 0.3,
         vel: [vx, vy, vz],
         isDebris: true,
       });
