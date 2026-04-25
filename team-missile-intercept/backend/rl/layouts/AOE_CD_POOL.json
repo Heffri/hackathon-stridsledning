@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "date": "2026-04-24",
+    "description": "AOE training pool: Slots C + D from CANDIDATE_LAYOUTS_2026-04-22.json. Uniform sampling per episode. C = Heavy Saturation + Forward Catchers (23 launchers). D = Forward-Island HGV Hunter + RBS Saturation Belt (19 launchers). Both designed for ScriptedRedAI 3-chain drone swarm pressure.",
+    "source_catalog": "rl/layouts/CANDIDATE_LAYOUTS_2026-04-22.json",
+    "slots": ["C", "D"],
+    "blue_budget_start_usd": 200000000
+  },
+  "pool": [
+    {"catalog": "rl/layouts/CANDIDATE_LAYOUTS_2026-04-22.json", "slot": "C", "weight": 1.0},
+    {"catalog": "rl/layouts/CANDIDATE_LAYOUTS_2026-04-22.json", "slot": "D", "weight": 1.0}
+  ]
+}

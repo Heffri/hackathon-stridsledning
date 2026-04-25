@@ -1,0 +1,182 @@
+[
+  {
+    "W": 5,
+    "L": 0,
+    "D": 0,
+    "r": 221.24802000000017,
+    "hp": 159.0,
+    "short": 140,
+    "leaks": {
+      "cruise_sub": 47
+    },
+    "model": "P4a",
+    "cfg": "3x1bal",
+    "slot": "C"
+  },
+  {
+    "W": 5,
+    "L": 0,
+    "D": 0,
+    "r": 483.4070000000017,
+    "hp": 225.0,
+    "short": 385,
+    "leaks": {
+      "cruise_sub": 25
+    },
+    "model": "P4a",
+    "cfg": "3x1bal",
+    "slot": "D"
+  },
+  {
+    "W": 0,
+    "L": 5,
+    "D": 0,
+    "r": -526.6180000000002,
+    "hp": 0.0,
+    "short": 0,
+    "leaks": {
+      "cruise_sub": 96,
+      "drone": 81
+    },
+    "model": "P4a",
+    "cfg": "3x2bal",
+    "slot": "C"
+  },
+  {
+    "W": 0,
+    "L": 0,
+    "D": 5,
+    "r": 435.9070300000047,
+    "hp": 141.0,
+    "short": 989,
+    "leaks": {
+      "cruise_sub": 51,
+      "drone": 17
+    },
+    "model": "P4a",
+    "cfg": "3x2bal",
+    "slot": "D"
+  },
+  {
+    "W": 0,
+    "L": 5,
+    "D": 0,
+    "r": -955.9220000000001,
+    "hp": 0.0,
+    "short": 0,
+    "leaks": {
+      "drone": 151,
+      "cruise_sub": 100,
+      "hgv": 16
+    },
+    "model": "P4a",
+    "cfg": "full",
+    "slot": "C"
+  },
+  {
+    "W": 0,
+    "L": 4,
+    "D": 1,
+    "r": -138.31097999999525,
+    "hp": 9.0,
+    "short": 1076,
+    "leaks": {
+      "hgv": 22,
+      "cruise_sub": 68,
+      "drone": 52
+    },
+    "model": "P4a",
+    "cfg": "full",
+    "slot": "D"
+  },
+  {
+    "W": 5,
+    "L": 0,
+    "D": 0,
+    "r": 243.28801000000016,
+    "hp": 165.0,
+    "short": 69,
+    "leaks": {
+      "cruise_sub": 45
+    },
+    "model": "P4bC_retry_1313k",
+    "cfg": "3x1bal",
+    "slot": "C"
+  },
+  {
+    "W": 5,
+    "L": 0,
+    "D": 0,
+    "r": 420.8110000000014,
+    "hp": 216.0,
+    "short": 309,
+    "leaks": {
+      "cruise_sub": 28
+    },
+    "model": "P4bC_retry_1313k",
+    "cfg": "3x1bal",
+    "slot": "D"
+  },
+  {
+    "W": 0,
+    "L": 5,
+    "D": 0,
+    "r": -529.1860000000004,
+    "hp": 0.0,
+    "short": 0,
+    "leaks": {
+      "cruise_sub": 97,
+      "drone": 89
+    },
+    "model": "P4bC_retry_1313k",
+    "cfg": "3x2bal",
+    "slot": "C"
+  },
+  {
+    "W": 0,
+    "L": 0,
+    "D": 5,
+    "r": 338.39503000000485,
+    "hp": 108.0,
+    "short": 989,
+    "leaks": {
+      "cruise_sub": 59,
+      "drone": 25
+    },
+    "model": "P4bC_retry_1313k",
+    "cfg": "3x2bal",
+    "slot": "D"
+  },
+  {
+    "W": 0,
+    "L": 5,
+    "D": 0,
+    "r": -985.4580000000002,
+    "hp": 0.0,
+    "short": 0,
+    "leaks": {
+      "cruise_sub": 107,
+      "hgv": 18,
+      "drone": 139
+    },
+    "model": "P4bC_retry_1313k",
+    "cfg": "full",
+    "slot": "C"
+  },
+  {
+    "W": 0,
+    "L": 5,
+    "D": 0,
+    "r": -557.5949999999978,
+    "hp": 0.0,
+    "short": 503,
+    "leaks": {
+      "hgv": 23,
+      "cruise_sub": 88,
+      "drone": 74
+    },
+    "model": "P4bC_retry_1313k",
+    "cfg": "full",
+    "slot": "D"
+  }
+]

@@ -21,43 +21,89 @@ from .types import (
 )
 
 
-def resolve_damage(
+def resolve_detonation(
     spec: InterceptorSpec,
     engagement_mode: str,
     d_min: float,
-) -> tuple:
-    """Compute (damage, hit_kind) for an interceptor→threat encounter
-    at closest-approach distance `d_min`. Extracted from the World.step
-    damage branch so `test_engagement_mode` can unit-test the model
-    without running the full integrator.
+) -> Optional[str]:
+    """Decide whether an interceptor detonates given its closest-approach
+    distance `d_min` to the tracked primary target. Returns the event
+    `hit_kind` string on detonation, or None on miss.
 
-    Mode semantics (M-TIER2.5):
-      * 'prox' — current auto direct+prox behaviour. Bit-for-bit
-        identical to pre-M-TIER2.5: direct hit inside `radius_direct`
-        deals `damage_direct`; inside `radius_prox` deals a linearly-
-        falling off fraction of `damage_prox` (at least 1); wider is
-        a clean miss (0 damage). Event strings preserved as
-        'direct' / 'prox' / 'miss'.
-      * 'htk'  — hit-to-kill. Direct hit inside `radius_direct` deals
-        `damage_direct * 2`; anything wider is a clean miss. Event
-        strings 'htk_direct' / 'htk_miss'. HTK is opt-in (M-TIER2.5
-        infrastructure only — no caller defaults to HTK except pac_3,
-        which is physically HTK-only).
+    Trigger semantics (AOE 2026-04-24):
+      * 'prox' — detonate when `d_min < radius_prox`. hit_kind 'direct'
+        if inside radius_direct, else 'prox'.
+      * 'htk'  — detonate when `d_min < radius_direct`. hit_kind
+        'htk_direct'. PAC-3 uses this exclusively.
+
+    Damage is no longer computed here — callers run `resolve_aoe` at the
+    detonation coordinate to apply flat `fragment_damage` within
+    `fragment_radius` to every alive Red threat.
 
     Raises ValueError for unknown mode strings (caller bug).
     """
     if engagement_mode == "prox":
         if d_min < spec.radius_direct:
-            return (spec.damage_direct, "direct")
+            return "direct"
         if d_min < spec.radius_prox:
-            fall = 1.0 - (d_min / spec.radius_prox)
-            return (max(1, int(round(spec.damage_prox * fall))), "prox")
-        return (0, "miss")
+            return "prox"
+        return None
     if engagement_mode == "htk":
         if d_min < spec.radius_direct:
-            return (spec.damage_direct * 2, "htk_direct")
-        return (0, "htk_miss")
+            return "htk_direct"
+        return None
     raise ValueError(f"Unknown engagement_mode: {engagement_mode!r}")
+
+
+def resolve_aoe(
+    world: "World",
+    spec: InterceptorSpec,
+    detonation_xyz: np.ndarray,
+    primary_target_id: Optional[int] = None,
+) -> Dict[int, int]:
+    """Apply AOE fragment damage at `detonation_xyz`. Returns a dict
+    mapping victim threat_id → damage dealt. Does NOT mutate HP or the
+    alive flag — caller applies the per-victim HP update + event
+    emission so it can dedupe events and book-keep cost-exchange.
+
+    Rules:
+      * Only alive Red threats are damage candidates. Blue interceptors,
+        Blue sites, and already-dead threats are skipped — no friendly
+        fire, no AOE on ground targets.
+      * Flat within-radius damage: every threat with `d <= fragment_radius`
+        takes exactly `fragment_damage`. No falloff — clean RL gradient.
+      * `fragment_radius=0` (PAC-3): only the `primary_target_id`
+        threat takes damage, and only if it's still alive. Matches the
+        "pure HTK, no splash" design intent. `d <= 0` would otherwise
+        match nothing since a threat's centre is never exactly at the
+        detonation point given floating-point arithmetic.
+    """
+    hits: Dict[int, int] = {}
+    radius = float(spec.fragment_radius)
+    damage = int(spec.fragment_damage)
+    if radius <= 0.0:
+        # Pure-HTK (PAC-3). Primary target connects; no splash.
+        if primary_target_id is None:
+            return hits
+        primary = world.threats.get(primary_target_id)
+        if primary is None or not primary.state.alive:
+            return hits
+        hits[primary_target_id] = damage
+        return hits
+    radius_sq = radius * radius
+    dx = detonation_xyz[0]
+    dy = detonation_xyz[1]
+    dz = detonation_xyz[2]
+    for tid, threat in world.threats.items():
+        if not threat.state.alive:
+            continue
+        p = threat.state.pos
+        ddx = float(p[0]) - dx
+        ddy = float(p[1]) - dy
+        ddz = float(p[2]) - dz
+        if (ddx * ddx + ddy * ddy + ddz * ddz) <= radius_sq:
+            hits[tid] = damage
+    return hits
 
 
 class World:
@@ -252,6 +298,8 @@ class World:
         initial_dir,
         target_id: int,
         engagement_mode: Optional[str] = None,
+        launcher_pos=None,
+        launcher_max_range_m: Optional[float] = None,
     ) -> int:
         """Construct an Interceptor and register it with the world.
 
@@ -299,12 +347,86 @@ class World:
         i = Interceptor(
             eid, kind, launch_pos, initial_dir, target_id, self.t,
             engagement_mode=engagement_mode,
+            launcher_pos=launcher_pos,
+            launcher_max_range_m=launcher_max_range_m,
         )
         self.interceptors[eid] = i
         self.events.append(
             {"type": "launch", "id": eid, "kind": kind.value, "target": target_id}
         )
         return eid
+
+    # --- retarget helpers (AOE 2026-04-24) ---
+    def nearest_alive_threat(self, inter) -> "Optional[Threat]":
+        """Pick the nearest alive Red threat inside the interceptor's
+        LAUNCHER range envelope. Range gate uses 2D ground distance from
+        the threat to `inter.launcher_pos` against `inter.launcher_max_range_m`
+        × `config.LAUNCH_RANGE_MARGIN`. Ranking is done by 3D distance
+        from the threat to the interceptor's current position — once the
+        gate is passed, grab the physically-closest threat for the
+        shortest retarget leg.
+
+        Returns None if no alive threat falls inside the launcher's
+        envelope.
+        """
+        if not self.threats:
+            return None
+        gate_sq = (inter.launcher_max_range_m * config.LAUNCH_RANGE_MARGIN) ** 2
+        lx = float(inter.launcher_pos[0])
+        ly = float(inter.launcher_pos[1])
+        ipos = inter.state.pos
+        ix = float(ipos[0])
+        iy = float(ipos[1])
+        iz = float(ipos[2])
+        best_t = None
+        best_d3_sq = None
+        for threat in self.threats.values():
+            if not threat.state.alive:
+                continue
+            if threat.state.team != Team.RED:
+                continue
+            tp = threat.state.pos
+            tx = float(tp[0])
+            ty = float(tp[1])
+            # 2D ground-distance gate from threat to launcher.
+            dx_g = tx - lx
+            dy_g = ty - ly
+            if (dx_g * dx_g + dy_g * dy_g) > gate_sq:
+                continue
+            # 3D ranking distance from threat to interceptor.
+            dx_r = tx - ix
+            dy_r = ty - iy
+            dz_r = float(tp[2]) - iz
+            d3_sq = dx_r * dx_r + dy_r * dy_r + dz_r * dz_r
+            if best_d3_sq is None or d3_sq < best_d3_sq:
+                best_d3_sq = d3_sq
+                best_t = threat
+        return best_t
+
+    def _in_terminal_lock(self, inter, dt: float) -> bool:
+        """Return True if the interceptor is within 2 s of predicted CPA
+        against its *previous* target — regardless of whether that
+        target is still alive. Locked interceptors skip retarget so
+        terminal geometry plays out and AOE can still catch the old
+        target area. Old target fully pruned → no terminal lock,
+        retarget allowed.
+        """
+        old_tid = inter.target_id
+        if old_tid is None:
+            return False
+        old_t = self.threats.get(old_tid)
+        if old_t is None:
+            return False
+        # Signed closing time: dot((p_t - p_i), (v_t - v_i)) / |v_rel|^2
+        # Positive when the two bodies are still approaching; 0..2 s
+        # window = terminal lock.
+        rel_p = old_t.state.pos - inter.state.pos
+        rel_v = old_t.state.vel - inter.state.vel
+        rel_v_sq = float(np.dot(rel_v, rel_v))
+        if rel_v_sq < 1e-6:
+            return False
+        t_cpa = -float(np.dot(rel_p, rel_v)) / rel_v_sq
+        return 0.0 <= t_cpa < 2.0
 
     # --- tick ---
     def step(self, dt: float) -> None:
@@ -347,11 +469,29 @@ class World:
             threat._prev_pos = prev_pos  # stored on-the-fly for CPA calc
             threat._prev_vel = prev_vel
 
-        # 2) advance interceptors (need target state — use pre-step target)
+        # 2) advance interceptors. Lost-target retarget runs FIRST
+        # (AOE 2026-04-24): if the tracked target is missing or dead and
+        # we're not in terminal-lock (< 2 s to CPA on the old target
+        # state), pick the nearest alive Red threat inside the original
+        # launcher's range envelope. No target found → target_id=None,
+        # interceptor coasts to stall naturally.
         for inter in list(self.interceptors.values()):
+            if not inter.state.alive:
+                continue
+            target = self.threats.get(inter.target_id) if inter.target_id is not None else None
+            target_dead_or_missing = target is None or not target.state.alive
+            if target_dead_or_missing and not self._in_terminal_lock(inter, dt):
+                new_target = self.nearest_alive_threat(inter)
+                if new_target is not None:
+                    inter.target_id = new_target.state.id
+                    inter.state.target_id = new_target.state.id
+                else:
+                    inter.target_id = None
+                    inter.state.target_id = None
+
             prev_pos = inter.state.pos.copy()
             prev_vel = inter.state.vel.copy()
-            target = self.threats.get(inter.target_id)
+            target = self.threats.get(inter.target_id) if inter.target_id is not None else None
             target_state = target.state if target is not None else None
             inter.step(dt, target_state, self.t)
             inter._prev_pos = prev_pos
@@ -365,11 +505,13 @@ class World:
                     {"type": "timeout", "id": inter.state.id}
                 )
 
-        # 3) collision: for each live interceptor, test CPA vs its target
-        # and resolve damage via the (direct, prox) model from
-        # WEAPON_SPECS.md. The interceptor is consumed regardless of whether
-        # the shot killed the target — that is the tension driving the
-        # "need another shot" scenarios. The target only dies when HP ≤ 0.
+        # 3) AOE collision resolution (2026-04-24). For each live
+        # interceptor: test CPA vs primary target, trigger detonation
+        # via `resolve_detonation` (prox/htk mode), then apply
+        # `resolve_aoe` at the detonation coordinate — every alive Red
+        # threat inside `fragment_radius` takes flat `fragment_damage`.
+        # Interceptor is consumed on detonation only (miss keeps it
+        # flying, next tick tries again).
         for inter in list(self.interceptors.values()):
             if not inter.state.alive:
                 continue
@@ -382,62 +524,65 @@ class World:
                 target._prev_pos, target._prev_vel,
                 dt,
             )
-            # CPA gate uses kill_radius (≈ typical PN miss distance). Keep
-            # it tighter than radius_prox so the damage event fires at the
-            # actual pass — otherwise the damage triggers on the incoming
-            # leg at still-large separation and the interceptor is consumed
-            # before the closest approach is reached.
-            kr = max(inter.spec.kill_radius, target.spec.kill_radius)
-            if d_min > kr:
-                continue
-
-            # Resolve damage from CPA distance. The spec's "(1 - d/r)²"
-            # quadratic falloff combined with real-warhead-scale fuse radii
-            # (5-20 m) leaves almost every hit with 1-2 damage given our
-            # PN's typical 20-80 m CPA. We instead use a linear falloff with
-            # radius_prox scaled up — keeps the "direct vs prox" design
-            # intent and spec damage values intact while giving the demo
-            # legible 1-3 shot kills. M-TIER2.5 factored this out into
-            # `resolve_damage` so the mode split (prox vs htk) is unit-
-            # testable without the full step loop.
-            damage, hit_kind = resolve_damage(
+            hit_kind = resolve_detonation(
                 inter.spec, inter.engagement_mode, d_min
             )
+            if hit_kind is None:
+                continue  # no detonation, interceptor keeps flying
 
-            hit_pos = (inter.state.pos + target.state.pos) * 0.5
-            target.state.hp = max(0, target.state.hp - damage)
-            inter.state.alive = False  # interceptor consumed either way
-            # Always show a small flash at the CPA point so near-misses
-            # still read on screen.
-            self.explosions.append(Explosion(pos=hit_pos, t=self.t))
+            det_pos = (inter.state.pos + target.state.pos) * 0.5
+            primary_id = target.state.id
+            # AOE: flat fragment_damage to every alive threat inside
+            # fragment_radius. PAC-3 (radius=0) hits primary only.
+            aoe_hits = resolve_aoe(
+                self, inter.spec, det_pos, primary_target_id=primary_id
+            )
+            inter.state.alive = False  # consumed on detonation
+            self.explosions.append(Explosion(pos=det_pos, t=self.t))
 
-            if target.state.hp <= 0:
-                target.state.alive = False
-                self.intercepts += 1
-                self.events.append(
-                    {
+            # Apply HP + emit per-victim events so Blue RL reward can
+            # dedupe by interceptor id. `is_primary` marks the tracked
+            # target for cost-exchange bookkeeping.
+            for vid, dmg in aoe_hits.items():
+                victim = self.threats.get(vid)
+                if victim is None:
+                    continue
+                victim.state.hp = max(0, victim.state.hp - dmg)
+                is_primary = (vid == primary_id)
+                pos_list = [
+                    float(det_pos[0]), float(det_pos[1]), float(det_pos[2])
+                ]
+                if victim.state.hp <= 0:
+                    victim.state.alive = False
+                    self.intercepts += 1
+                    self.events.append({
                         "type": "intercept",
                         "interceptor": inter.state.id,
-                        "threat": target.state.id,
-                        "pos": [float(hit_pos[0]), float(hit_pos[1]), float(hit_pos[2])],
-                        "miss_distance": d_min,
-                        "damage": damage,
-                        "hit_kind": hit_kind,
-                    }
-                )
-            else:
-                self.events.append(
-                    {
+                        "threat": victim.state.id,
+                        "kind": victim.state.kind,
+                        "interceptor_kind": inter.state.kind,
+                        "pos": pos_list,
+                        "miss_distance": d_min if is_primary else 0.0,
+                        "damage": dmg,
+                        "hit_kind": hit_kind if is_primary else "aoe",
+                        "is_primary": is_primary,
+                        "primary_threat": primary_id,
+                    })
+                else:
+                    self.events.append({
                         "type": "damage",
                         "interceptor": inter.state.id,
-                        "threat": target.state.id,
-                        "pos": [float(hit_pos[0]), float(hit_pos[1]), float(hit_pos[2])],
-                        "miss_distance": d_min,
-                        "damage": damage,
-                        "hit_kind": hit_kind,
-                        "hp_remaining": target.state.hp,
-                    }
-                )
+                        "threat": victim.state.id,
+                        "kind": victim.state.kind,
+                        "interceptor_kind": inter.state.kind,
+                        "pos": pos_list,
+                        "miss_distance": d_min if is_primary else 0.0,
+                        "damage": dmg,
+                        "hit_kind": hit_kind if is_primary else "aoe",
+                        "hp_remaining": victim.state.hp,
+                        "is_primary": is_primary,
+                        "primary_threat": primary_id,
+                    })
 
         # 4) threats that crossed any site footprint (horizontal distance
         #    within config.BASE_HIT_RADIUS, any altitude). Milestone G:

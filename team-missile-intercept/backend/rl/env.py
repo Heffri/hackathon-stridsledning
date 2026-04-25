@@ -28,36 +28,49 @@ from sim.config import (
     DT,
     LAUNCH_RANGE_MARGIN,
     RED_BUDGET_START,
+    SITE_LEAK_DAMAGE,
 )
 from sim.launcher import LauncherFleet
-from sim.red_ai import RedAI, build_demo_waves
+from sim.red_ai import RedAI, build_demo_waves, build_training_waves
 from sim.types import (
     INTERCEPTOR_SPECS,
     InterceptorType,
     MatchPhase,
+    THREAT_SPECS,
     ThreatType,
 )
 from sim.world import World
 
 
 # --- Fixed shape caps (pad + mask for variable entity counts) ---
-MAX_THREATS = 30
-MAX_LAUNCHERS = 15
-MAX_INTERCEPTORS = 40
+# AOE 2026-04-24: bumped caps for ScriptedRedAI saturation + Slot C/D
+# pools (C has 23 launchers, D has 19). Previous caps (30/15/40)
+# clipped ~47 % of scripted-Red ticks on threats alone — Blue policy
+# was blind to half the swarm by construction. Priority truncation
+# below keeps the most urgent threats visible when we still exceed cap.
+MAX_THREATS = 96
+MAX_LAUNCHERS = 24
+MAX_INTERCEPTORS = 128
 MAX_SITES = 10
 
 # Agent decides every N sim ticks. 10 ticks = 0.5s sim per decision.
 DECISION_EVERY = 10
 
-# Hard cap on episode sim time (seconds). Default matches run 1700-1900s;
-# training uses shorter episodes for sample efficiency.
-MAX_EPISODE_SIM_TIME = 600.0
+# 2026-04-22 audit: split RL horizon from live-server safety cap.
+#   * `config.MAX_SIM_TIME = 3600s` remains the server/live safety net.
+#   * `RL_MAX_EPISODE_SIM_TIME` is the default RL training / eval
+#     horizon — long enough to cover observed match lengths under the
+#     HGV3800 balance (~935s), short enough to keep rollout/eval
+#     latency practical. Callers can override per-env via
+#     `episode_time_limit=...`.
+RL_MAX_EPISODE_SIM_TIME = 3000.0
+MAX_EPISODE_SIM_TIME = RL_MAX_EPISODE_SIM_TIME  # back-compat alias
 
 # --- Normalization scales (keep obs tensor O(1)) ---
 POS_SCALE = 1e5        # 100 km reference
 VEL_SCALE = 2000.0     # Mach-ish
 HP_SCALE = 100.0
-BUDGET_SCALE = 1.2e8   # $120M
+BUDGET_SCALE = 2.0e8   # $200M — AOE-era Blue budget cap
 TIME_SCALE = MAX_EPISODE_SIM_TIME
 
 # --- Kind encodings (fixed index ordering) ---
@@ -108,10 +121,78 @@ class MissileInterceptEnv(gym.Env):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, seed: Optional[int] = None, episode_time_limit: float = MAX_EPISODE_SIM_TIME):
+    # Cost-efficiency shaping. Per-intercept penalty applied in
+    # `_reward_from_events` equals max(0, (interceptor_cost - threat_cost)
+    # in $M) * COST_DIFF_WEIGHT. See comment block in the intercept branch
+    # for calibration notes against the SITE_LEAK_DAMAGE*2 credit.
+    # Tuned down from 2.0 (v5) to 1.0 (v6): v5 at 2.0 tied with random
+    # baseline on hard scenarios — penalty was biting exploration too hard
+    # when no cheap launcher was in range, so the agent learned to skip
+    # shots rather than overpay. 1.0 still beats "prefer cheap" but lets
+    # an overpriced kill remain net-positive enough to fire when it's the
+    # only legal option.
+    COST_DIFF_WEIGHT = 1.0
+
+    VALID_RED_MODES = ("training_random", "demo_fixed", "trained", "pool", "scripted")
+
+    def __init__(
+        self,
+        seed: Optional[int] = None,
+        episode_time_limit: float = MAX_EPISODE_SIM_TIME,
+        red_mode: str = "training_random",
+        difficulty: str = "mixed",
+        red_model_path: Optional[str] = None,
+        red_deterministic: bool = False,
+        red_pool_config: Optional[dict] = None,
+        reward_shaping: Optional[dict] = None,
+        blue_positions: Optional[dict] = None,
+        blue_positions_pool: Optional[list] = None,
+        scripted_config: Optional[dict] = None,
+    ):
         super().__init__()
+        if red_mode not in self.VALID_RED_MODES:
+            raise ValueError(
+                f"red_mode must be one of {self.VALID_RED_MODES}, got {red_mode!r}"
+            )
+        if red_mode == "trained" and not red_model_path:
+            raise ValueError("red_mode='trained' requires red_model_path")
+        if red_mode == "pool" and not red_pool_config:
+            raise ValueError("red_mode='pool' requires red_pool_config")
         self._seed = seed
         self._episode_time_limit = episode_time_limit
+        self._red_mode = red_mode
+        self._difficulty = difficulty
+        self._red_model_path = red_model_path
+        self._red_deterministic = red_deterministic
+        self._reward_shaping = reward_shaping or {}
+        self._blue_positions = blue_positions
+        # Layout pool: list of (positions_dict, weight, slot_label).
+        # When set, reset() samples a roster per episode and overrides
+        # any static `blue_positions`. None → use `blue_positions` or
+        # config default, as before.
+        self._blue_positions_pool = blue_positions_pool
+        if blue_positions_pool:
+            # Pre-compute sampling weights.
+            self._pool_weights = np.array(
+                [w for (_, w, _) in blue_positions_pool], dtype=np.float64
+            )
+            total = float(self._pool_weights.sum())
+            if total <= 0.0:
+                raise ValueError("blue_positions_pool weights sum to <= 0")
+            self._pool_weights = self._pool_weights / total
+        else:
+            self._pool_weights = None
+        self._last_layout_slot: Optional[str] = None
+        # Scripted curriculum config: forwarded to ScriptedRedAI when
+        # red_mode="scripted". None → use ScriptedRedAI defaults (full
+        # 3×3×hgv behaviour).
+        self._scripted_config = scripted_config or {}
+        self._episode_count = 0
+        self._last_red_name: Optional[str] = None
+        self._red_pool = None
+        if red_mode == "pool":
+            from rl.red_pool import RedPool
+            self._red_pool = RedPool(red_pool_config)
         self._build_spaces()
         self.world: Optional[World] = None
         self.fleet: Optional[LauncherFleet] = None
@@ -139,11 +220,88 @@ class MissileInterceptEnv(gym.Env):
             self._seed = seed
         sites_module.reset_leaks()
         self.world = World()
-        self.fleet = LauncherFleet()
-        self.red = RedAI(build_demo_waves())
+        # 2026-04-22 audit: apply blue-roster base-cost deduction so
+        # world.blue_budget reflects interceptor-only budget. Default
+        # positions come from config if caller didn't override.
+        from sim import config as sim_config
+        from sim.blue_layout import apply_blue_layout_budget, validate_blue_layout
+        # Per-episode RNG. Seed = base_seed XOR episode_count so successive
+        # episodes in the same worker see different scenarios while staying
+        # reproducible across runs. With seed=None we fall back to fresh
+        # entropy (manual debugging).
+        if self._seed is not None:
+            red_seed = int(self._seed) ^ (self._episode_count * 0x9E3779B1)
+            red_rng = np.random.default_rng(red_seed & 0xFFFFFFFF)
+        else:
+            red_rng = np.random.default_rng()
+        # Layout selection: pool (per-episode sample) > static override >
+        # config default. Pool RNG forks from the red_rng stream so both
+        # are reproducible under the same env seed.
+        if self._blue_positions_pool is not None:
+            pool_rng = np.random.default_rng(red_rng.integers(0, 2**32))
+            idx = int(pool_rng.choice(len(self._blue_positions_pool), p=self._pool_weights))
+            positions, _w, slot_label = self._blue_positions_pool[idx]
+            self._last_layout_slot = slot_label
+        elif self._blue_positions is not None:
+            positions = self._blue_positions
+            self._last_layout_slot = None
+        else:
+            positions = sim_config.BLUE_LAUNCHER_POSITIONS
+            self._last_layout_slot = None
+        # Hard-fail on illegal / over-budget layouts. Mirror Scenario.
+        validate_blue_layout(positions)
+        apply_blue_layout_budget(self.world, positions)
+        self.fleet = LauncherFleet(positions=positions)
+        if self._red_mode == "pool":
+            self.red, self._last_red_name = self._red_pool.sample(
+                red_rng, self.fleet, episode_count=self._episode_count
+            )
+        elif self._red_mode == "trained":
+            from rl.trained_red import TrainedRedAI
+            self.red = TrainedRedAI(
+                model_path=self._red_model_path,
+                blue_fleet=self.fleet,
+                rng=red_rng,
+                deterministic=self._red_deterministic,
+            )
+            self._last_red_name = "trained"
+        elif self._red_mode == "scripted":
+            # ScriptedRedAI only reads `scenario.world` path-less; stores
+            # the reference at construction but `.step(t, world)` takes
+            # the world as an arg. A minimal shim with `.world` is enough.
+            from sim.red_ai import ScriptedRedAI
+
+            class _ScenarioShell:
+                def __init__(self, world):
+                    self.world = world
+
+            self.red = ScriptedRedAI(
+                _ScenarioShell(self.world), **self._scripted_config
+            )
+            self._last_red_name = "scripted"
+        else:
+            if self._red_mode == "demo_fixed":
+                waves = build_demo_waves()
+            else:
+                waves = build_training_waves(red_rng, difficulty=self._difficulty)
+            self.red = RedAI(waves, rng=red_rng)
+            self._last_red_name = self._red_mode
         self.world.transition(MatchPhase.RUNNING)
         self._cum_reward = 0.0
-        return self._encode_obs(), {}
+        self._episode_count += 1
+        alive_threats_total = sum(1 for t in self.world.threats.values() if t.state.alive)
+        alive_launchers_total = len(self.fleet.launchers) if self.fleet is not None else 0
+        info = {
+            "red_name": self._last_red_name,
+            "layout_slot": self._last_layout_slot,
+            "alive_threats_total": alive_threats_total,
+            "visible_threats": min(alive_threats_total, MAX_THREATS),
+            "threats_truncated": max(0, alive_threats_total - MAX_THREATS),
+            "alive_launchers_total": alive_launchers_total,
+            "visible_launchers": min(alive_launchers_total, MAX_LAUNCHERS),
+            "launchers_truncated": max(0, alive_launchers_total - MAX_LAUNCHERS),
+        }
+        return self._encode_obs(), info
 
     # ------------------------------------------------------------------
     def step(self, action):
@@ -153,8 +311,17 @@ class MissileInterceptEnv(gym.Env):
         prev_site_hp = sum(s.hp for s in sites_module.SOUTH_SITES)
         prev_threats_intercepted = self.world.intercepts
 
-        # Apply agent action (fire commands)
+        # Apply agent action (fire commands). _apply_action emits "launch"
+        # events into self.world.events — capture them BEFORE the inner
+        # loop clears the list, otherwise Blue's own fires are invisible
+        # to downstream diagnostics.
+        self.world.events = []
         n_fires = self._apply_action(action)
+        step_events: list = []
+        for ev in self.world.events:
+            ev_copy = dict(ev)
+            ev_copy["_t"] = float(self.world.t)
+            step_events.append(ev_copy)
 
         # Advance sim for DECISION_EVERY ticks; rule Red AI + physics run normally.
         # Reward is computed from events BEFORE prune_dead so intercept events
@@ -166,6 +333,13 @@ class MissileInterceptEnv(gym.Env):
             self.fleet.tick(self.world.t)  # reload timers
             self.world.step(DT)
             event_reward += self._reward_from_events(self.world.events)
+            for ev in self.world.events:
+                # Timestamp each event with current sim_t so downstream
+                # diagnostics can reconstruct match timelines. World.step
+                # already advanced t — sample after step, before prune.
+                ev_copy = dict(ev)
+                ev_copy["_t"] = float(self.world.t)
+                step_events.append(ev_copy)
             self.world.prune_dead()
             if self._winner() is not None:
                 break
@@ -179,6 +353,47 @@ class MissileInterceptEnv(gym.Env):
         spent = max(0, prev_blue_budget - self.world.blue_budget)
         reward = event_reward - spent / 1e6 * 0.05  # weak efficiency penalty per $M spent
 
+        # --- Optional reward shaping (config-gated, default off) ---
+        # `reward_shaping` dict keys (all default 0.0):
+        #   survival_per_decision   : +bonus per decision each site is alive
+        #                             (stops "get-it-over-with" collapse at
+        #                             short-episode losing runs — gives the
+        #                             policy a gradient toward "delay the
+        #                             breach even if you can't prevent it").
+        #   early_intercept_bonus   : +multiplier on intercept events that
+        #                             fire in first `early_intercept_window` s
+        #                             (default window 60 s). Encourages
+        #                             reacting early instead of waiting.
+        #   hgv_intercept_bonus     : extra +reward per HGV / ballistic kill
+        #                             on top of SITE_LEAK_DAMAGE credit.
+        shaping = self._reward_shaping
+        if shaping:
+            if shaping.get("survival_per_decision", 0.0):
+                alive_sites = sum(1 for s in sites_module.SOUTH_SITES if s.hp > 0)
+                reward += float(shaping["survival_per_decision"]) * alive_sites
+            early_bonus = float(shaping.get("early_intercept_bonus", 0.0))
+            early_win = float(shaping.get("early_intercept_window", 60.0))
+            hgv_bonus = float(shaping.get("hgv_intercept_bonus", 0.0))
+            if early_bonus or hgv_bonus:
+                for ev in step_events:
+                    if ev.get("type") != "intercept":
+                        continue
+                    if early_bonus and ev.get("_t", 999) <= early_win:
+                        reward += early_bonus
+                    if hgv_bonus:
+                        kind = None
+                        # interceptor event has interceptor+threat id; look
+                        # up threat kind via the alive-threats cache is slow
+                        # here — instead read kind from the event's own
+                        # payload if present (sim.world does not embed it).
+                        # Fall back to alive-threats scan.
+                        tid = ev.get("threat")
+                        t = self.world.threats.get(tid) if tid is not None else None
+                        if t is not None:
+                            kind = t.state.kind
+                        if kind in ("hgv", "ballistic"):
+                            reward += hgv_bonus
+
         terminated = self._winner() is not None
         truncated = (not terminated) and self.world.t >= self._episode_time_limit
 
@@ -191,33 +406,122 @@ class MissileInterceptEnv(gym.Env):
             # draw: 0
 
         self._cum_reward += reward
+        winner_str = self._winner()
+        # `_winner` sets `_last_terminal_reason` as a side effect so the
+        # info payload stays consistent with the Gym termination flag.
+        # Override: truncation case is `winner=None` + reason="timeout".
+        terminal_reason = getattr(self, "_last_terminal_reason", None)
+        # Diagnostic counters: total alive entities, visible (post-cap)
+        # count, and truncation count. `threats_truncated` > 0 means the
+        # priority-sort keeps only MAX_THREATS of N alive threats for
+        # the policy — pipeline health check for scripted-Red saturation.
+        alive_threats_total = sum(
+            1 for t in self.world.threats.values() if t.state.alive
+        )
+        alive_launchers_total = len(self.fleet.launchers) if self.fleet is not None else 0
+        visible_threats = min(alive_threats_total, MAX_THREATS)
+        visible_launchers = min(alive_launchers_total, MAX_LAUNCHERS)
         info = {
-            "winner": self._winner(),
+            "winner": winner_str,
+            "terminal_reason": terminal_reason if (terminated or truncated) else None,
             "sim_t": self.world.t,
             "n_fires": n_fires,
             "blue_budget": self.world.blue_budget,
+            "red_budget": self.world.red_budget,
             "site_hp_total": sum(s.hp for s in sites_module.SOUTH_SITES),
+            "surviving_sites": sum(
+                1 for s in sites_module.SOUTH_SITES
+                if s.subtype in ("air_base", "base") and s.hp > 0
+            ),
+            "destroyed_sites": sum(
+                1 for s in sites_module.SOUTH_SITES
+                if s.subtype in ("air_base", "base") and s.hp <= 0
+            ),
             "cum_reward": self._cum_reward,
+            "red_name": self._last_red_name,
+            "layout_slot": self._last_layout_slot,
+            "events": step_events,
+            # AOE 2026-04-24 diagnostic counters.
+            "alive_threats_total": alive_threats_total,
+            "visible_threats": visible_threats,
+            "threats_truncated": max(0, alive_threats_total - MAX_THREATS),
+            "alive_launchers_total": alive_launchers_total,
+            "visible_launchers": visible_launchers,
+            "launchers_truncated": max(0, alive_launchers_total - MAX_LAUNCHERS),
         }
         return self._encode_obs(), float(reward), terminated, truncated, info
 
     # ------------------------------------------------------------------
     def _winner(self) -> Optional[str]:
-        # Inline winner check (mirrors Scenario.winner without re-importing
-        # Scenario — we manage the World directly).
-        for site in sites_module.SOUTH_SITES:
-            if site.hp <= 0:
-                return "red"
-        red_done = self.red.done or self.world.red_budget <= 0
-        no_threats = all(not t.state.alive for t in self.world.threats.values())
-        if red_done and no_threats:
-            return "blue"
-        if self.world.t >= self._episode_time_limit:
-            return None  # truncation, not terminal win
-        return None
+        # 2026-04-22 audit: delegate to shared win_conditions module
+        # so env and Scenario can't drift apart. "draw" (timeout) is
+        # translated to None on the Gym side so terminated=False and
+        # truncated=True downstream. Actual terminal_reason is
+        # exposed via info["terminal_reason"].
+        from sim.win_conditions import compute_winner
+        w, r = compute_winner(self.world, self.red, self._episode_time_limit)
+        self._last_terminal_reason = r
+        if w == "draw":
+            return None
+        return w
+
+    # Danger weighting for threat-priority truncation (lower = higher
+    # priority, so it sorts first). HGV gets 0 (most urgent), drone gets 3.
+    _THREAT_DANGER_ORDER = {
+        "hgv": 0,
+        "ballistic": 1,
+        "cruise_sub": 2,
+        "drone": 3,
+    }
+
+    def _threat_priority_key(self, threat) -> tuple:
+        """Sort key for threat priority truncation. Lower key = more
+        urgent (= keep when slot-count exceeds MAX_THREATS).
+
+        Primary: estimated time-to-site (ground-distance to target /
+        cruise speed). Shorter ETA = more urgent.
+        Secondary: danger rank (hgv > ballistic > cruise_sub > drone).
+        Tertiary: 2D distance to target (closer = more urgent).
+        """
+        st = threat.state
+        kind_str = st.kind if isinstance(st.kind, str) else getattr(st.kind, "value", str(st.kind))
+        # Resolve target xy: prefer target_site lookup, fall back to
+        # threat.target_xy if present.
+        tx = ty = 0.0
+        site = None
+        if st.target_id is not None:
+            for s in sites_module.SOUTH_SITES:
+                if s.id == st.target_id:
+                    site = s
+                    break
+        if site is not None:
+            tx, ty = float(site.pos[0]), float(site.pos[1])
+        else:
+            wp = getattr(threat, "target_xy", None)
+            if wp is not None:
+                tx, ty = float(wp[0]), float(wp[1])
+        px, py = float(st.pos[0]), float(st.pos[1])
+        dx_g = px - tx
+        dy_g = py - ty
+        dist_to_target = (dx_g * dx_g + dy_g * dy_g) ** 0.5
+        try:
+            spec = THREAT_SPECS[ThreatType(kind_str)]
+            speed = max(1.0, float(spec.cruise_speed))
+        except (KeyError, ValueError):
+            speed = 150.0
+        eta = dist_to_target / speed
+        danger = self._THREAT_DANGER_ORDER.get(kind_str, 9)
+        return (eta, danger, dist_to_target)
 
     def _alive_threats(self) -> List:
-        return [t for t in self.world.threats.values() if t.state.alive][:MAX_THREATS]
+        """All alive Red threats sorted by urgency, truncated to
+        MAX_THREATS. When total alive > cap, the policy sees the most
+        urgent slice instead of dict-insertion order."""
+        alive = [t for t in self.world.threats.values() if t.state.alive]
+        if len(alive) > MAX_THREATS:
+            alive.sort(key=self._threat_priority_key)
+            alive = alive[:MAX_THREATS]
+        return alive
 
     def _alive_interceptors(self) -> List:
         return [i for i in self.world.interceptors.values() if i.state.alive][:MAX_INTERCEPTORS]
@@ -248,6 +552,11 @@ class MissileInterceptEnv(gym.Env):
             if not threat.state.alive:
                 continue
             spec = INTERCEPTOR_SPECS[lch.kind]
+            # 2026-04-22 audit: affordability gate. Mask should have
+            # filtered this out, but defensive re-check so the budget
+            # stays a real constraint.
+            if self.world.blue_budget < spec.usd_cost:
+                continue
             t_pos = threat.state.pos
             dx = float(t_pos[0] - lch.pos[0])
             dy = float(t_pos[1] - lch.pos[1])
@@ -262,8 +571,14 @@ class MissileInterceptEnv(gym.Env):
                 (dx, dy, dz),
                 threat.state.id,
                 mode,
+                launcher_pos=(lch.pos[0], lch.pos[1], 0.0),
+                launcher_max_range_m=spec.max_range,
             )
-            self.world.blue_budget = max(0, self.world.blue_budget - spec.usd_cost)
+            # 2026-04-22 audit: single strict deduct. Gate above
+            # guarantees budget >= cost. The old clamp-to-zero deduct
+            # below this line was merged with the gate in the audit —
+            # keeping both would double-charge every fire.
+            self.world.blue_budget -= spec.usd_cost
             n_fires += 1
         return n_fires
 
@@ -274,23 +589,58 @@ class MissileInterceptEnv(gym.Env):
         Caller must invoke this BEFORE `world.prune_dead` so intercept
         events can still look up the dead threat's kind in
         `world.threats` for value-scaled credit.
+
+        AOE 2026-04-24: cost-diff penalty applies ONCE per
+        interceptor/detonation, not once per secondary AOE kill, so a
+        single SLM wiping a 4-drone cluster doesn't 4x-debit the
+        interceptor cost. Kill credit (leak-damage * 2) still fires per
+        victim — that's the reward for the multi-kill.
         """
         r = 0.0
+        # Track interceptor ids we've already charged the overspend
+        # penalty to this tick — prevents duplicate charges on AOE
+        # multi-kills where the same interceptor id appears in several
+        # 'intercept' events.
+        cost_penalty_charged: set = set()
         for ev in events:
             et = ev.get("type")
             if et == "intercept":
-                # Threat killed. Scale by the threat's usd_cost so the
-                # agent prefers killing expensive / dangerous threats.
+                # Killing a threat is the symmetric inverse of letting it
+                # leak: both branches use `SITE_LEAK_DAMAGE[kind] * 2` so
+                # the policy sees +X for stopping a threat that would have
+                # cost -X at the site. usd_cost-scaled rewards were ~333×
+                # weaker than leak penalties for drones, producing a
+                # defensive-only signal.
                 tid = ev.get("threat")
+                iid = ev.get("interceptor")
                 threat = self.world.threats.get(tid) if tid is not None else None
+                inter = self.world.interceptors.get(iid) if iid is not None else None
                 if threat is not None:
-                    try:
-                        spec = self._threat_spec_by_str(threat.state.kind)
-                        r += spec.usd_cost / 1e6
-                    except KeyError:
-                        r += 1.0
+                    dmg = SITE_LEAK_DAMAGE.get(threat.state.kind, 10)
+                    r += float(dmg) * 2.0
                 else:
-                    r += 1.0
+                    r += 10.0
+                # Over-spend penalty. Using a pricey interceptor on a
+                # cheap threat (e.g. $4M PAC-3 on a $30K drone) is
+                # obviously a bad trade even if it kills the target.
+                # Scale linearly with the *positive* cost differential
+                # in $M; zero when interceptor_cost <= threat_cost so
+                # good trades aren't punished.
+                # AOE dedup: only charge once per interceptor — secondary
+                # AOE victims are bonus kills, not bonus cost.
+                if (
+                    inter is not None
+                    and threat is not None
+                    and iid not in cost_penalty_charged
+                ):
+                    try:
+                        i_spec = INTERCEPTOR_SPECS[InterceptorType(inter.state.kind)]
+                        t_spec = THREAT_SPECS[ThreatType(threat.state.kind)]
+                        diff_m = max(0.0, (i_spec.usd_cost - t_spec.usd_cost) / 1e6)
+                        r -= diff_m * self.COST_DIFF_WEIGHT
+                        cost_penalty_charged.add(iid)
+                    except (KeyError, ValueError):
+                        pass
             elif et == "leak":
                 # Site leak. Heavily weighted by leak damage.
                 dmg = ev.get("damage", 0)
@@ -455,6 +805,11 @@ class MissileInterceptEnv(gym.Env):
             if lch.reloading or not lch.can_fire(t_now):
                 continue  # only hold
             spec = INTERCEPTOR_SPECS[lch.kind]
+            # 2026-04-22 audit: budget gate. Shots the agent cannot
+            # afford should never reach the policy — hold is the only
+            # legal option when the budget is short.
+            if self.world.blue_budget < spec.usd_cost:
+                continue
             max_range = spec.max_range * LAUNCH_RANGE_MARGIN
             for t_idx, th in enumerate(threats):
                 if t_idx >= MAX_THREATS:

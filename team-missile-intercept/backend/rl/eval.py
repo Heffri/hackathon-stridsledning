@@ -52,23 +52,62 @@ def closest_action(obs):
     return a
 
 
-def run_matches(policy_fn, n_matches, time_limit=2500.0, base_seed=1000):
+def run_matches(
+    policy_fn,
+    n_matches,
+    time_limit=1200.0,
+    base_seed=1000,
+    red_mode="demo_fixed",
+    difficulty="mixed",
+    red_model_path=None,
+    red_deterministic=False,
+    blue_positions=None,
+    scripted_config=None,
+    detailed: bool = False,
+):
+    """Run N matches, collect per-match stats. When `detailed=True`,
+    also tally per-launcher-kind fires + per-threat-kind leaks/intercepts
+    from the info event stream — matches `rl.diag_scripted_fires` output
+    format so `--json-out` dumps include collapse-diagnostic data."""
+    from collections import Counter
     results = []
     for i in range(n_matches):
         seed = base_seed + i
-        env = MissileInterceptEnv(seed=seed, episode_time_limit=time_limit)
+        env = MissileInterceptEnv(
+            seed=seed,
+            episode_time_limit=time_limit,
+            red_mode=red_mode,
+            difficulty=difficulty,
+            red_model_path=red_model_path,
+            red_deterministic=red_deterministic,
+            blue_positions=blue_positions,
+            scripted_config=scripted_config,
+        )
         obs, _ = env.reset(seed=seed)
         rng = np.random.default_rng(seed)
         total_r = 0.0
         fires = 0
+        fires_by_kind: Counter = Counter()
+        intercepts_by_kind: Counter = Counter()
+        leaks_by_kind: Counter = Counter()
         while True:
             a = policy_fn(obs, rng)
             obs, r, term, trunc, info = env.step(a)
             total_r += r
             fires += info["n_fires"]
+            if detailed:
+                for ev in info.get("events", []):
+                    et = ev.get("type")
+                    k = ev.get("kind")
+                    if et == "launch" and k:
+                        fires_by_kind[k] += 1
+                    elif et == "intercept" and k:
+                        intercepts_by_kind[k] += 1
+                    elif et == "leak" and k:
+                        leaks_by_kind[k] += 1
             if term or trunc:
                 break
-        results.append({
+        entry = {
             "seed": seed,
             "winner": info["winner"],
             "reward": total_r,
@@ -76,7 +115,15 @@ def run_matches(policy_fn, n_matches, time_limit=2500.0, base_seed=1000):
             "sim_t": info["sim_t"],
             "site_hp": info["site_hp_total"],
             "budget_left": info["blue_budget"],
-        })
+        }
+        if detailed:
+            entry.update({
+                "fires_by_kind": dict(fires_by_kind),
+                "intercepts_by_kind": dict(intercepts_by_kind),
+                "leaks_by_kind": dict(leaks_by_kind),
+                "layout_slot": info.get("layout_slot"),
+            })
+        results.append(entry)
     return results
 
 
@@ -102,26 +149,114 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True, help="path to SB3 .zip")
     ap.add_argument("--n", type=int, default=10)
-    ap.add_argument("--time-limit", type=float, default=2500.0)
+    ap.add_argument("--time-limit", type=float, default=1200.0,
+                    help="RL horizon (default 1200s; unified with env)")
     ap.add_argument("--skip-baselines", action="store_true")
+    ap.add_argument("--red-mode", default="demo_fixed",
+                    choices=["demo_fixed", "training_random", "trained", "scripted"],
+                    help="demo_fixed = fixed build_demo_waves() for regression "
+                         "comparison (default); training_random = randomised "
+                         "waves matching training distribution; trained = "
+                         "frozen MaskablePPO Red policy (requires --red-model)")
+    ap.add_argument("--difficulty", default="mixed",
+                    choices=["easy", "mixed", "hard"],
+                    help="difficulty preset when --red-mode training_random")
+    ap.add_argument("--red-model", default=None,
+                    help="path to Red-side .zip — required with --red-mode=trained")
+    ap.add_argument("--red-deterministic", action="store_true",
+                    help="sample trained Red actions deterministically")
+    ap.add_argument("--blue-layout-json", default=None,
+                    help="path to a layout catalog JSON (see rl/layouts/). "
+                         "Pair with --blue-layout-slot to select one entry. "
+                         "Overrides config.BLUE_LAUNCHER_POSITIONS for this "
+                         "eval so baselines + trained policy score against "
+                         "the selected tactical layout, not the repo default.")
+    ap.add_argument("--blue-layout-slot", default=None,
+                    help="slot id in the catalog (e.g. A, B, C). Required "
+                         "with --blue-layout-json.")
+    # Scripted curriculum knobs (AOE 2026-04-24) — match rl.train CLI so
+    # eval can stage against the same curriculum level as training.
+    ap.add_argument("--scripted-chain-count", type=int, default=3,
+                    choices=[1, 2, 3],
+                    help="ScriptedRedAI: chain_count (1..3). Only honored "
+                         "when --red-mode=scripted.")
+    ap.add_argument("--scripted-max-rounds", type=int, default=3,
+                    choices=[1, 2, 3],
+                    help="ScriptedRedAI: max_rounds (1..3). Only honored "
+                         "when --red-mode=scripted.")
+    ap.add_argument("--scripted-max-layer", default="hgv",
+                    choices=["drone", "cruise", "ballistic", "hgv"],
+                    help="ScriptedRedAI: max_layer. Only honored when "
+                         "--red-mode=scripted.")
+    ap.add_argument("--json-out", default=None,
+                    help="Path to write a JSON dump of per-match "
+                         "results (includes fires_by_kind / leaks_by_kind / "
+                         "intercepts_by_kind). Post-run plotting consumes "
+                         "this. Trained policy runs are always detailed; "
+                         "baselines are also included when --json-out set.")
     args = ap.parse_args()
 
-    print(f"=== Eval {args.n} matches each, time_limit={args.time_limit}s ===")
+    if args.red_mode == "trained" and not args.red_model:
+        ap.error("--red-mode=trained requires --red-model")
+    if args.blue_layout_json or args.blue_layout_slot:
+        if not (args.blue_layout_json and args.blue_layout_slot):
+            ap.error("--blue-layout-json and --blue-layout-slot must be used together")
+    blue_positions = None
+    blue_layout_name = None
+    if args.blue_layout_json:
+        from rl.layout_catalog import get_positions, load_catalog
+        cat = load_catalog(args.blue_layout_json)
+        blue_positions = get_positions(cat, args.blue_layout_slot)
+        entry = cat["layouts"][args.blue_layout_slot]
+        blue_layout_name = (
+            f"{args.blue_layout_slot} ({entry.get('name', '?')})"
+        )
+
+    scripted_config = None
+    scripted_tag = ""
+    if args.red_mode == "scripted":
+        scripted_config = {
+            "chain_count": args.scripted_chain_count,
+            "max_rounds": args.scripted_max_rounds,
+            "max_layer": args.scripted_max_layer,
+        }
+        scripted_tag = (
+            f" scripted={args.scripted_chain_count}chain×"
+            f"{args.scripted_max_rounds}round×{args.scripted_max_layer}"
+        )
+
+    print(
+        f"=== Eval {args.n} matches each, time_limit={args.time_limit}s, "
+        f"red-mode={args.red_mode} difficulty={args.difficulty}"
+        + scripted_tag
+        + (f" blue-layout={blue_layout_name}" if blue_layout_name else "")
+        + " ==="
+    )
+
+    match_kwargs = dict(
+        time_limit=args.time_limit,
+        red_mode=args.red_mode,
+        difficulty=args.difficulty,
+        red_model_path=args.red_model,
+        red_deterministic=args.red_deterministic,
+        blue_positions=blue_positions,
+        scripted_config=scripted_config,
+    )
 
     # Baselines first
     if not args.skip_baselines:
         t0 = time.time()
-        res_hold = run_matches(lambda o, _: hold_action(o), args.n)
+        res_hold = run_matches(lambda o, _: hold_action(o), args.n, **match_kwargs)
         summary("baseline hold", res_hold)
         print(f"  ({time.time()-t0:.1f}s)")
 
         t0 = time.time()
-        res_rand = run_matches(lambda o, r: random_action(o, r), args.n)
+        res_rand = run_matches(lambda o, r: random_action(o, r), args.n, **match_kwargs)
         summary("baseline random", res_rand)
         print(f"  ({time.time()-t0:.1f}s)")
 
         t0 = time.time()
-        res_close = run_matches(lambda o, _: closest_action(o), args.n)
+        res_close = run_matches(lambda o, _: closest_action(o), args.n, **match_kwargs)
         summary("baseline closest", res_close)
         print(f"  ({time.time()-t0:.1f}s)")
 
@@ -136,8 +271,9 @@ def main():
         a, _ = model.predict(batched, action_masks=action_mask, deterministic=True)
         return np.asarray(a).reshape(-1).astype(np.int64)
 
+    detailed = args.json_out is not None
     t0 = time.time()
-    res_trained = run_matches(trained_action, args.n)
+    res_trained = run_matches(trained_action, args.n, detailed=detailed, **match_kwargs)
     summary(f"trained (deterministic)", res_trained)
     print(f"  ({time.time()-t0:.1f}s)")
 
@@ -148,9 +284,31 @@ def main():
         return np.asarray(a).reshape(-1).astype(np.int64)
 
     t0 = time.time()
-    res_stoch = run_matches(trained_stochastic, args.n)
+    res_stoch = run_matches(trained_stochastic, args.n, detailed=detailed, **match_kwargs)
     summary(f"trained (stochastic)", res_stoch)
     print(f"  ({time.time()-t0:.1f}s)")
+
+    if args.json_out:
+        import json
+        payload = {
+            "model": args.model,
+            "red_mode": args.red_mode,
+            "difficulty": args.difficulty,
+            "scripted_config": scripted_config,
+            "blue_layout_slot": args.blue_layout_slot,
+            "blue_layout_name": blue_layout_name,
+            "n_matches": args.n,
+            "time_limit": args.time_limit,
+            "results": {
+                "trained_deterministic": res_trained,
+                "trained_stochastic": res_stoch,
+            },
+        }
+        import os
+        os.makedirs(os.path.dirname(args.json_out) or ".", exist_ok=True)
+        with open(args.json_out, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        print(f"\n[eval] wrote {args.json_out}")
 
 
 if __name__ == "__main__":
