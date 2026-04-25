@@ -257,6 +257,13 @@ class MissileInterceptEnv(gym.Env):
             self.world.events = []
             self.red.step(self.world.t, self.world)
             self.fleet.tick(self.world.t)  # reload timers
+            # v3 weighted-sites: snapshot site HP before world.step so
+            # _reward_from_events can detect "leak hit an already-dead
+            # site" (prev_hp <= 0) and skip the penalty. Defending a
+            # corpse should not yield any reward signal.
+            self._prev_site_hp_by_name = {
+                s.name: s.hp for s in sites_module.SOUTH_SITES
+            }
             self.world.step(DT)
             event_reward += self._reward_from_events(self.world.events)
             self.world.prune_dead()
@@ -393,41 +400,75 @@ class MissileInterceptEnv(gym.Env):
         Caller must invoke this BEFORE `world.prune_dead` so intercept
         events can still look up the dead threat's kind in
         `world.threats` for value-scaled credit.
+
+        Reward v3 (2026-04-25, reward-v2 branch): weighted-sites.
+        Each alive site gets weight (n_total / n_alive) — when sites
+        die, their share redistributes to survivors. Dead sites get
+        weight 0. Intercept credit and leak penalty both scale by the
+        target site's weight, so:
+          * defending a corpse (target_site dead) yields zero credit
+          * defending the last live site yields N× the baseline
+          * leaking into an already-dead site costs nothing
+          * leaking into the last live site costs N× the baseline
         """
+        # Compute per-site weight for this tick
+        sites_list = sites_module.SOUTH_SITES
+        n_total = len(sites_list)
+        n_alive = sum(1 for s in sites_list if s.hp > 0)
+        alive_mult = (n_total / n_alive) if n_alive > 0 else 0.0
+        weight_by_id = {}
+        weight_by_name = {}
+        for s in sites_list:
+            w = alive_mult if s.hp > 0 else 0.0
+            weight_by_id[s.id] = w
+            weight_by_name[s.name] = w
+
+        prev_hp_by_name = getattr(self, "_prev_site_hp_by_name", {})
+
         r = 0.0
         for ev in events:
             et = ev.get("type")
             if et == "intercept":
-                # Threat killed. Scale by the threat's usd_cost so the
-                # agent prefers killing expensive / dangerous threats.
+                # Threat killed. Scale by threat's usd_cost AND by the
+                # weight of the site it was targeting — defending a
+                # corpse yields no signal.
                 tid = ev.get("threat")
                 threat = self.world.threats.get(tid) if tid is not None else None
                 if threat is not None:
                     try:
                         spec = self._threat_spec_by_str(threat.state.kind)
-                        r += spec.usd_cost / 1e6
+                        base = spec.usd_cost / 1e6
                     except KeyError:
-                        r += 1.0
+                        base = 1.0
+                    target_id = getattr(threat, "_target_site_id", None)
+                    weight = (
+                        weight_by_id.get(target_id, 1.0)
+                        if target_id is not None
+                        else 1.0  # legacy threats without target_site_id
+                    )
+                    r += base * weight
                 else:
                     r += 1.0
             elif et == "leak":
-                # Site leak. Heavily weighted by leak damage.
-                # Aggressive-retrain B path (2026-04-25): tiered penalty
-                # by threat kind so ballistic/HGV leaks dominate the
-                # gradient — forces policy to try PAC-3 even at the cost
-                # of wasted shots, vs. the prior flat ×2 that let the
-                # policy "accept" ballistic/HGV leaks as cheaper than
-                # PAC-3 launch cost.
+                # Site leak. Tiered by threat kind, scaled by the
+                # struck site's current weight. Skip if the site was
+                # already dead before this tick — re-hits on a corpse
+                # do no actual damage so no signal is needed.
+                site_name = ev.get("site", "")
+                prev_hp = prev_hp_by_name.get(site_name)
+                if prev_hp is not None and prev_hp <= 0:
+                    continue  # already-dead site re-hit
+                weight = weight_by_name.get(site_name, 1.0)
                 dmg = ev.get("damage", 0)
                 kind = ev.get("kind", "")
                 if kind == "hgv":
-                    r -= float(dmg) * 8.0
+                    r -= float(dmg) * 8.0 * weight
                 elif kind == "ballistic":
-                    r -= float(dmg) * 6.0
+                    r -= float(dmg) * 6.0 * weight
                 elif kind == "cruise_sub":
-                    r -= float(dmg) * 3.0
+                    r -= float(dmg) * 3.0 * weight
                 else:  # drone or unknown
-                    r -= float(dmg) * 2.0
+                    r -= float(dmg) * 2.0 * weight
             elif et == "ground_crash" and ev.get("threat") is not None:
                 # Red threat crashed w/o hitting a site — small credit.
                 # Gate on 'threat' key so interceptor ground crashes
