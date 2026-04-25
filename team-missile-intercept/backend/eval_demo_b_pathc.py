@@ -52,8 +52,9 @@ def run_one_match(seed: int) -> dict:
     # Override budget
     scn.world.blue_budget = 200_000_000
     scn.world.blue_budget_max = 200_000_000
-    scn.world.red_budget = 150_000_000
-    scn.world.red_budget_max = 150_000_000
+    red_b = int(os.environ.get("EVAL_RED_BUDGET", 150_000_000))
+    scn.world.red_budget = red_b
+    scn.world.red_budget_max = red_b
     # Swap in LearnedBlueAI (Path C inclusive) + ScriptedRedAI
     scn.blue = LearnedBlueAI(MODEL_PATH, scn)
     # CRITICAL: must update BOTH self.launchers AND _env._own_blue_fleet

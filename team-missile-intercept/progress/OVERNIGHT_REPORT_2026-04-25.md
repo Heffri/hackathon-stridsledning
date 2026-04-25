@@ -2,13 +2,22 @@
 
 > Chen 凌晨睡前授权全权处理 B 路线 + 自定义 Path C，6 点回看。
 
-## TL;DR
+## TL;DR — 直接看这里
 
-**Demo-ready**：B 重训后的模型 + Path C strategic_fallback（live_ai.py 里加的规则层兜底），D layout 上全 6 种 launcher 都开火，sites 平均 1.33/3 存活，PAC-3 平均每场 7 发，HGV/弹道有覆盖。C layout 表现略好（1.67/3 sites），但 SLM 不开火（Layout C 上 policy 的局部最优）。
+**Demo 最优配置：B 重训模型 + Path C strategic_fallback + Red 预算 110M（不是 150M）**
 
-**Demo 推荐组合**：Layout D + scripted Red + B model + Path C。
+最终数据（每格 3 场 × 3000s episode，模拟实际 demo 环境）：
 
-**所有改动 local commit on branch `blue-aoe-pathc-final`，未 push 任何 GitHub**。Chen 早上 review + 决定是否 merge 到 demo 分支。
+| Config | Layout | Sites alive | HP% | Leaks | PAC-3 | SLM | 评价 |
+|---|---|---|---|---|---|---|---|
+| Red 150M | C | 1.67/3 | 25% | 9.3 | 12 | 0 | 5/6 武器 |
+| Red 150M | D | 1.33/3 | 14% | 10.7 | 21 | 336 | 6/6 武器 |
+| **Red 110M** | **C** | **2.00/3** | **49%** | **6.3** | 8 | 0 | 5/6 武器，站稳 |
+| **Red 110M** | **D** | **2.00/3** | **37%** | **7.3** | 17 | **348** | **6/6 武器 + 站稳** ⭐ |
+
+**Demo 首选 ⭐ Red 预算 110M + Layout D + B model + Path C v2**
+
+**所有改动 local commit on branch `blue-aoe-pathc-final`（2 个 commit）+ 1 个新模型，全部 local，未 push 任何 GitHub**。
 
 ---
 
@@ -66,7 +75,7 @@
 - PAC-3 全部来自 Path C fallback（policy 自己仍不开）
 - PAC-2 部分来自 policy 的 reward-shaped 自主决策（B 学到的）
 
-## Demo 启动命令（PowerShell，B + Path C）
+## Demo 启动命令（PowerShell）
 
 ```powershell
 cd C:\Users\xingy\Documents\github\hackathon-stridsledning\.claude\worktrees\cool-golick-1340ba\team-missile-intercept\backend
@@ -76,9 +85,18 @@ Remove-Item Env:RED_POLICY_PATH -ErrorAction SilentlyContinue
 python server.py
 ```
 
-**关键**：必须从 `cool-golick-1340ba` worktree 启动（这里有 Path C 代码），**不要**从 `heuristic-merkle-0e74cf`（那里的 live_ai.py 还没有 Path C）。
+**关键**：必须从 `cool-golick-1340ba` worktree 启动（这里有 Path C v2 代码 + B 模型），**不要**从 `heuristic-merkle-0e74cf`（那里的 live_ai.py 还没合并）。
 
-浏览器 `http://127.0.0.1:5174` → SETUP → **选 Layout D**（全武器演示）→ Apply → Start。速度 10-20x 看细节。
+浏览器 `http://127.0.0.1:5174` → SETUP →
+
+1. **Budget 面板：把 Red 改成 110_000_000**（默认是 100M，太低；之前我们 demo 用 150M 太高）
+2. **Blue 改成 200_000_000**（默认 120M）
+3. **选 Layout D**（全武器演示）→ Apply
+4. **Start**
+
+速度 10-20x 看细节，50x 跳过平缓段。建议中段（~25-30s wall-clock at 50x）放慢观察 PAC-3 拦弹道，55s 后看 HGV 拦截。
+
+> Red 110M 是 demo-only 的"调试版"。实际 ScriptedRedAI 在 110M 下能跑 1.5-2 轮 chain，足够展示 + sites 不丢光。150M 下 ScriptedRed 满血会让 sites 跌到 1.33/3，不漂亮。
 
 ## 推荐组合
 
