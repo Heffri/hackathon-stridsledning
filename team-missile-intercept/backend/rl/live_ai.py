@@ -661,12 +661,54 @@ class LearnedBlueAI:
                     if lch.reloading or not lch.can_fire(t_now):
                         continue
                     t_pos = threat.state.pos
+                    t_vel = threat.state.vel
                     dx = float(t_pos[0] - lch.pos[0])
                     dy = float(t_pos[1] - lch.pos[1])
                     dz = float(t_pos[2])
-                    if (dx * dx + dy * dy + dz * dz) > \
-                            (spec.max_range * LAUNCH_RANGE_MARGIN) ** 2:
-                        continue
+                    R = spec.max_range * LAUNCH_RANGE_MARGIN
+                    dist_now_sq = dx * dx + dy * dy + dz * dz
+                    in_range_now = dist_now_sq <= R * R
+                    if not in_range_now:
+                        # Path 1 (predictive dispatch, 2026-04-25 evening):
+                        # if the threat's current trajectory will enter the
+                        # launcher's range within the interceptor's fuel
+                        # window, fire NOW so PAC-3 / PAC-2 has time to
+                        # climb + close. Solves the "Mach-13/17 RV is
+                        # already too close by the time it enters strict
+                        # range gate" problem. Threat assumed straight-line
+                        # ballistic / glide trajectory (which is how
+                        # ScriptedRed launches them — HGV.override_maneuver
+                        # is rarely set in scripted mode). Predictive math:
+                        # solve  |t_pos + t·t_vel - lch_pos| = R  for t > 0.
+                        a0 = float(t_pos[0] - lch.pos[0])
+                        a1 = float(t_pos[1] - lch.pos[1])
+                        a2 = float(t_pos[2])  # launcher z = 0
+                        b0 = float(t_vel[0])
+                        b1 = float(t_vel[1])
+                        b2 = float(t_vel[2])
+                        A = b0 * b0 + b1 * b1 + b2 * b2
+                        if A < 1.0:
+                            # Threat almost stationary — can't predict
+                            # closing geometry, fall back to range gate.
+                            continue
+                        B = 2.0 * (a0 * b0 + a1 * b1 + a2 * b2)
+                        C = (a0 * a0 + a1 * a1 + a2 * a2) - R * R
+                        disc = B * B - 4.0 * A * C
+                        if disc < 0:
+                            # Threat trajectory misses our range entirely.
+                            continue
+                        sqrt_disc = float(np.sqrt(disc))
+                        # Earliest entry time (smaller root). If both roots
+                        # negative, threat already past — skip.
+                        t_enter = (-B - sqrt_disc) / (2.0 * A)
+                        if t_enter <= 0.0:
+                            continue
+                        # Interceptor needs to reach rendezvous before fuel
+                        # runs out + ~3 s for boost / climb / turn margin.
+                        if t_enter > spec.fuel_s - 3.0:
+                            continue
+                        # OK — predictive launch authorised. PN guidance
+                        # will lead-pursuit from here.
                     mode = lch.fire(t_now)
                     iid = world.spawn_interceptor(
                         lch.kind,
