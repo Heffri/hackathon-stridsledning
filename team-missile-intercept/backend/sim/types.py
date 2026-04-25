@@ -329,27 +329,38 @@ INTERCEPTOR_SPECS = {
     # survives, the demo just stops being a coin flip against HGVs.
     InterceptorType.HIT_TO_KILL: InterceptorSpec(
         kind=InterceptorType.HIT_TO_KILL,
-        max_speed=1700.0,
+        # Demo buff (2026-04-25 Hack Day): max_speed 1700 → 2500 m/s
+        # (Mach 5 → Mach 7.5). On the new 350 km arena, Mach-13 ballistic
+        # had only ~1-3 s of effective intercept window for Mach-5 PAC-3
+        # — physically uninterceptable. Bumping to Mach 7.5 closes the
+        # geometry gap so PAC-3 can actually catch up.
+        max_speed=2500.0,
         max_g=50.0,
-        max_range=60_000.0,
+        # Demo buff: max_range 60 → 80 km. PAC-3 launchers near south
+        # sites can now engage threats farther downrange so they don't
+        # have to wait until the ballistic is on top of them.
+        max_range=80_000.0,
         drag_k=4.0e-6,
-        kill_radius=60.0,
+        # Demo buff: kill_radius 60 → 100 m. PN drift on a Mach-13
+        # closing geometry sits at 30-80 m typical; the old 60 m gate
+        # produced too many "almost hit" misses.
+        kill_radius=100.0,
         color="#a855f7",  # matches pac_3 mesh (purple)
-        fuel_s=35.0,
+        # Demo buff: fuel_s 35 → 50 s. With max_speed bumped, fuel
+        # extension keeps total reach ≥ max_range × 1.5 so PAC-3 can
+        # chase a descending ballistic past the nominal max_range gate.
+        fuel_s=50.0,
         damage_direct=200,
-        # PAC-3 stays pure HTK — fragment_radius=0 means no splash; the
-        # primary target at d≈0 still takes fragment_damage thanks to the
-        # `d <= radius` gate in resolve_aoe. One-shots ballistic (hp 80)
-        # and HGV (hp 60) by design.
-        fragment_radius=0.0,
+        # Demo buff: PAC-3 picks up a small 30 m fragment_radius.
+        # Originally pure HTK (radius=0); too unforgiving against PN
+        # drift at Mach-13. 30 m frag turns near-misses into kills
+        # while keeping the HTK character (still tiny vs SLM's 120 m).
+        fragment_radius=30.0,
         fragment_damage=120,
-        # Bumped from 40 m → 60 m: at Mach 13 ballistic closing (6159
-        # m/s relative to PAC-3), per-tick relative displacement is
-        # ~308 m, and typical PN CPA drifts 30-80 m. 40 m was borderline
-        # for direct hits at this speed; 60 m keeps PAC-3's hit-to-kill
-        # intent against the realistic fast-ballistic threat.
-        radius_direct=60.0,
-        radius_prox=80.0,
+        # radius_direct + radius_prox bumped to match the new
+        # kill_radius — single source of truth for "PAC-3 hits".
+        radius_direct=100.0,
+        radius_prox=120.0,
         usd_cost=4_000_000,
         engagement_mode_choices=("htk",),
         default_engagement_mode="htk",
