@@ -39,7 +39,12 @@ import gymnasium as gym
 from rl.red_env import RedEnv, _patch_numpy_core_for_legacy_pickle
 _patch_numpy_core_for_legacy_pickle()
 
-from rl.env import DECISION_EVERY, MAX_THREATS
+from rl.env import (
+    DECISION_EVERY,
+    MAX_INTERCEPTORS,
+    MAX_LAUNCHERS,
+    MAX_THREATS,
+)
 from sim import sites as sites_module
 from sim.config import LAUNCH_RANGE_MARGIN
 from sim.launcher import LauncherFleet, RedLauncherFleet
@@ -171,6 +176,32 @@ class LearnedRedAI:
         self._policy = _load_policy(policy_path)
         self._env = _LiveEnv(scenario)
         self._tick_counter = 0
+        # Backward-compat adapter (cap-120-experiment, 2026-04-25).
+        # Capture the model's native obs shapes at construction so the
+        # adapter can slice the env's larger obs tensors down to what
+        # the policy network expects. Red action_mask shape is
+        # `(N_RED_KINDS + n_sites,)` and Red action space is
+        # `MultiDiscrete([N_RED_KINDS, n_sites])` — neither depends on
+        # MAX_THREATS / MAX_LAUNCHERS / MAX_INTERCEPTORS, so the only
+        # adapter work on the Red side is obs-tensor slicing.
+        obs_space = self._policy.observation_space
+        self._model_max_threats = int(obs_space["threats"].shape[0])
+        self._model_max_launchers = int(obs_space["launchers"].shape[0])
+        self._model_max_interceptors = int(obs_space["interceptors"].shape[0])
+        self._needs_adapter = (
+            self._model_max_threats != MAX_THREATS
+            or self._model_max_launchers != MAX_LAUNCHERS
+            or self._model_max_interceptors != MAX_INTERCEPTORS
+        )
+        if self._needs_adapter:
+            print(
+                f"[LearnedRedAI] adapter active: model expects "
+                f"threats={self._model_max_threats}, "
+                f"launchers={self._model_max_launchers}, "
+                f"interceptors={self._model_max_interceptors} "
+                f"(env at {MAX_THREATS}/{MAX_LAUNCHERS}/{MAX_INTERCEPTORS})",
+                flush=True,
+            )
         # Termination state -----------------------------------------------
         # `done` is latched once True — matches rule RedAI.done semantics
         # (all waves exhausted) and avoids flip-flopping if any future
@@ -217,15 +248,39 @@ class LearnedRedAI:
             return True
         return False
 
+    def _adapt_obs_for_model(self, env_obs: dict) -> dict:
+        """Slice env obs tensors to model's native size. No-op when
+        `_needs_adapter` is False. Red action_mask shape is independent
+        of MAX_THREATS/LAUNCHERS/INTERCEPTORS (depends only on
+        `N_RED_KINDS + n_sites`), so it passes through unchanged."""
+        if not self._needs_adapter:
+            return env_obs
+        n_t = self._model_max_threats
+        n_l = self._model_max_launchers
+        n_i = self._model_max_interceptors
+        return {
+            "threats":           env_obs["threats"][:n_t],
+            "threats_mask":      env_obs["threats_mask"][:n_t],
+            "launchers":         env_obs["launchers"][:n_l],
+            "launchers_mask":    env_obs["launchers_mask"][:n_l],
+            "interceptors":      env_obs["interceptors"][:n_i],
+            "interceptors_mask": env_obs["interceptors_mask"][:n_i],
+            "sites":             env_obs["sites"],
+            "sites_mask":        env_obs["sites_mask"],
+            "global":            env_obs["global"],
+            "action_mask":       env_obs["action_mask"],
+        }
+
     def step(self, t_now: float, world) -> None:
         # Gate policy prediction to every DECISION_EVERY ticks to match
         # training cadence. RedLauncherFleet has no ammo/CD timers so
         # intermediate ticks don't need any bookkeeping.
         if self._tick_counter % DECISION_EVERY == 0:
-            obs = self._env._encode_obs()
-            mask = obs["action_mask"]
+            env_obs = self._env._encode_obs()
+            model_obs = self._adapt_obs_for_model(env_obs)
+            mask = model_obs["action_mask"]
             action, _ = self._policy.predict(
-                obs, deterministic=True, action_masks=mask
+                model_obs, deterministic=True, action_masks=mask
             )
             action_arr = np.asarray(action).reshape(-1)
             spawned, cost_usd = self._env._apply_action(action_arr)
@@ -301,6 +356,33 @@ class LearnedBlueAI:
         # ``sim/blue_ai.py``. Pruned each tick before the policy
         # decides.
         self._assignments: Dict[int, List[int]] = {}
+        # Backward-compat adapter (cap-120-experiment, 2026-04-25).
+        # Capture the model's native obs / action shapes so the adapter
+        # can slice the env's larger obs tensors and remap the model's
+        # smaller action vector before/after policy.predict. Blue action
+        # space is `MultiDiscrete([model_max_threats+1] *
+        # model_max_launchers)` — both dims grow with the env bump, so
+        # the action adapter has to (1) translate the hold sentinel
+        # (model's hold = model_max_threats; env's hold = MAX_THREATS),
+        # and (2) pad launcher slots beyond the model's count with hold.
+        obs_space = self._policy.observation_space
+        self._model_max_threats = int(obs_space["threats"].shape[0])
+        self._model_max_launchers = int(obs_space["launchers"].shape[0])
+        self._model_max_interceptors = int(obs_space["interceptors"].shape[0])
+        self._needs_adapter = (
+            self._model_max_threats != MAX_THREATS
+            or self._model_max_launchers != MAX_LAUNCHERS
+            or self._model_max_interceptors != MAX_INTERCEPTORS
+        )
+        if self._needs_adapter:
+            print(
+                f"[LearnedBlueAI] adapter active: model expects "
+                f"threats={self._model_max_threats}, "
+                f"launchers={self._model_max_launchers}, "
+                f"interceptors={self._model_max_interceptors} "
+                f"(env at {MAX_THREATS}/{MAX_LAUNCHERS}/{MAX_INTERCEPTORS})",
+                flush=True,
+            )
 
     def step(self, t_now: float, world) -> None:
         # Reload/CD timers MUST advance every tick — matches rule BlueAI
@@ -334,16 +416,22 @@ class LearnedBlueAI:
         # ``entities.Interceptor``. The wrapper does not override this.
 
         if self._tick_counter % DECISION_EVERY == 0:
-            obs = self._env._encode_obs_blue()
+            env_obs = self._env._encode_obs_blue()
+            model_obs = self._adapt_obs_for_model(env_obs)
             # Flat int8 mask for MaskablePPO consumption (parent uses
-            # ``.reshape(-1).astype(np.int8)`` in cross_eval.py).
-            mask_flat = obs["action_mask"].reshape(-1).astype(np.int8)
-            action, _ = self._policy.predict(
-                obs, deterministic=True, action_masks=mask_flat
+            # ``.reshape(-1).astype(np.int8)`` in cross_eval.py). The
+            # 2D action_mask in `model_obs` is already sliced down to
+            # `(model_max_launchers, model_max_threats+1)` by the
+            # adapter, so the flatten yields the model's expected
+            # action_masks length.
+            mask_flat = model_obs["action_mask"].reshape(-1).astype(np.int8)
+            model_action, _ = self._policy.predict(
+                model_obs, deterministic=True, action_masks=mask_flat,
             )
-            n_fires = self._apply_action_gated(
-                np.asarray(action).reshape(-1), t_now,
+            env_action = self._adapt_action_for_env(
+                np.asarray(model_action).reshape(-1)
             )
+            n_fires = self._apply_action_gated(env_action, t_now)
             if n_fires:
                 self.log.append(
                     f"[{t_now:6.1f}s] learned_blue fires={n_fires}"
@@ -363,6 +451,64 @@ class LearnedBlueAI:
                 f"[{t_now:6.1f}s] strategic_fallback={n_forced}"
             )
         self._tick_counter += 1
+
+    def _adapt_obs_for_model(self, env_obs: dict) -> dict:
+        """Slice env obs tensors down to the model's native size so
+        `policy.predict` sees the shape its network expects. No-op when
+        `_needs_adapter` is False. Sites + global pass through unchanged
+        (MAX_SITES, GLOBAL_FEATURES were not bumped in cap-120). The 2D
+        action_mask is sliced in BOTH dims because Blue's mask shape is
+        `(MAX_LAUNCHERS, MAX_THREATS+1)` and both grew."""
+        if not self._needs_adapter:
+            return env_obs
+        n_t = self._model_max_threats
+        n_l = self._model_max_launchers
+        n_i = self._model_max_interceptors
+        return {
+            "threats":           env_obs["threats"][:n_t],
+            "threats_mask":      env_obs["threats_mask"][:n_t],
+            "launchers":         env_obs["launchers"][:n_l],
+            "launchers_mask":    env_obs["launchers_mask"][:n_l],
+            "interceptors":      env_obs["interceptors"][:n_i],
+            "interceptors_mask": env_obs["interceptors_mask"][:n_i],
+            "sites":             env_obs["sites"],
+            "sites_mask":        env_obs["sites_mask"],
+            "global":            env_obs["global"],
+            "action_mask":       env_obs["action_mask"][:n_l, :n_t + 1],
+        }
+
+    def _adapt_action_for_env(self, model_action: np.ndarray) -> np.ndarray:
+        """Translate the model's smaller action vector into the env's
+        larger action space. Two transforms:
+
+          1. Hold-value remap: model's hold sentinel is
+             `model_max_threats`; env's hold is `MAX_THREATS`. A model
+             action `a == model_max_threats` becomes `MAX_THREATS` in
+             env coords.
+          2. Launcher padding: the model only commands launcher slots
+             `[0, model_max_launchers)`. Pad the remaining
+             `[model_max_launchers, MAX_LAUNCHERS)` slots with hold so
+             `_apply_action_gated` skips them.
+
+        Slot k in the model maps to slot k in the env because both
+        envs build the threats list from
+        `world.threats.values()` in dict-insertion order — so the int
+        target index has the same meaning across both spaces (provided
+        the alive-threat count stays under `model_max_threats`, which
+        is the only regime the adapter is correct in)."""
+        if not self._needs_adapter:
+            return model_action
+        env_action = np.full(MAX_LAUNCHERS, MAX_THREATS, dtype=np.int64)
+        model_hold = self._model_max_threats
+        for i, a in enumerate(model_action):
+            if i >= MAX_LAUNCHERS:
+                break
+            a_int = int(a)
+            if a_int == model_hold:
+                env_action[i] = MAX_THREATS
+            else:
+                env_action[i] = a_int
+        return env_action
 
     def _apply_action_gated(self, action: np.ndarray, t_now: float) -> int:
         """Execute the policy's action with rule-layer safety gates.
