@@ -307,6 +307,63 @@ html, body {
 .log-tag-ciws       { color: #d9b36a; background: rgba(217, 179, 106, 0.14); }
 
 /* ─────────────────────────────────────────
+   BATTLE DASHBOARDS (replace old text logs)
+   ───────────────────────────────────────── */
+.dash-body {
+  padding: 8px 10px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(63, 193, 255, 0.3) transparent;
+}
+.dash-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.dash-label {
+  color: #8ba8c4;
+  font-weight: 500;
+}
+.dash-value {
+  color: #cfe0f5;
+  font-family: 'Share Tech Mono', 'Consolas', monospace;
+  font-weight: 600;
+}
+.dash-highlight { color: #3fc1ff; font-size: 14px; }
+.dash-highlight-red { color: #ff5252; font-size: 14px; }
+.dash-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+.dash-sep {
+  height: 1px;
+  background: rgba(63, 193, 255, 0.15);
+  margin: 6px 0;
+}
+.dash-bar-outer {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  margin: 2px 0 6px;
+  overflow: hidden;
+}
+.dash-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.dash-bar-blue { background: linear-gradient(90deg, #3fc1ff, #66d9ef); }
+.log-col-red .dash-label { color: #c49a9a; }
+.log-col-red .dash-sep { background: rgba(255, 61, 61, 0.15); }
+
+/* ─────────────────────────────────────────
    MAGAZINE PANEL (right column)
    Issue #25: per-launcher detail view.
    ───────────────────────────────────────── */
@@ -1047,36 +1104,6 @@ html, body {
   border-top: 1px solid rgba(63, 193, 255, 0.12);
   font-size: 11px; color: #8295ad; font-style: italic;
   font-family: 'Share Tech Mono', 'Consolas', monospace;
-}
-
-/* ─────────────────────────────────────────
-   WAVE WARNING BANNER
-   Full-width banner at top on wave transitions.
-   ───────────────────────────────────────── */
-#wave-banner {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(180deg, rgba(255, 40, 60, 0.85) 0%, rgba(180, 20, 30, 0.6) 100%);
-  color: #fff;
-  font-size: 22px; font-weight: 800;
-  letter-spacing: 4px; text-transform: uppercase;
-  text-shadow: 0 0 20px rgba(255, 80, 80, 0.8);
-  z-index: 25;
-  overflow: hidden;
-  pointer-events: none;
-  opacity: 0;
-  transition: height 0.3s ease-out, opacity 0.3s ease-out;
-  font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
-}
-#wave-banner.wave-banner-show {
-  height: 56px;
-  opacity: 1;
-}
-#wave-banner.wave-banner-fade {
-  opacity: 0;
-  transition: opacity 0.5s ease-in;
 }
 
 /* ─────────────────────────────────────────

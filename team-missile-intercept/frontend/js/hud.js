@@ -173,13 +173,6 @@ export function updateHud(snap) {
   setText('stat-intercepts', snap.stats?.intercepts ?? 0);
   setText('stat-leaked', snap.stats?.leaked ?? 0);
 
-  // Wave warning banner
-  const currentWave = snap.wave ?? 0;
-  if (currentWave > _lastWave && currentWave > 0) {
-    showWaveBanner(currentWave);
-  }
-  _lastWave = currentWave;
-
   // Kill-feed: detect intercept count increase
   const intercepts = snap.stats?.intercepts ?? 0;
   if (intercepts > _lastIntercepts && _lastIntercepts > 0) {
@@ -193,16 +186,9 @@ export function updateHud(snap) {
   // Sim clock progress bar
   updateSimClock(snap.t, snap.max_sim_time);
 
-  // Accumulated logs (keep full history across snapshots)
-  const blueRes = accumulateLog(_blueLogHistory, snap.blue_log || [], _lastBlueLogTail);
-  _lastBlueLogTail = blueRes.lastTail;
-  const redRes = accumulateLog(_redLogHistory, snap.red_log || [], _lastRedLogTail);
-  _lastRedLogTail = redRes.lastTail;
-  renderLog('log-blue', _blueLogHistory);
-  renderLog('log-red', _redLogHistory);
-
-  // Track per-launcher ammo consumption across ticks (for dashboard).
-  trackLauncherAmmo(snap.launchers || []);
+  // Live battle dashboards (replace old text logs)
+  renderBlueDashboard(snap);
+  renderRedDashboard(snap);
 
   // Per-site HP bars (Milestone I — replaces the old leak counters).
   renderSiteHp(snap.sites || []);
@@ -411,12 +397,7 @@ const OVERLAY_TEXT = {
 let _dashboardRendered = false;
 let _originalMoInnerHtml = null;
 
-// Track cumulative ammo fired per launcher across ticks. Launchers
-// reload, so `capacity - current` at match end can be 0 even if the
-// launcher fired dozens of rounds. We compare each tick's `current`
-// with the previous value and accumulate decreases.
-const _prevLauncherAmmo = {};   // id → previous current value
-const _launcherAmmoFired = {};  // id → total rounds fired
+// (Ammo fired tracking now uses backend total_fired field.)
 
 const PHASE_LABEL = {
   setup:    'SETUP',
@@ -506,25 +487,6 @@ function renderSetupRibbon(phase) {
   el.classList.toggle('hidden', phase !== 'setup');
 }
 
-// ── Per-launcher ammo tracking ────────────────────────────────────────
-// Called every tick from updateHud. Detects ammo decreases (= shots
-// fired) and accumulates them. Reloads increase `current`, but we only
-// count decreases so the total is monotonically increasing.
-function trackLauncherAmmo(launchers) {
-  for (const lch of launchers) {
-    const id = lch.id;
-    const cur = lch.current ?? 0;
-    if (id in _prevLauncherAmmo) {
-      const prev = _prevLauncherAmmo[id];
-      if (cur < prev) {
-        // Ammo decreased — launcher fired (prev - cur) rounds
-        _launcherAmmoFired[id] = (_launcherAmmoFired[id] ?? 0) + (prev - cur);
-      }
-    }
-    _prevLauncherAmmo[id] = cur;
-  }
-}
-
 // ── Post-Match Summary — metrics computation ─────────────────────────
 function computeDashboardMetrics(snap) {
   const stats = snap.stats || {};
@@ -570,11 +532,11 @@ function computeDashboardMetrics(snap) {
     kindMap[k].totalBaseCost += lch.base_cost_usd ?? 0;
     kindMap[k].launchers.push(lch);
   }
-  // ammo fired = cumulative tracked consumption (survives reloads)
+  // ammo fired — use backend-tracked total_fired (reliable at any speed)
   for (const v of Object.values(kindMap)) {
     v.totalFired = 0;
     for (const lch of v.launchers) {
-      v.totalFired += _launcherAmmoFired[lch.id] ?? 0;
+      v.totalFired += lch.total_fired ?? 0;
     }
   }
 
@@ -649,7 +611,7 @@ function updateDashboardValues(snap) {
   for (const lch of m.launchers) {
     const cap = lch.capacity ?? 0;
     const cur = lch.current ?? 0;
-    const fired = _launcherAmmoFired[lch.id] ?? 0;
+    const fired = lch.total_fired ?? 0;
     const ammoPct = cap > 0 ? Math.min(100, (cur / cap) * 100) : 0;
     const ammoBar = $(`pms-lch-bar-${lch.id}`);
     if (ammoBar) ammoBar.style.width = ammoPct + '%';
@@ -731,7 +693,7 @@ function buildDashboardHtml(snap, m) {
     for (const lch of v.launchers) {
       const cap = lch.capacity ?? 0;
       const cur = lch.current ?? 0;
-      const fired = _launcherAmmoFired[lch.id] ?? 0;
+      const fired = lch.total_fired ?? 0;
       const ammoPct = cap > 0 ? Math.min(100, (cur / cap) * 100) : 0;
       let statusLabel, statusCls;
       if (lch.reloading) {
@@ -954,19 +916,11 @@ export function resetHudEventTracking() {
     _originalMoInnerHtml = null;
   }
   _dashboardRendered = false;
-  // Clear per-launcher ammo tracking for the next game
-  for (const k of Object.keys(_prevLauncherAmmo)) delete _prevLauncherAmmo[k];
-  for (const k of Object.keys(_launcherAmmoFired)) delete _launcherAmmoFired[k];
   // Ribbon re-shows on the next SETUP snapshot; hiding it here avoids a
   // stale-visible flash between Reset click and the first snapshot.
   document.getElementById('setup-ribbon')?.classList.add('hidden');
   // Reset accumulated state for next game
-  _lastWave = 0;
   _lastIntercepts = 0;
-  _blueLogHistory.length = 0;
-  _redLogHistory.length = 0;
-  _lastBlueLogTail = '';
-  _lastRedLogTail = '';
   // Clear kill-feed
   const kf = document.getElementById('kill-feed');
   if (kf) kf.innerHTML = '';
@@ -985,61 +939,6 @@ function setText(id, v) {
   if (el) el.textContent = String(v);
 }
 
-// Keep a bounded tail of the log so DOM-diff stays cheap at high entry
-// counts. With `renderLog` rewriting innerHTML every tick, rendering 80
-// entries 15 Hz is ~1200 div creations / second — still fine. The cap
-// is here in case scenarios produce hundreds of entries.
-const LOG_TAIL = 120;
-
-function renderLog(id, entries) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  // Preserve whether the user has scrolled up to read history: only
-  // auto-scroll if they were already pinned to the bottom.
-  const pinned = Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) < 4;
-  const tail = entries.slice(-LOG_TAIL);
-  el.innerHTML = tail.map(formatLogLine).join('');
-  if (pinned) el.scrollTop = el.scrollHeight;
-}
-
-// Format one raw backend log line into coloured HTML.
-//
-// Blue lines look like:
-//   "[ 42.3s] pac_3 [FALLBACK] → cruise_sub (hp 20/30, 2 in flight, …)"
-//   "[ 50.1s] ciws [CIWS] → drone (…)"
-//   "[ 30.0s] iris_t_slm → cruise_sub (…)"
-// Red lines are currently just wave announcements:
-//   "[  2.0s] Wave 1 launched (3 threats)"
-//
-// We look for a "[TIMESTAMP] <token>" prefix where <token> is a known
-// interceptor kind; if found, render a colour dot + class the whole line
-// by the priority tag it contains.
-function formatLogLine(raw) {
-  const safe = escapeHtml(raw);
-  // Detect trailing tags (colour takes precedence of seriousness).
-  let cls = '';
-  if (/\[LAST RESORT\]/.test(raw)) cls = 'log-last-resort';
-  else if (/\[FALLBACK\]/.test(raw)) cls = 'log-fallback';
-  else if (/\[CIWS\]/.test(raw)) cls = 'log-ciws';
-
-  // Highlight the tag token itself so it stands out even inside the
-  // coloured-class background.
-  const withTag = safe
-    .replace('[LAST RESORT]', '<span class="log-tag log-tag-lastresort">[LAST RESORT]</span>')
-    .replace('[FALLBACK]', '<span class="log-tag log-tag-fallback">[FALLBACK]</span>')
-    .replace('[CIWS]', '<span class="log-tag log-tag-ciws">[CIWS]</span>');
-
-  // Weapon-colour dot: take the first whitespace-separated token AFTER
-  // the "[Ts]" timestamp. Matches interceptor kind strings exactly.
-  const m = raw.match(/^\[\s*[\d.]+s\]\s+(\w+)/);
-  let dotHtml = '';
-  if (m && WEAPON_COLORS[m[1]]) {
-    dotHtml = `<span class="log-dot" style="background:${WEAPON_COLORS[m[1]]}"></span>`;
-  }
-
-  return `<div class="${cls}">${dotHtml}${withTag}</div>`;
-}
-
 function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -1047,22 +946,119 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;');
 }
 
-// ── Wave Warning Banner ──────────────────────────────────────────────
-// Full-width banner sliding in from the top when wave number increases.
-let _lastWave = 0;
-let _waveBannerTimer = null;
+// ── Live Battle Dashboards ───────────────────────────────────────────
+// Replace the old text logs with at-a-glance visual summaries.
 
-function showWaveBanner(waveNum) {
-  const el = document.getElementById('wave-banner');
+const THREAT_LABELS = { drone: 'Drone', cruise_sub: 'Cruise', ballistic: 'Ballistic', hgv: 'HGV' };
+const THREAT_COLORS = { drone: '#8cf', cruise_sub: '#f9a825', ballistic: '#ff5252', hgv: '#e040fb' };
+const INTERCEPTOR_LABELS = {
+  ciws: 'CIWS', rbs_70: 'RBS-70', iris_t_sls: 'IRIS-T SLS',
+  iris_t_slm: 'IRIS-T SLM', pac_2: 'PAC-2', pac_3: 'PAC-3',
+};
+
+function renderBlueDashboard(snap) {
+  const el = document.getElementById('blue-dashboard');
   if (!el) return;
-  el.textContent = `INCOMING — Wave ${waveNum}`;
-  el.classList.remove('wave-banner-fade');
-  el.classList.add('wave-banner-show');
-  if (_waveBannerTimer) clearTimeout(_waveBannerTimer);
-  _waveBannerTimer = setTimeout(() => {
-    el.classList.add('wave-banner-fade');
-    setTimeout(() => el.classList.remove('wave-banner-show', 'wave-banner-fade'), 600);
-  }, 3000);
+  const stats = snap.stats || {};
+  const ents = snap.entities || [];
+  const intercepts = stats.intercepts ?? 0;
+  const leaked = stats.leaked ?? 0;
+  const total = intercepts + leaked;
+  const rate = total > 0 ? Math.round((intercepts / total) * 100) : 0;
+  const blueFlying = ents.filter(e => e.team === 'blue' && e.alive).length;
+
+  // Count interceptors in flight by kind
+  const byKind = {};
+  for (const e of ents) {
+    if (e.team === 'blue' && e.alive) {
+      byKind[e.kind] = (byKind[e.kind] || 0) + 1;
+    }
+  }
+
+  // Launcher readiness
+  const launchers = snap.launchers || [];
+  const ready = launchers.filter(l => (l.current ?? 0) > 0).length;
+
+  let html =
+    `<div class="dash-row"><span class="dash-label">Intercept rate</span>` +
+    `<span class="dash-value dash-highlight">${rate}%</span></div>` +
+    `<div class="dash-bar-outer"><div class="dash-bar-fill dash-bar-blue" style="width:${rate}%"></div></div>` +
+    `<div class="dash-row"><span class="dash-label">Interceptors in flight</span>` +
+    `<span class="dash-value">${blueFlying}</span></div>` +
+    `<div class="dash-row"><span class="dash-label">Launchers ready</span>` +
+    `<span class="dash-value">${ready} / ${launchers.length}</span></div>` +
+    `<div class="dash-row"><span class="dash-label">Kills / Leaked</span>` +
+    `<span class="dash-value">${intercepts} / ${leaked}</span></div>`;
+
+  // Active interceptors by type
+  const kindEntries = Object.entries(byKind).sort((a, b) => b[1] - a[1]);
+  if (kindEntries.length > 0) {
+    html += `<div class="dash-sep"></div>`;
+    for (const [k, n] of kindEntries) {
+      const label = INTERCEPTOR_LABELS[k] || k;
+      const color = WEAPON_COLORS[k] || '#3fc1ff';
+      html += `<div class="dash-row"><span class="dash-dot" style="background:${color}"></span>` +
+        `<span class="dash-label">${label}</span>` +
+        `<span class="dash-value">${n} flying</span></div>`;
+    }
+  }
+
+  el.innerHTML = html;
+}
+
+function renderRedDashboard(snap) {
+  const el = document.getElementById('red-dashboard');
+  if (!el) return;
+  const stats = snap.stats || {};
+  const ents = snap.entities || [];
+
+  // Count active threats by kind
+  const byKind = {};
+  let totalActive = 0;
+  for (const e of ents) {
+    if (e.team === 'red' && e.alive) {
+      byKind[e.kind] = (byKind[e.kind] || 0) + 1;
+      totalActive++;
+    }
+  }
+
+  const spawned = stats.spawned ?? 0;
+  const wave = snap.wave ?? 0;
+  const totalWaves = snap.total_waves ?? 0;
+
+  let html =
+    `<div class="dash-row"><span class="dash-label">Active threats</span>` +
+    `<span class="dash-value dash-highlight-red">${totalActive}</span></div>` +
+    `<div class="dash-row"><span class="dash-label">Total spawned</span>` +
+    `<span class="dash-value">${spawned}</span></div>` +
+    `<div class="dash-row"><span class="dash-label">Wave</span>` +
+    `<span class="dash-value">${wave} / ${totalWaves}</span></div>`;
+
+  // Threat breakdown
+  const threatKinds = ['drone', 'cruise_sub', 'ballistic', 'hgv'];
+  html += `<div class="dash-sep"></div>`;
+  for (const k of threatKinds) {
+    const n = byKind[k] || 0;
+    const label = THREAT_LABELS[k];
+    const color = THREAT_COLORS[k];
+    html += `<div class="dash-row"><span class="dash-dot" style="background:${color}"></span>` +
+      `<span class="dash-label">${label}</span>` +
+      `<span class="dash-value">${n > 0 ? n + ' active' : '—'}</span></div>`;
+  }
+
+  // Site damage summary
+  const sites = snap.sites || [];
+  const damaged = sites.filter(s => s.hp < s.hp_max);
+  if (damaged.length > 0) {
+    html += `<div class="dash-sep"></div>`;
+    for (const s of damaged) {
+      const pct = Math.round((s.hp / s.hp_max) * 100);
+      html += `<div class="dash-row"><span class="dash-label">${s.name}</span>` +
+        `<span class="dash-value" style="color:${pct < 30 ? '#ff5252' : '#ffa726'}">${pct}% HP</span></div>`;
+    }
+  }
+
+  el.innerHTML = html;
 }
 
 // ── Kill-Feed Overlay ────────────────────────────────────────────────
@@ -1093,32 +1089,6 @@ function pushKillFeed(text) {
       if (idx >= 0) _killFeedQueue.splice(idx, 1);
     }, 500);
   }, 3000);
-}
-
-// ── AI Log Accumulation ──────────────────────────────────────────────
-// Backend sends only the last 6 entries per snapshot. We accumulate
-// locally so the demo has full scrollback history.
-const _blueLogHistory = [];
-const _redLogHistory = [];
-let _lastBlueLogTail = '';
-let _lastRedLogTail = '';
-const MAX_LOG_HISTORY = 120;
-
-function accumulateLog(history, entries, lastTailRef) {
-  if (!entries.length) return { changed: false, lastTail: lastTailRef };
-  // Use the last entry as a fingerprint to detect new data
-  const tail = entries[entries.length - 1];
-  if (tail === lastTailRef) return { changed: false, lastTail: lastTailRef };
-  // Find which entries are new (not already in history)
-  const histSet = new Set(history.slice(-20));
-  for (const e of entries) {
-    if (!histSet.has(e)) {
-      history.push(e);
-    }
-  }
-  // Cap
-  while (history.length > MAX_LOG_HISTORY) history.shift();
-  return { changed: true, lastTail: tail };
 }
 
 // ── Sim Clock Progress Bar ───────────────────────────────────────────
