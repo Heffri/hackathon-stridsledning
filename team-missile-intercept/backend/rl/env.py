@@ -383,7 +383,13 @@ class MissileInterceptEnv(gym.Env):
             dy = float(t_pos[1] - lch.pos[1])
             dz = float(t_pos[2])
             dist = (dx * dx + dy * dy + dz * dz) ** 0.5
-            if dist > spec.max_range * LAUNCH_RANGE_MARGIN:
+            # Path 2 (2026-04-25): loose 3× max_range gate, paired with
+            # the matching loosening in _build_action_mask. The mask
+            # alone is inert because actions sampled outside the strict
+            # 1.1× gate would be silently dropped here, so the design
+            # intent (fires consume budget + miss → spend×10 gradient)
+            # only holds when both checks use the same loose bound.
+            if dist > spec.max_range * 3.0:
                 continue
             mode = lch.fire(self.world.t)
             self.world.spawn_interceptor(
@@ -644,7 +650,17 @@ class MissileInterceptEnv(gym.Env):
             if lch.reloading or not lch.can_fire(t_now):
                 continue  # only hold
             spec = INTERCEPTOR_SPECS[lch.kind]
-            max_range = spec.max_range * LAUNCH_RANGE_MARGIN
+            # Path 2 (2026-04-25): loose mask. Allow fires at any threat
+            # within 3× launcher max_range so the policy can learn
+            # pre-emptive PAC-3 / PAC-2 launches that catch fast incoming
+            # RVs while they still have enough fly-in time. Out-of-range
+            # fires that miss are heavily penalised by the spend×10 and
+            # the per-step time cost; the policy has to learn the
+            # intercept geometry, but the option is now available where
+            # strict ×1.1 used to forbid it. The matching loose gate in
+            # _apply_action lets the fire actually consume budget so the
+            # spend gradient kicks in.
+            max_range_loose = spec.max_range * 3.0
             for t_idx, th in enumerate(threats):
                 if t_idx >= MAX_THREATS:
                     break
@@ -654,6 +670,6 @@ class MissileInterceptEnv(gym.Env):
                 dy = float(th.state.pos[1] - lch.pos[1])
                 dz = float(th.state.pos[2])
                 dist = (dx * dx + dy * dy + dz * dz) ** 0.5
-                if dist <= max_range:
+                if dist <= max_range_loose:
                     mask[l_idx, t_idx] = 1
         return mask
