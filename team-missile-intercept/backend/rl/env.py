@@ -272,12 +272,19 @@ class MissileInterceptEnv(gym.Env):
             if self.world.t >= self._episode_time_limit:
                 break
 
-        # Additive per-decision penalties. No survival bonus — it creates
-        # a stall incentive (agent learns to drag match out past truncation
-        # instead of winning). Terminal +100 win bonus is the horizon-
-        # shaping signal.
+        # Reward v2 (2026-04-25, reward-v2 branch):
+        #   * spend penalty 0.05 → 0.5 (10×): make over-engineered intercepts
+        #     (e.g. PAC-3 on a drone) net-negative; AOE multi-kill stays
+        #     net-positive because per-kill credit aggregates.
+        #   * time penalty -0.05/decision: gives policy a small incentive
+        #     to end matches faster when it can afford to (pairs with
+        #     opponent-budget visibility in obs).
+        #   * Terminal split: blue-win is now value-graded by remaining
+        #     site HP fraction (0–50) + remaining Blue budget fraction
+        #     (0–50). A clean lavish win = +100; a near-Pyrrhic survival
+        #     ~ +20. Draw is now -50 (was 0) to discourage stalling.
         spent = max(0, prev_blue_budget - self.world.blue_budget)
-        reward = event_reward - spent / 1e6 * 0.05  # weak efficiency penalty per $M spent
+        reward = event_reward - spent / 1e6 * 0.5 - 0.05
 
         terminated = self._winner() is not None
         truncated = (not terminated) and self.world.t >= self._episode_time_limit
@@ -285,10 +292,16 @@ class MissileInterceptEnv(gym.Env):
         if terminated:
             w = self._winner()
             if w == "blue":
-                reward += 100.0
+                hp_total = sum(s.hp for s in sites_module.SOUTH_SITES)
+                hp_max_total = sum(max(1, s.hp_max) for s in sites_module.SOUTH_SITES)
+                hp_frac = hp_total / max(1, hp_max_total)
+                budget_max = max(1, getattr(self.world, "blue_budget_max", 1))
+                budget_frac = max(0.0, self.world.blue_budget / budget_max)
+                reward += 50.0 * hp_frac + 50.0 * budget_frac
             elif w == "red":
                 reward -= 100.0
-            # draw: 0
+            elif w == "draw":
+                reward -= 50.0
 
         self._cum_reward += reward
         info = {
