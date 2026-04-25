@@ -399,8 +399,22 @@ class MissileInterceptEnv(gym.Env):
                     r += 1.0
             elif et == "leak":
                 # Site leak. Heavily weighted by leak damage.
+                # Aggressive-retrain B path (2026-04-25): tiered penalty
+                # by threat kind so ballistic/HGV leaks dominate the
+                # gradient — forces policy to try PAC-3 even at the cost
+                # of wasted shots, vs. the prior flat ×2 that let the
+                # policy "accept" ballistic/HGV leaks as cheaper than
+                # PAC-3 launch cost.
                 dmg = ev.get("damage", 0)
-                r -= float(dmg) * 2.0
+                kind = ev.get("kind", "")
+                if kind == "hgv":
+                    r -= float(dmg) * 8.0
+                elif kind == "ballistic":
+                    r -= float(dmg) * 6.0
+                elif kind == "cruise_sub":
+                    r -= float(dmg) * 3.0
+                else:  # drone or unknown
+                    r -= float(dmg) * 2.0
             elif et == "ground_crash" and ev.get("threat") is not None:
                 # Red threat crashed w/o hitting a site — small credit.
                 # Gate on 'threat' key so interceptor ground crashes

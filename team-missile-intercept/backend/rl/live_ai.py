@@ -348,6 +348,20 @@ class LearnedBlueAI:
                 self.log.append(
                     f"[{t_now:6.1f}s] learned_blue fires={n_fires}"
                 )
+        # Path C (2026-04-25): emergency strategic-fallback. Even after
+        # reward-shaped retrain (B path, 500 k steps with HGV leak
+        # penalty × 8 / ballistic × 6), the policy doesn't reliably fire
+        # PAC-3 / PAC-2 at Mach-13 ballistic / Mach-17 HGV. This rule-
+        # layer safety net force-dispatches the canonical interceptor
+        # for any strategic threat the policy ignored. Mirrors the
+        # last-resort tier in ``sim/blue_ai.py``. Demo-safe; restored
+        # after Bug 7 removal because the trained policy never picked
+        # up the behaviour the spec required.
+        n_forced = self._force_strategic_fallback(t_now)
+        if n_forced:
+            self.log.append(
+                f"[{t_now:6.1f}s] strategic_fallback={n_forced}"
+            )
         self._tick_counter += 1
 
     def _apply_action_gated(self, action: np.ndarray, t_now: float) -> int:
@@ -436,6 +450,78 @@ class LearnedBlueAI:
             self._assignments.setdefault(tid_target, []).append(iid)
             n_fires += 1
         return n_fires
+
+    def _force_strategic_fallback(self, t_now: float) -> int:
+        """Force-dispatch PAC-3 / PAC-2 at any ballistic OR HGV the
+        policy left unengaged.
+
+        Path C emergency net (2026-04-25): the trained Blue policy
+        repeatedly fails to learn PAC-3 firing — even after the
+        reward-shaped retrain that increased ballistic/HGV leak
+        penalties (HGV ×8, ballistic ×6, cruise ×3 in
+        ``env._reward_from_events``). Without intervention,
+        Mach-13 ballistic / Mach-17 HGV walk through Blue's defense
+        and crater sites in 1-2 hits each.
+
+        This rule-layer safety net mirrors ``sim/blue_ai.py``'s
+        last-resort tier — if the policy didn't engage a strategic
+        threat, force a PAC-3 (HTK match for both kinds) or PAC-2
+        (acceptable backup for ballistic only — Mach 5 too slow for
+        Mach-17 HGV, would be a guaranteed miss + wasted budget).
+
+        Activation: only fires at ballistic / HGV with zero in-flight
+        interceptors (policy hasn't engaged). One launcher per threat
+        per tick; the next tick retries if cooldowns clear.
+
+        Returns the count of forced launches for the log line.
+        """
+        world = self._env.world
+        forced = 0
+        for tid, threat in world.threats.items():
+            if not threat.state.alive:
+                continue
+            threat_kind = ThreatType(threat.state.kind)
+            if threat_kind not in (ThreatType.BALLISTIC, ThreatType.HGV):
+                continue
+            if len(self._assignments.get(tid, [])) > 0:
+                continue  # policy or prior fallback already engaged
+            # PAC-3 first for both. PAC-2 backup only for ballistic.
+            kinds_to_try = [InterceptorType.HIT_TO_KILL]
+            if threat_kind == ThreatType.BALLISTIC:
+                kinds_to_try.append(InterceptorType.LONG_SAM)
+            for kind in kinds_to_try:
+                spec = INTERCEPTOR_SPECS[kind]
+                if world.blue_budget < spec.usd_cost:
+                    continue
+                fired = False
+                for lch in self.launchers.launchers:
+                    if lch.kind != kind:
+                        continue
+                    if lch.reloading or not lch.can_fire(t_now):
+                        continue
+                    t_pos = threat.state.pos
+                    dx = float(t_pos[0] - lch.pos[0])
+                    dy = float(t_pos[1] - lch.pos[1])
+                    dz = float(t_pos[2])
+                    if (dx * dx + dy * dy + dz * dz) > \
+                            (spec.max_range * LAUNCH_RANGE_MARGIN) ** 2:
+                        continue
+                    mode = lch.fire(t_now)
+                    iid = world.spawn_interceptor(
+                        lch.kind,
+                        (lch.pos[0], lch.pos[1], 0.0),
+                        (dx, dy, dz),
+                        tid,
+                        mode,
+                    )
+                    world.blue_budget -= spec.usd_cost
+                    self._assignments.setdefault(tid, []).append(iid)
+                    forced += 1
+                    fired = True
+                    break  # one launcher per threat per tick
+                if fired:
+                    break  # don't also fire backup if primary fired
+        return forced
 
 
 # ----------------------------------------------------------------------
