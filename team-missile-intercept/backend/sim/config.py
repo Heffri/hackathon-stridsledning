@@ -36,7 +36,12 @@ STREAM_HZ = 15.0     # WebSocket state broadcast
 # Milestone I replaced the 600 s hard cap with real win conditions
 # (site HP depletion, Blue budget exhaustion, Red-out-of-threats). The
 # 3600 s value is a safety net only — a typical match ends in 150-400 s.
-MAX_SIM_TIME = 3600.0
+MAX_SIM_TIME = 4500.0  # Hack Day 2026-04-25 demo bump (was 3600). After
+                       # the threat speed nerf (ballistic Mach 13→7 etc.)
+                       # the chain extends to ~3500 s and mop-up drones
+                       # can be in-flight until ~4000-4400 s. 4500 s
+                       # gives the match time to resolve cleanly to
+                       # Blue-win instead of timing out at draw.
 
 # --- Environment ---
 GRAVITY = 9.81       # m/s^2, applied -Z

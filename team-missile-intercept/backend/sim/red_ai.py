@@ -426,6 +426,7 @@ class ScriptedRedAI:
         # 1 drone every MOPUP_INTERVAL_S at a random still-alive
         # military site until budget drops below drone cost.
         self._mopup_active = False
+        self._mopup_finished = False  # latches True after mop-up exhausts; prevents re-activation loop when schedule_done holds via time-threshold (Hack Day fix 2026-04-25)
         self._last_mopup_t: float = 0.0
         self._mopup_count: int = 0
         # --- Snapshot-compat shims ---
@@ -466,8 +467,25 @@ class ScriptedRedAI:
         # this, Red stops acting even with ~$800 k left on the table
         # (HGV / ballistic / cruise are all too expensive) and the
         # match idles to MAX_SIM_TIME.
-        schedule_done = self._initialized and not self._triggers
-        if schedule_done and not self._mopup_active:
+        #
+        # 2026-04-25 Hack Day fix: also activate mop-up when budget
+        # can't afford any meaningful threat OR when world.t has
+        # passed 2500 s. Why: after the threat speed nerf
+        # (ballistic Mach 13 → 7), the chain's fire_t schedule extends
+        # to t≈3500s — leaving stale future triggers in the queue that
+        # never actually spawn anything (matches usually cap at 3000s).
+        # Stale triggers blocked schedule_done = True, mop-up never
+        # activated, and Red sat on residual budget while the match
+        # idled to draw despite Blue's surviving sites. Treating those
+        # stale triggers as effectively-done (via time threshold OR
+        # budget exhaustion) is the cleanest unblock.
+        cheapest_threat_cost = THREAT_SPECS[ThreatType.DRONE].usd_cost
+        schedule_done = self._initialized and (
+            not self._triggers
+            or world.t > 2500.0
+            or world.red_budget < cheapest_threat_cost
+        )
+        if schedule_done and not self._mopup_active and not self._mopup_finished:
             self._mopup_active = True
             self._last_mopup_t = world.t
             self.log.append(
@@ -478,16 +496,29 @@ class ScriptedRedAI:
             self._last_mopup_t = world.t
             if not fired:
                 # No valid target or budget dry — mop-up is done.
+                # Latch _mopup_finished so the activation block above
+                # doesn't immediately re-arm next tick when schedule_done
+                # holds via the time-threshold branch.
                 self._mopup_active = False
+                self._mopup_finished = True
 
         # `.done` semantics: mirror RedAI — True once no more spawns will
         # happen AND no live threats remain. Scenario.winner consumes this
         # to decide Blue victory on "out of threats" side. Mop-up must
         # also be inactive (or permanently ended) or `done` would latch
         # between mop-up spawns.
-        no_pending = not self._triggers
+        #
+        # 2026-04-25 Hack Day fix: same rationale as schedule_done above.
+        # Treat stale future triggers (fire_t > 3000 s on a 3000 s cap)
+        # as effectively-done; the alternatives are budget exhaustion
+        # or the 2500 s safety threshold.
+        no_pending_effective = (
+            not self._triggers
+            or world.t > 2500.0
+            or world.red_budget < cheapest_threat_cost
+        )
         no_live = all(not th.state.alive for th in world.threats.values())
-        if no_pending and no_live and not self._mopup_active:
+        if no_pending_effective and no_live and not self._mopup_active:
             self._finished = True
 
     @property
