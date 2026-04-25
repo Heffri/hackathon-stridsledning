@@ -39,6 +39,7 @@ class Launcher:
     current_ammo: int = 0
     last_shot_t: float = -999.0
     reload_start_t: float = -999.0
+    total_fired: int = 0
 
     def __post_init__(self):
         if self.current_ammo == 0:
@@ -96,6 +97,7 @@ class Launcher:
                 f"{spec.engagement_mode_choices}"
             )
         self.current_ammo -= 1
+        self.total_fired += 1
         self.last_shot_t = t_now
         if self.current_ammo <= 0:
             self.reload_start_t = t_now
@@ -256,6 +258,7 @@ class LauncherFleet:
                 "reload_remaining": lch.reload_remaining(t_now),
                 "cooldown_remaining": cd_remaining,
                 "base_cost_usd": base_cost,
+                "total_fired": lch.total_fired,
             })
 
         by_kind: Dict[str, dict] = {}
