@@ -132,10 +132,6 @@ html, body {
    ──────────────────────────────────── */
 #hud[data-phase="running"] .hud-brand,
 #hud[data-phase="paused"]  .hud-brand,
-#hud[data-phase="running"] #budget-panel,
-#hud[data-phase="paused"]  #budget-panel,
-#hud[data-phase="running"] #red-budget-panel,
-#hud[data-phase="paused"]  #red-budget-panel,
 #hud[data-phase="running"] #ammo-panel,
 #hud[data-phase="paused"]  #ammo-panel {
   display: none;

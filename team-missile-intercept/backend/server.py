@@ -41,7 +41,6 @@ BLUE_AI_MODELS = [
 RED_AI_MODELS = [
     ("rule", "5-Wave Heuristic", None),
     ("scripted", "Scripted 3-Chain", "scripted"),
-    ("attrition", "Attrition (Red Income)", "attrition"),
     ("red1", "RL Learned v1", "rl/runs/red_20260421_205051/model.zip"),
     ("red2", "RL Learned v2", "rl/runs/red_20260421_234425/model.zip"),
 ]
@@ -423,9 +422,6 @@ class SimRunner:
         elif path == "scripted":
             from sim.red_ai import ScriptedRedAI
             self.scenario.red = ScriptedRedAI(self.scenario)
-        elif path == "attrition":
-            from sim.red_ai import AttritionRedAI
-            self.scenario.red = AttritionRedAI(self.scenario)
         else:
             try:
                 from rl.live_ai import LearnedRedAI

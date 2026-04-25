@@ -32,7 +32,7 @@ GROUND_Z = 0.0
 # --- Time ---
 DT = 0.05            # physics step (s)
 PHYSICS_HZ = 1.0 / DT
-STREAM_HZ = 15.0     # WebSocket state broadcast
+STREAM_HZ = 30.0     # WebSocket state broadcast
 # Milestone I replaced the 600 s hard cap with real win conditions
 # (site HP depletion, Blue budget exhaustion, Red-out-of-threats). The
 # 3600 s value is a safety net only — a typical match ends in 150-400 s.

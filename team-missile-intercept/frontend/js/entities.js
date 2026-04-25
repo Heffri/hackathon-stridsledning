@@ -902,8 +902,11 @@ export class EntityRegistry {
     const realDt = realNow - this._lastSnapRealTime;
     // Convert real-time delta to sim-time delta
     const simDt = realDt * this._simSpeed;
-    // Clamp to avoid overshooting on lag spikes or tab-switch
-    const clampedDt = Math.min(simDt, 0.2 * this._simSpeed);
+    // Clamp extrapolation distance. Cap at one snapshot period of sim
+    // time (~33ms) so straight-line extrapolation can't drift far ahead
+    // of the actual curving trajectory — kills snap-back stutter when
+    // a new snapshot arrives, especially at high speeds.
+    const clampedDt = Math.min(simDt, 1 / 30);
     for (const em of this.byId.values()) {
       em.interpolate(clampedDt);
     }
