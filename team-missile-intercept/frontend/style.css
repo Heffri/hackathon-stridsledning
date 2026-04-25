@@ -1321,6 +1321,7 @@ html, body {
 .pms-stat-label { color: #9fb8d4; }
 .pms-stat-val { color: #eaf3ff; font-weight: 600; }
 .pms-stat-pct { color: #8295ad; font-size: 10px; margin-left: 6px; }
+.pms-stat-sep { border-top: 1px solid #334466; margin: 4px 0; }
 
 /* Site damage bars */
 .pms-site-row {

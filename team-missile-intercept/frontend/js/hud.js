@@ -499,6 +499,20 @@ function computeDashboardMetrics(snap) {
   const leakRate = spawned > 0 ? (leaked / spawned) * 100 : 0;
   const activeRate = spawned > 0 ? (activeThreats / spawned) * 100 : 0;
 
+  // Per-category breakdown: drones vs missiles (cruise + ballistic + HGV)
+  const spByKind = stats.spawned_by_kind || {};
+  const intByKind = stats.intercepts_by_kind || {};
+  const leakByKind = stats.leaked_by_kind || {};
+  const MISSILE_KINDS = ['cruise_sub', 'ballistic', 'hgv'];
+  const droneSpawned = spByKind.drone ?? 0;
+  const droneInt = intByKind.drone ?? 0;
+  const droneLeak = leakByKind.drone ?? 0;
+  const missileSpawned = MISSILE_KINDS.reduce((a, k) => a + (spByKind[k] ?? 0), 0);
+  const missileInt = MISSILE_KINDS.reduce((a, k) => a + (intByKind[k] ?? 0), 0);
+  const missileLeak = MISSILE_KINDS.reduce((a, k) => a + (leakByKind[k] ?? 0), 0);
+  const droneRate = droneSpawned > 0 ? (droneInt / droneSpawned) * 100 : 0;
+  const missileRate = missileSpawned > 0 ? (missileInt / missileSpawned) * 100 : 0;
+
   const blueBudgetMax = stats.blue_budget_max ?? 0;
   const blueBudget = stats.blue_budget ?? 0;
   const redBudgetMax = stats.red_budget_max ?? 0;
@@ -543,6 +557,8 @@ function computeDashboardMetrics(snap) {
   return {
     spawned, intercepts, leaked, activeThreats,
     interceptRate, leakRate, activeRate,
+    droneSpawned, droneInt, droneLeak, droneRate,
+    missileSpawned, missileInt, missileLeak, missileRate,
     blueBudget, blueBudgetMax, blueSpent,
     redBudget, redBudgetMax, redSpent,
     costPerIntercept, exchangeRatio,
@@ -577,6 +593,10 @@ function updateDashboardValues(snap) {
   _patchText('pms-leak-pct', m.leakRate.toFixed(1) + '%');
   _patchText('pms-inflight-count', `${m.activeThreats}/${m.spawned}`);
   _patchText('pms-inflight-pct', m.activeRate.toFixed(1) + '%');
+  _patchText('pms-missile-count', `${m.missileInt}/${m.missileSpawned}`);
+  _patchText('pms-missile-pct', m.missileRate.toFixed(1) + '%');
+  _patchText('pms-drone-count', `${m.droneInt}/${m.droneSpawned}`);
+  _patchText('pms-drone-pct', m.droneRate.toFixed(1) + '%');
   _patchText('pms-chip-threats', `Threats: ${m.spawned}`);
 
   // Budget bars
@@ -636,7 +656,7 @@ function updateDashboardValues(snap) {
   }
 
   // KPI cards
-  _patchText('pms-kpi-defense', m.interceptRate.toFixed(1) + '%');
+  _patchText('pms-kpi-defense', m.missileRate.toFixed(1) + '%');
   _patchText('pms-kpi-cost', m.costPerIntercept > 0 ? formatMoney(m.costPerIntercept) : '—');
   _patchText('pms-kpi-sites', `${m.sitesIntact}/${m.sites.length}`);
   _patchText('pms-kpi-exchange', m.exchangeRatio > 0 ? m.exchangeRatio.toFixed(1) + ':1' : '—');
@@ -767,6 +787,17 @@ function buildDashboardHtml(snap, m) {
             `<span><span class="pms-stat-val" id="pms-inflight-count">${m.activeThreats}/${m.spawned}</span>` +
             `<span class="pms-stat-pct" id="pms-inflight-pct">${m.activeRate.toFixed(1)}%</span></span>` +
           `</div>` +
+          `<div class="pms-stat-sep"></div>` +
+          `<div class="pms-stat-row">` +
+            `<span class="pms-stat-label" style="color:#ff6a3a">Missiles</span>` +
+            `<span><span class="pms-stat-val" id="pms-missile-count">${m.missileInt}/${m.missileSpawned}</span>` +
+            `<span class="pms-stat-pct" id="pms-missile-pct">${m.missileRate.toFixed(1)}%</span></span>` +
+          `</div>` +
+          `<div class="pms-stat-row">` +
+            `<span class="pms-stat-label" style="color:#aaa">Drones</span>` +
+            `<span><span class="pms-stat-val" id="pms-drone-count">${m.droneInt}/${m.droneSpawned}</span>` +
+            `<span class="pms-stat-pct" id="pms-drone-pct">${m.droneRate.toFixed(1)}%</span></span>` +
+          `</div>` +
         `</div>` +
       `</div>` +
     `</div>` +
@@ -810,8 +841,8 @@ function buildDashboardHtml(snap, m) {
       `<div class="pms-section-title">Key Metrics</div>` +
       `<div class="pms-kpi-grid">` +
         `<div class="pms-kpi-card">` +
-          `<div class="pms-kpi-val" id="pms-kpi-defense">${m.interceptRate.toFixed(1)}%</div>` +
-          `<div class="pms-kpi-label">Defense Rate</div>` +
+          `<div class="pms-kpi-val" id="pms-kpi-defense">${m.missileRate.toFixed(1)}%</div>` +
+          `<div class="pms-kpi-label">Missile Defense</div>` +
         `</div>` +
         `<div class="pms-kpi-card">` +
           `<div class="pms-kpi-val" id="pms-kpi-cost">${m.costPerIntercept > 0 ? formatMoney(m.costPerIntercept) : '—'}</div>` +
@@ -967,6 +998,19 @@ function renderBlueDashboard(snap) {
   const rate = total > 0 ? Math.round((intercepts / total) * 100) : 0;
   const blueFlying = ents.filter(e => e.team === 'blue' && e.alive).length;
 
+  // Per-category intercept rates (missiles = cruise + ballistic + HGV)
+  const MISSILE_KINDS = ['cruise_sub', 'ballistic', 'hgv'];
+  const intByKind = stats.intercepts_by_kind || {};
+  const leakByKind = stats.leaked_by_kind || {};
+  const mInt = MISSILE_KINDS.reduce((a, k) => a + (intByKind[k] ?? 0), 0);
+  const mLeak = MISSILE_KINDS.reduce((a, k) => a + (leakByKind[k] ?? 0), 0);
+  const mTotal = mInt + mLeak;
+  const mRate = mTotal > 0 ? Math.round((mInt / mTotal) * 100) : 0;
+  const dInt = intByKind.drone ?? 0;
+  const dLeak = leakByKind.drone ?? 0;
+  const dTotal = dInt + dLeak;
+  const dRate = dTotal > 0 ? Math.round((dInt / dTotal) * 100) : 0;
+
   // Count interceptors in flight by kind
   const byKind = {};
   for (const e of ents) {
@@ -980,9 +1024,12 @@ function renderBlueDashboard(snap) {
   const ready = launchers.filter(l => (l.current ?? 0) > 0).length;
 
   let html =
-    `<div class="dash-row"><span class="dash-label">Intercept rate</span>` +
-    `<span class="dash-value dash-highlight">${rate}%</span></div>` +
-    `<div class="dash-bar-outer"><div class="dash-bar-fill dash-bar-blue" style="width:${rate}%"></div></div>` +
+    `<div class="dash-row"><span class="dash-label">Missile intercept</span>` +
+    `<span class="dash-value dash-highlight">${mRate}%</span></div>` +
+    `<div class="dash-bar-outer"><div class="dash-bar-fill dash-bar-blue" style="width:${mRate}%"></div></div>` +
+    `<div class="dash-row"><span class="dash-label">Drone intercept</span>` +
+    `<span class="dash-value">${dRate}%</span></div>` +
+    `<div class="dash-bar-outer"><div class="dash-bar-fill dash-bar-blue" style="width:${dRate}%;opacity:0.5"></div></div>` +
     `<div class="dash-row"><span class="dash-label">Interceptors in flight</span>` +
     `<span class="dash-value">${blueFlying}</span></div>` +
     `<div class="dash-row"><span class="dash-label">Launchers ready</span>` +

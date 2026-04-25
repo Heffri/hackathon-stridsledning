@@ -72,6 +72,10 @@ class World:
         self.threats_spawned: int = 0
         self.intercepts: int = 0
         self.leaked: int = 0  # threats that hit the base
+        # Per-kind breakdown so the HUD can show missile vs drone rates
+        self.spawned_by_kind: Dict[str, int] = {}
+        self.intercepts_by_kind: Dict[str, int] = {}
+        self.leaked_by_kind: Dict[str, int] = {}
 
         # Milestone I: Blue spends USD per interceptor launch.
         # BlueAI._fire deducts spec.usd_cost. Issue #21 (M-TIER2.8)
@@ -242,6 +246,7 @@ class World:
         )
         self.threats[eid] = t
         self.threats_spawned += 1
+        self.spawned_by_kind[kind.value] = self.spawned_by_kind.get(kind.value, 0) + 1
         self.events.append({"type": "threat_spawn", "id": eid, "kind": kind.value})
         return eid
 
@@ -451,6 +456,7 @@ class World:
             if primary_killed:
                 target.state.alive = False
                 self.intercepts += 1
+                self.intercepts_by_kind[target.state.kind] = self.intercepts_by_kind.get(target.state.kind, 0) + 1
                 self.events.append(
                     {
                         "type": "intercept",
@@ -489,6 +495,7 @@ class World:
                 if other.state.hp <= 0:
                     other.state.alive = False
                     self.intercepts += 1
+                    self.intercepts_by_kind[other.state.kind] = self.intercepts_by_kind.get(other.state.kind, 0) + 1
                     self.events.append(
                         {
                             "type": "intercept",
@@ -554,6 +561,7 @@ class World:
                     threat.state.alive = False
                     site.leaks += 1
                     self.leaked += 1
+                    self.leaked_by_kind[threat.state.kind] = self.leaked_by_kind.get(threat.state.kind, 0) + 1
                     # Milestone I: per-kind HP damage on every leak.
                     dmg = config.SITE_LEAK_DAMAGE.get(threat.state.kind, 10)
                     site.hp = max(0, site.hp - dmg)
@@ -592,6 +600,7 @@ class World:
                 if hit_site is not None:
                     hit_site.leaks += 1
                     self.leaked += 1
+                    self.leaked_by_kind[threat.state.kind] = self.leaked_by_kind.get(threat.state.kind, 0) + 1
                     dmg = config.SITE_LEAK_DAMAGE.get(threat.state.kind, 10)
                     hit_site.hp = max(0, hit_site.hp - dmg)
                     self.events.append(
@@ -711,6 +720,9 @@ class World:
                 "spawned": self.threats_spawned,
                 "intercepts": self.intercepts,
                 "leaked": self.leaked,
+                "spawned_by_kind": dict(self.spawned_by_kind),
+                "intercepts_by_kind": dict(self.intercepts_by_kind),
+                "leaked_by_kind": dict(self.leaked_by_kind),
                 "active_threats": sum(1 for t in self.threats.values() if t.state.alive),
                 "active_interceptors": sum(
                     1 for i in self.interceptors.values() if i.state.alive
