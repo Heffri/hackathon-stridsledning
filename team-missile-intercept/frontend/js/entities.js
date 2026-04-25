@@ -805,8 +805,12 @@ export class EntityRegistry {
 
   updateFromSnapshot(snap) {
     // Record snapshot arrival time + sim speed for interpolation.
+    // When paused/finished, zero out speed so interpolation doesn't
+    // extrapolate entities forward (causing rubber-band shaking).
     this._lastSnapRealTime = performance.now() / 1000;
-    this._simSpeed = snap.speed ?? 1;
+    const phase = snap.phase || 'setup';
+    const running = phase === 'running';
+    this._simSpeed = running ? (snap.speed ?? 1) : 0;
 
     // Build an id→state map so interceptors can look up their target
     // (for seeker-cone colour / opacity). Only include alive entities —
