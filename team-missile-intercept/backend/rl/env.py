@@ -42,9 +42,16 @@ from sim.world import World
 
 
 # --- Fixed shape caps (pad + mask for variable entity counts) ---
-MAX_THREATS = 30
-MAX_LAUNCHERS = 15
-MAX_INTERCEPTORS = 40
+# Capacity bump 2026-04-25 (post-Hack-Day "for fun" expansion):
+# obs / action shape grows so the env can host models trained at any
+# cap up to these values. Game balance, ScriptedRed, and sim physics
+# are NOT touched — only the AI's "viewing capacity" + the action
+# discretisation grow. live_ai.py contains a backward-compat adapter
+# that slices obs + remaps actions for smaller-cap pretrained models
+# (B_shaped at 30/15/40, Boyu V2/V2a at 96/24/128).
+MAX_THREATS = 120
+MAX_LAUNCHERS = 60
+MAX_INTERCEPTORS = 160
 MAX_SITES = 10
 
 # Agent decides every N sim ticks. 10 ticks = 0.5s sim per decision.
