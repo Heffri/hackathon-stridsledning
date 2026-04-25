@@ -1,0 +1,283 @@
+================================================================================
+AOE + RL CURRICULUM — KEY FINDINGS (2026-04-23 → 2026-04-25)
+================================================================================
+
+Saab 2026 hackathon "Smart Stridsledning" — browser-based arcade missile-defense
+sim. Blue (defender) PPO trained against scripted Red attack patterns. Model
+ships from `rl/runs/blue_curriculum_p4a_3c1r_ballistic_300k_nenv16/model.zip`.
+
+================================================================================
+1. GAME / SIM MECHANICS
+================================================================================
+
+1.1  AOE damage model replaces direct/prox split
+     - InterceptorSpec gains `fragment_radius` + `fragment_damage`. Old fields
+       `damage_direct` + `damage_prox` removed (no aliases, all readers updated).
+     - On detonation: every alive Red threat within `fragment_radius` of the
+       det point takes flat `fragment_damage`. No falloff.
+     - PAC-3 keeps pure-HTK identity via `fragment_radius=0` — only the primary
+       direct-hit target connects. Special-case in `resolve_aoe`.
+     - Damage values: CIWS 30m/12dmg, RBS-70 50m/18, SLS 100m/35, SLM 120m/50,
+       PAC-2 150m/80, PAC-3 0m/120.
+
+1.2  Retargeting on target death
+     - Interceptor stores `launcher_pos` + `launcher_max_range_m` at spawn.
+     - When target dies + interceptor not in terminal-lock (CPA < 2s), pick
+       nearest alive Red threat inside the LAUNCHER's range envelope (not
+       interceptor's current range — short-range weapons stay bounded).
+     - 2D ground-distance gate from threat → launcher_pos; 3D ranking from
+       threat → interceptor current position.
+
+1.3  Budgets bumped for AOE saturation era
+     - Blue $120M → $200M, Red $100M → $150M.
+     - `BUDGET_SCALE` in obs normalisation 1.2e8 → 2e8.
+
+1.4  RL episode horizon 1200s → 3000s
+     - Scripted Red drone swarms cruise at 120 m/s from far-north spawns
+       (~180 km) → ~1500s flight time. 1200s cap meant most matches truncated
+       before drones arrived. 3000s gives full leak-vs-intercept signal.
+
+1.5  Threat HP rebalanced
+     - drone 10, cruise 50, ballistic 100, HGV 120.
+     - SITE_LEAK_DAMAGE unchanged (drone 5, cruise 15, ballistic 30, HGV 40).
+
+1.6  ScriptedRedAI parameterised (curriculum knobs)
+     - `chain_count` ∈ {1,2,3} — number of parallel attack chains.
+     - `max_rounds` ∈ {1,2,3} — escalation depth per chain.
+     - `max_layer` ∈ {drone,cruise,ballistic,hgv} — deepest threat kind.
+     - Default (3,3,hgv) preserves bit-for-bit original behaviour.
+     - Threat counts per match: 1×1×drone=10, 3×1×drone=30, 3×1×cruise=45,
+       3×1×ballistic≈51, 3×3×hgv=121.
+
+1.7  World event stream now carries `kind` on intercept/damage
+     - Critical for downstream metrics (threats prune mid-tick, can't
+       look up kind from id post-step).
+
+================================================================================
+2. RL ENVIRONMENT FINDINGS
+================================================================================
+
+2.1  Capacity caps were silently clipping the policy
+     - Original: MAX_THREATS=30, MAX_LAUNCHERS=15, MAX_INTERCEPTORS=40.
+     - Diagnostic on scripted Red: peak 59 alive threats per match,
+       47.4% of ticks with threats > 30 cap → policy literally blind to
+       half the swarm. Plus Slot C has 23 launchers (clipped to 15).
+     - Bumped: MAX_THREATS=96, MAX_LAUNCHERS=24, MAX_INTERCEPTORS=128.
+     - Priority truncation (when alive > cap): sort by ETA-to-site ascending,
+       then danger rank (hgv > ballistic > cruise > drone), then distance.
+       Keeps most urgent threats visible.
+
+2.2  Layout pool sampling per episode
+     - `blue_positions_pool` kwarg in env. Pool JSON references catalog slots
+       with weights. Per-episode uniform sample, RNG forked from env seed.
+     - `AOE_CD_POOL.json` = Slot C (23 launchers, heavy saturation) + Slot D
+       (19 launchers, forward-island HGV hunter) at equal weight.
+
+2.3  Reward dedup for AOE multi-kill
+     - Cost-diff penalty (overspend on cheap target) charged ONCE per
+       interceptor/detonation, not per secondary AOE victim. Otherwise a
+       single SLM frag wiping a 4-drone cluster 4×-debits the same shot.
+     - Kill credit (leak-damage × 2) still fires per victim — that's the
+       reward for the multi-kill.
+
+2.4  Diagnostic info counters
+     - `info` now exposes: `alive_threats_total`, `visible_threats`,
+       `threats_truncated`, `alive_launchers_total`, `visible_launchers`,
+       `launchers_truncated`, `layout_slot`, `red_name`, plus existing
+       winner/sim_t/site_hp_total/cum_reward/events.
+     - `MetricsCallback` reads these on episode-done, dumps `metrics.jsonl`
+       + logs custom TB scalars (win_rate_rolling, fires_per_kind,
+       intercepts_per_kind, leaks_per_kind, layout_slot_share).
+
+================================================================================
+3. RL TRAINING — WHAT WORKS, WHAT FAILS
+================================================================================
+
+3.1  Raw scripted training does NOT work
+     - 5M steps on full scripted (3 chains × 3 rounds × hgv, ~120 threats):
+       ep_rew_mean -478 → -741 over 5M (DEGRADING). Entropy collapsed to
+       1e-2. Eval: 0/30 wins. Same failure mode as never-training.
+     - Reward surface is flat-negative for any random-init policy under
+       saturation. No gradient toward improvement → policy gives up,
+       collapses to deterministic min-fire.
+
+3.2  Curriculum DOES work (P1→P3)
+     - Phase 1 (1×1×drone, 100k, ent_coef=0.05, n_envs=8): ep_rew +171,
+       eval 10/10 wins both slots, HP 300/300, +177/+167 reward.
+     - Phase 2 (3×1×drone, +250k=350k, resume P1): 10/10 wins both slots,
+       +326/+321, HP 300/300.
+     - Phase 3 (3×1×cruise, +500k=850k, resume P2): 10/10 both slots,
+       +350/+457, HP 195/225 (cruise harder, but still all wins).
+     - Each phase trains on level the model can actually win. Positive
+       reward signal → real gradient → real learning.
+
+3.3  Phase jumps that are too steep collapse
+     - P4 attempt (3×2×hgv from P3, +1M): entropy collapse mid-training,
+       reward +303 → -513. Eval full scripted: 0 wins both slots.
+     - Skipping to "2 rounds AND new threat kinds" too much. Need single-
+       difficulty-step jumps.
+
+3.4  Phase 4a (3×1×ballistic, +300k=1.15M, n_envs=16, resume P3) WORKS
+     - ep_rew_mean +303 → +307 → +308 stable across 300k.
+     - Eval: 5/5 wins both slots × 5 matches @ 3×1 ballistic.
+     - n_envs=16 vs 8: fps 198 → 288 (~45% speedup), no other change.
+     - **This is the SHIPPED model.**
+
+3.5  Phase 4b (3×2×ballistic pooled C+D) hit asymmetric mode collapse
+     - +500k from P4a. Reward +328 → -48 over 500k. Not full collapse,
+       but trending wrong.
+     - Ckpt sweep: D layout improving (+54 → +292 reward, 0W/0L/5D), C
+       layout collapsing (-495 → -480 reward, 0W). Same model, different
+       behaviour per slot.
+
+3.6  Phase 4bC (Slot-C-only, anti-collapse hyperparams) DID NOT FIX IT
+     - Resumed P4a, trained C only on 3×2 ballistic, 150k, lr=1e-4
+       (was 3e-4), ent_coef=0.15 (was 0.05), n_steps=1024 (was 512),
+       n_envs=16.
+     - Reward +328 → +206 (less collapse than P4bC pooled, but still
+       trending down).
+     - Entropy collapsed to 0.000 anyway. Anti-collapse hyperparams
+       slowed but did not prevent collapse.
+     - Critical: short-range fires (CIWS+RBS-70+SLS) = 0 across all 16
+       training episodes. Long-range only.
+
+================================================================================
+4. THE BIG FINDING: LAYOUT-CONDITIONED MODE LOCK
+================================================================================
+
+4.1  Same model, different fire pattern per layout
+     Final eval table (n=5 matches each, 3×2 ballistic):
+       P4a Slot C: 0W/5L/0D, reward -527, HP 0,    short-range fires=0
+       P4a Slot D: 0W/0L/5D, reward +436, HP 141,  short-range fires=989
+       P4bC retry C: 0W/5L/0D, reward -529, HP 0,  short-range fires=0
+       P4bC retry D: 0W/0L/5D, reward +338, HP 108, short-range fires=989
+
+     **Same model fires 989 short-range shots on Slot D and ZERO on Slot C.**
+
+4.2  Mechanism (hypothesised)
+     - Obs encodes launcher positions as raw `(x, y) / POS_SCALE` floats.
+     - Slot C launchers at specific (x,y) coords learned during P1→P3
+       (which trained on default-layout, then P4a switched to C/D pool).
+     - Policy associates "Slot C position pattern" with "skip short-range"
+       — likely because P3 cruise scenario didn't reward CIWS use.
+     - Once entropy hit ~0 in P4 retry training, conditional response
+       baked in. Cannot escape via more training on Slot C — every C
+       episode ends in loss → no positive signal to break the lock.
+
+4.3  Anti-collapse hyperparams CANNOT undo a baked-in conditional
+     - Higher ent_coef + lower LR slows new collapse but does not unwind
+       existing one. Need:
+       (a) reset entropy (start from earlier ckpt before lock baked)
+       (b) re-train P1 onward WITH C+D pool from start (not switch mid-
+           curriculum)
+       (c) position-feature normalisation (relative-to-launcher coords
+           erase absolute (x,y) signature)
+       (d) per-launcher-kind firing bonus (force CIWS use even when
+           overspend penalty triggers).
+
+================================================================================
+5. HYPERPARAMETER TUNING NOTES
+================================================================================
+
+5.1  ent_coef=0.05 default OK for curriculum P1-P3 (winnable levels).
+     For collapse-prone levels (3×2+): tried 0.15 — slows but doesn't
+     prevent collapse if env signal is too negative.
+
+5.2  lr=3e-4 default. Lowered to 1e-4 for retry — smaller updates avoid
+     mode lock, but again doesn't undo lock once formed.
+
+5.3  n_steps=512 default. Bumped to 1024 for retry — larger rollouts
+     give more diverse experience per update. Marginal effect.
+
+5.4  n_envs=16 worth using on 16-thread CPU. ~50% speedup over n_envs=8
+     for threat-saturated scripted Red. Resume from n_envs=8 ckpt works.
+     Effective rollout size doubles but learning dynamics fine.
+
+5.5  --save-every 50000-200000 depending on phase length. Smaller for
+     short phases (so ckpt sweep has data), larger for long stable runs.
+
+5.6  episode-time-limit=3000s required. 1200s cap truncates before drones
+     arrive on far-north spawns.
+
+5.7  COST_DIFF_WEIGHT=1.0 (env constant) — possibly contributing to
+     short-range avoidance. PAC-3 ($4M) on drone ($30k) = $4M overspend
+     × 1.0 weight → big penalty. But short-range CIWS ($2k) on drone
+     should be net-zero penalty. Worth ablating.
+
+================================================================================
+6. METRICS / TOOLING ADDED
+================================================================================
+
+6.1  rl/callbacks.py — MetricsCallback (BaseCallback subclass)
+     - Per-env event accumulator (info['events'] only carries last-step
+       events; needed accumulation across episode).
+     - Rolling 100-ep window scalars to TB.
+     - JSONL dump per-episode for post-run plotting.
+
+6.2  rl/plot_run.py — matplotlib post-run grapher
+     - reward_curve.png, win_rate_curve.png, fires_stacked_area.png,
+       hp_histogram.png, leaks_bar.png, intercepts_bar.png, sim_t_curve.png
+
+6.3  rl/diag_scripted_fires.py — standalone fires-by-kind diagnostic
+
+6.4  rl/eval.py --json-out — dumps full per-match results including
+     fires_by_kind / intercepts_by_kind / leaks_by_kind for analysis
+
+6.5  Top metrics for collapse detection:
+     - `train/entropy_loss` near 0.0 = deterministic, alarm
+     - `custom/fires_per_kind/{ciws,rbs_70,iris_t_sls}` → 0 = collapse
+     - `custom/win_rate_rolling` plateau in negative territory = stuck
+     - `custom/leaks_per_kind/drone` rising = drone swarm overwhelming
+       short-range layer
+
+================================================================================
+7. SHIP STATUS
+================================================================================
+
+7.1  Demo model: blue_curriculum_p4a_3c1r_ballistic_300k_nenv16/model.zip
+     (43 MB, 1.15M total training steps via curriculum)
+
+7.2  Safe demo configurations (5/5 wins):
+     - Slot C, 3×1×ballistic: reward +221, HP 159
+     - Slot D, 3×1×ballistic: reward +483, HP 225
+     - Slot C, 3×1×drone:     reward +177, HP 300
+     - Slot D, 3×1×drone:     reward +167, HP 300
+
+7.3  AVOID in demo:
+     - Any 3×2 anywhere on Slot C (HP→0 every match)
+     - Full scripted (3×3×hgv) anywhere (0 wins)
+
+7.4  Failure story for presentation:
+     "Curriculum P1→P4a = 4 successful difficulty steps, perfect wins.
+      P4b/P4bC = layout-conditioned mode lock on Slot C — same model
+      fires 989 short-range shots on Slot D vs 0 on Slot C. Documented
+      with full eval JSON, CSV, and per-run plots."
+
+================================================================================
+8. OPEN QUESTIONS / FUTURE WORK
+================================================================================
+
+8.1  Slot C mode lock root cause — ablation needed:
+     - Test position-feature normalisation (relative-to-launcher coords)
+     - Audit Slot C action mask: are CIWS/RBS/SLS being filtered out by
+       range gate against typical scripted threats?
+     - Force per-kind firing bonus to break overspend-penalty bias.
+
+8.2  Re-train P1 onward with C+D pool from start (not switch mid-
+     curriculum). May avoid baking default-layout conditional.
+
+8.3  Lower COST_DIFF_WEIGHT (1.0 → 0.3?) — might reduce short-range
+     suppression bias.
+
+8.4  Curriculum step P3 → P4a → P4b granularity:
+     - 3×1 cruise → 3×1 ballistic worked (P3 → P4a).
+     - 3×1 ballistic → 3×2 ballistic broke (P4a → P4b).
+     - Try intermediate: 3×1 ballistic → 3×1 ballistic with HP scaled
+       up, OR drone_batch_size grown gradually instead of round count.
+
+8.5  Investigate whether layout-pool training from earlier phase
+     (e.g. P1 with C+D pool) would prevent the lock from forming.
+
+================================================================================
+END OF FINDINGS
+================================================================================
