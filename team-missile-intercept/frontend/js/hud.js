@@ -527,18 +527,19 @@ function computeDashboardMetrics(snap) {
   const matchMinutes = Math.floor(t / 60);
   const matchSeconds = Math.floor(t % 60);
 
-  // Per-launcher-kind aggregation
+  // Per-launcher detail list + per-kind aggregation
   const launchers = snap.launchers || [];
   const kindMap = {};
   for (const lch of launchers) {
     const k = lch.kind;
     if (!kindMap[k]) {
-      kindMap[k] = { count: 0, totalCapacity: 0, totalCurrent: 0, totalBaseCost: 0 };
+      kindMap[k] = { count: 0, totalCapacity: 0, totalCurrent: 0, totalBaseCost: 0, launchers: [] };
     }
     kindMap[k].count += 1;
     kindMap[k].totalCapacity += lch.capacity ?? 0;
     kindMap[k].totalCurrent += lch.current ?? 0;
     kindMap[k].totalBaseCost += lch.base_cost_usd ?? 0;
+    kindMap[k].launchers.push(lch);
   }
   // ammo used = capacity - current
   for (const v of Object.values(kindMap)) {
@@ -553,10 +554,101 @@ function computeDashboardMetrics(snap) {
     costPerIntercept, exchangeRatio,
     sites, sitesIntact, totalSiteHpPct,
     matchMinutes, matchSeconds,
-    kindMap,
+    kindMap, launchers,
     wave: snap.wave ?? 0,
     totalWaves: snap.total_waves ?? 0,
   };
+}
+
+// ── Post-Match Summary — targeted DOM updates ─────────────────────────
+// After the initial innerHTML build, subsequent ticks patch only the
+// values that change (intercepts, ammo, budget, site HP) so the
+// dashboard stays live without rebuilding the full DOM tree.
+function updateDashboardValues(snap) {
+  const m = computeDashboardMetrics(snap);
+  const $ = (id) => document.getElementById(id);
+
+  // Intercept performance ring + stats
+  const ring = document.querySelector('.pms-ring');
+  if (ring) {
+    const interceptPct = m.interceptRate.toFixed(1);
+    const leakEnd = (m.interceptRate + m.leakRate).toFixed(1);
+    ring.style.setProperty('--pms-intercept-pct', interceptPct + '%');
+    ring.style.setProperty('--pms-leak-end', leakEnd + '%');
+  }
+  _patchText('pms-ring-val', m.interceptRate.toFixed(0) + '%');
+  _patchText('pms-intercept-count', `${m.intercepts}/${m.spawned}`);
+  _patchText('pms-intercept-pct', m.interceptRate.toFixed(1) + '%');
+  _patchText('pms-leak-count', `${m.leaked}/${m.spawned}`);
+  _patchText('pms-leak-pct', m.leakRate.toFixed(1) + '%');
+  _patchText('pms-inflight-count', `${m.activeThreats}/${m.spawned}`);
+  _patchText('pms-inflight-pct', m.activeRate.toFixed(1) + '%');
+  _patchText('pms-chip-threats', `Threats: ${m.spawned}`);
+
+  // Budget bars
+  const blueSpentPct = m.blueBudgetMax > 0 ? Math.min(100, (m.blueSpent / m.blueBudgetMax) * 100) : 0;
+  const redSpentPct = m.redBudgetMax > 0 ? Math.min(100, (m.redSpent / m.redBudgetMax) * 100) : 0;
+  const blueBar = $('pms-blue-budget-bar');
+  if (blueBar) blueBar.style.width = blueSpentPct + '%';
+  _patchText('pms-blue-budget-vals', `${formatMoney(m.blueSpent)} / ${formatMoney(m.blueBudgetMax)}`);
+  const redBar = $('pms-red-budget-bar');
+  if (redBar) redBar.style.width = redSpentPct + '%';
+  _patchText('pms-red-budget-vals', `${formatMoney(m.redSpent)} / ${formatMoney(m.redBudgetMax)}`);
+
+  // Site HP bars
+  for (const s of m.sites) {
+    const hp = Math.max(0, s.hp ?? 0);
+    const hpMax = Math.max(1, s.hp_max ?? 100);
+    const pct = Math.min(100, (hp / hpMax) * 100);
+    const dead = hp <= 0;
+    const barEl = $(`pms-site-bar-${s.name}`);
+    if (barEl) {
+      barEl.style.width = pct + '%';
+      barEl.className = 'pms-site-bar-inner' + (dead ? ' dead' : '');
+    }
+    const pctEl = $(`pms-site-pct-${s.name}`);
+    if (pctEl) {
+      pctEl.textContent = dead ? 'DEAD' : pct.toFixed(0) + '%';
+      pctEl.className = 'pms-site-pct' + (dead ? ' pms-site-dead' : '');
+    }
+  }
+
+  // Per-launcher ammo bars + status
+  for (const lch of m.launchers) {
+    const cap = lch.capacity ?? 0;
+    const cur = lch.current ?? 0;
+    const ammoPct = cap > 0 ? Math.min(100, (cur / cap) * 100) : 0;
+    const ammoBar = $(`pms-lch-bar-${lch.id}`);
+    if (ammoBar) ammoBar.style.width = ammoPct + '%';
+    _patchText(`pms-lch-ammo-${lch.id}`, `${cur}/${cap}`);
+    const statusEl = $(`pms-lch-status-${lch.id}`);
+    if (statusEl) {
+      let label, cls;
+      if (lch.reloading) {
+        label = `RLD ${(lch.reload_remaining ?? 0).toFixed(0)}s`;
+        cls = 'pms-lch-status reloading';
+      } else if ((lch.cooldown_remaining ?? 0) > 0.05) {
+        label = `CD ${lch.cooldown_remaining.toFixed(1)}s`;
+        cls = 'pms-lch-status cooldown';
+      } else {
+        label = 'RDY';
+        cls = 'pms-lch-status ready';
+      }
+      statusEl.textContent = label;
+      statusEl.className = cls;
+    }
+  }
+
+  // KPI cards
+  _patchText('pms-kpi-defense', m.interceptRate.toFixed(1) + '%');
+  _patchText('pms-kpi-cost', m.costPerIntercept > 0 ? formatMoney(m.costPerIntercept) : '—');
+  _patchText('pms-kpi-sites', `${m.sitesIntact}/${m.sites.length}`);
+  _patchText('pms-kpi-exchange', m.exchangeRatio > 0 ? m.exchangeRatio.toFixed(1) + ':1' : '—');
+}
+
+function _patchText(id, text) {
+  const el = document.getElementById(id);
+  if (el && el.textContent !== text) el.textContent = text;
 }
 
 // ── Post-Match Summary — HTML builder ─────────────────────────────────
@@ -580,9 +672,9 @@ function buildDashboardHtml(snap, m) {
         `<span class="pms-site-dot" style="background:${color};color:${color}"></span>` +
         `<span class="pms-site-name">${escapeHtml(s.name)}</span>` +
         `<div class="pms-site-bar-outer">` +
-          `<div class="pms-site-bar-inner${dead ? ' dead' : ''}" style="width:${pct}%"></div>` +
+          `<div class="pms-site-bar-inner${dead ? ' dead' : ''}" id="pms-site-bar-${s.name}" style="width:${pct}%"></div>` +
         `</div>` +
-        `<span class="pms-site-pct${dead ? ' pms-site-dead' : ''}">${dead ? 'DEAD' : pct.toFixed(0) + '%'}</span>` +
+        `<span class="pms-site-pct${dead ? ' pms-site-dead' : ''}" id="pms-site-pct-${s.name}">${dead ? 'DEAD' : pct.toFixed(0) + '%'}</span>` +
       `</div>`
     );
   }).join('');
@@ -591,20 +683,46 @@ function buildDashboardHtml(snap, m) {
   const blueSpentPct = m.blueBudgetMax > 0 ? Math.min(100, (m.blueSpent / m.blueBudgetMax) * 100) : 0;
   const redSpentPct = m.redBudgetMax > 0 ? Math.min(100, (m.redSpent / m.redBudgetMax) * 100) : 0;
 
-  // Roster rows
+  // Per-launcher rows grouped by kind
   const kindKeys = Object.keys(m.kindMap).sort();
   const rosterRows = kindKeys.map((k) => {
     const v = m.kindMap[k];
     const color = WEAPON_COLORS[k] || '#888';
     const name = INTERCEPTOR_NAMES[k] || k;
-    return (
-      `<tr>` +
-        `<td><span class="pms-roster-dot" style="background:${color}"></span>${escapeHtml(name)}</td>` +
-        `<td>${v.count}</td>` +
-        `<td>${v.ammoUsed}/${v.totalCapacity}</td>` +
-        `<td>${formatMoney(v.totalBaseCost)}</td>` +
-      `</tr>`
-    );
+    // Kind header row
+    let html = `<tr class="pms-roster-kind-header">` +
+      `<td colspan="5"><span class="pms-roster-dot" style="background:${color}"></span>${escapeHtml(name)} (${v.count})</td>` +
+      `</tr>`;
+    // Individual launcher rows
+    for (const lch of v.launchers) {
+      const cap = lch.capacity ?? 0;
+      const cur = lch.current ?? 0;
+      const ammoPct = cap > 0 ? Math.min(100, (cur / cap) * 100) : 0;
+      let statusLabel, statusCls;
+      if (lch.reloading) {
+        statusLabel = `RLD ${(lch.reload_remaining ?? 0).toFixed(0)}s`;
+        statusCls = 'pms-lch-status reloading';
+      } else if ((lch.cooldown_remaining ?? 0) > 0.05) {
+        statusLabel = `CD ${lch.cooldown_remaining.toFixed(1)}s`;
+        statusCls = 'pms-lch-status cooldown';
+      } else {
+        statusLabel = 'RDY';
+        statusCls = 'pms-lch-status ready';
+      }
+      html +=
+        `<tr>` +
+          `<td class="pms-roster-id">${escapeHtml(lch.id.slice(-4))}</td>` +
+          `<td id="pms-lch-ammo-${lch.id}">${cur}/${cap}</td>` +
+          `<td class="pms-roster-bar-cell">` +
+            `<div class="pms-roster-bar-outer">` +
+              `<div class="pms-roster-bar-inner" id="pms-lch-bar-${lch.id}" style="width:${ammoPct}%"></div>` +
+            `</div>` +
+          `</td>` +
+          `<td><span class="${statusCls}" id="pms-lch-status-${lch.id}">${statusLabel}</span></td>` +
+          `<td>${formatMoney(lch.base_cost_usd ?? 0)}</td>` +
+        `</tr>`;
+    }
+    return html;
   }).join('');
 
   return (
@@ -617,7 +735,7 @@ function buildDashboardHtml(snap, m) {
       `<div class="pms-chips">` +
         `<span class="pms-chip">T: ${m.matchMinutes}m ${String(m.matchSeconds).padStart(2, '0')}s</span>` +
         `<span class="pms-chip">Waves: ${m.wave}/${m.totalWaves}</span>` +
-        `<span class="pms-chip">Threats: ${m.spawned}</span>` +
+        `<span class="pms-chip" id="pms-chip-threats">Threats: ${m.spawned}</span>` +
       `</div>` +
     `</div>` +
 
@@ -630,7 +748,7 @@ function buildDashboardHtml(snap, m) {
         `<div class="pms-ring-wrap">` +
           `<div class="pms-ring" style="--pms-intercept-pct:${interceptPct}%;--pms-leak-end:${leakEnd}%">` +
             `<div class="pms-ring-inner">` +
-              `<span class="pms-ring-val">${m.interceptRate.toFixed(0)}%</span>` +
+              `<span class="pms-ring-val" id="pms-ring-val">${m.interceptRate.toFixed(0)}%</span>` +
               `<span class="pms-ring-label">INTERCEPT</span>` +
             `</div>` +
           `</div>` +
@@ -638,18 +756,18 @@ function buildDashboardHtml(snap, m) {
         `<div class="pms-stat-rows">` +
           `<div class="pms-stat-row">` +
             `<span class="pms-stat-label">Intercepted</span>` +
-            `<span><span class="pms-stat-val">${m.intercepts}/${m.spawned}</span>` +
-            `<span class="pms-stat-pct">${m.interceptRate.toFixed(1)}%</span></span>` +
+            `<span><span class="pms-stat-val" id="pms-intercept-count">${m.intercepts}/${m.spawned}</span>` +
+            `<span class="pms-stat-pct" id="pms-intercept-pct">${m.interceptRate.toFixed(1)}%</span></span>` +
           `</div>` +
           `<div class="pms-stat-row">` +
             `<span class="pms-stat-label">Leaked</span>` +
-            `<span><span class="pms-stat-val">${m.leaked}/${m.spawned}</span>` +
-            `<span class="pms-stat-pct">${m.leakRate.toFixed(1)}%</span></span>` +
+            `<span><span class="pms-stat-val" id="pms-leak-count">${m.leaked}/${m.spawned}</span>` +
+            `<span class="pms-stat-pct" id="pms-leak-pct">${m.leakRate.toFixed(1)}%</span></span>` +
           `</div>` +
           `<div class="pms-stat-row">` +
             `<span class="pms-stat-label">In-flight</span>` +
-            `<span><span class="pms-stat-val">${m.activeThreats}/${m.spawned}</span>` +
-            `<span class="pms-stat-pct">${m.activeRate.toFixed(1)}%</span></span>` +
+            `<span><span class="pms-stat-val" id="pms-inflight-count">${m.activeThreats}/${m.spawned}</span>` +
+            `<span class="pms-stat-pct" id="pms-inflight-pct">${m.activeRate.toFixed(1)}%</span></span>` +
           `</div>` +
         `</div>` +
       `</div>` +
@@ -667,16 +785,16 @@ function buildDashboardHtml(snap, m) {
       `<div class="pms-budget-row">` +
         `<span class="pms-budget-label blue">BLUE</span>` +
         `<div class="pms-budget-bar-outer">` +
-          `<div class="pms-budget-bar-inner blue" style="width:${blueSpentPct}%"></div>` +
+          `<div class="pms-budget-bar-inner blue" id="pms-blue-budget-bar" style="width:${blueSpentPct}%"></div>` +
         `</div>` +
-        `<span class="pms-budget-vals">${formatMoney(m.blueSpent)} / ${formatMoney(m.blueBudgetMax)}</span>` +
+        `<span class="pms-budget-vals" id="pms-blue-budget-vals">${formatMoney(m.blueSpent)} / ${formatMoney(m.blueBudgetMax)}</span>` +
       `</div>` +
       `<div class="pms-budget-row">` +
         `<span class="pms-budget-label red">RED</span>` +
         `<div class="pms-budget-bar-outer">` +
-          `<div class="pms-budget-bar-inner red" style="width:${redSpentPct}%"></div>` +
+          `<div class="pms-budget-bar-inner red" id="pms-red-budget-bar" style="width:${redSpentPct}%"></div>` +
         `</div>` +
-        `<span class="pms-budget-vals">${formatMoney(m.redSpent)} / ${formatMoney(m.redBudgetMax)}</span>` +
+        `<span class="pms-budget-vals" id="pms-red-budget-vals">${formatMoney(m.redSpent)} / ${formatMoney(m.redBudgetMax)}</span>` +
       `</div>` +
     `</div>` +
 
@@ -684,7 +802,7 @@ function buildDashboardHtml(snap, m) {
     `<div class="pms-section">` +
       `<div class="pms-section-title">Roster Efficiency</div>` +
       `<table class="pms-roster-table">` +
-        `<tr><th>System</th><th>Qty</th><th>Fired</th><th>Cost</th></tr>` +
+        `<tr><th>ID</th><th>Ammo</th><th>Magazine</th><th>Status</th><th>Cost</th></tr>` +
         rosterRows +
       `</table>` +
     `</div>` +
@@ -694,19 +812,19 @@ function buildDashboardHtml(snap, m) {
       `<div class="pms-section-title">Key Metrics</div>` +
       `<div class="pms-kpi-grid">` +
         `<div class="pms-kpi-card">` +
-          `<div class="pms-kpi-val">${m.interceptRate.toFixed(1)}%</div>` +
+          `<div class="pms-kpi-val" id="pms-kpi-defense">${m.interceptRate.toFixed(1)}%</div>` +
           `<div class="pms-kpi-label">Defense Rate</div>` +
         `</div>` +
         `<div class="pms-kpi-card">` +
-          `<div class="pms-kpi-val">${m.costPerIntercept > 0 ? formatMoney(m.costPerIntercept) : '—'}</div>` +
+          `<div class="pms-kpi-val" id="pms-kpi-cost">${m.costPerIntercept > 0 ? formatMoney(m.costPerIntercept) : '—'}</div>` +
           `<div class="pms-kpi-label">Cost / Intercept</div>` +
         `</div>` +
         `<div class="pms-kpi-card">` +
-          `<div class="pms-kpi-val">${m.sitesIntact}/${m.sites.length}</div>` +
+          `<div class="pms-kpi-val" id="pms-kpi-sites">${m.sitesIntact}/${m.sites.length}</div>` +
           `<div class="pms-kpi-label">Sites Intact</div>` +
         `</div>` +
         `<div class="pms-kpi-card">` +
-          `<div class="pms-kpi-val">${m.exchangeRatio > 0 ? m.exchangeRatio.toFixed(1) + ':1' : '—'}</div>` +
+          `<div class="pms-kpi-val" id="pms-kpi-exchange">${m.exchangeRatio > 0 ? m.exchangeRatio.toFixed(1) + ':1' : '—'}</div>` +
           `<div class="pms-kpi-label">Exchange Ratio</div>` +
         `</div>` +
       `</div>` +
@@ -760,6 +878,9 @@ function renderPhaseOverlay(phase, winner, snap) {
   }
   if (phase === 'finished') {
     if (_dashboardRendered) {
+      // Dashboard already built — patch only the live values so ammo,
+      // intercepts, and site HP stay current without a full rebuild.
+      if (snap) updateDashboardValues(snap);
       el.classList.remove('hidden');
       return;
     }

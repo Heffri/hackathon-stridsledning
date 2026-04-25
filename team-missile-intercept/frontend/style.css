@@ -1380,6 +1380,39 @@ html, body {
   border-radius: 1px; margin-right: 4px;
   vertical-align: middle;
 }
+.pms-roster-kind-header td {
+  font-weight: 700; font-size: 11px;
+  color: #3fc1ff; letter-spacing: 0.5px;
+  padding-top: 6px !important;
+  border-bottom: 1px solid rgba(63, 193, 255, 0.15) !important;
+  font-family: 'Rajdhani', sans-serif;
+}
+.pms-roster-id {
+  color: #8295ad; font-size: 10px;
+}
+.pms-roster-bar-cell { width: 50px; }
+.pms-roster-bar-outer {
+  width: 100%; height: 5px;
+  background: rgba(63, 193, 255, 0.08);
+  border: 1px solid rgba(63, 193, 255, 0.1);
+  border-radius: 1px; overflow: hidden;
+}
+.pms-roster-bar-inner {
+  height: 100%;
+  background: linear-gradient(90deg, #00e676, #ffab00);
+  transition: width 0.25s ease-out;
+}
+.pms-lch-status {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.3px;
+  font-family: 'Share Tech Mono', 'Consolas', monospace;
+}
+.pms-lch-status.ready    { color: #00e676; }
+.pms-lch-status.cooldown { color: #ffab00; }
+.pms-lch-status.reloading {
+  color: #3fc1ff;
+  animation: ammoFlash 0.8s ease-in-out infinite alternate;
+}
 
 /* KPI cards — 2x2 grid */
 .pms-kpi-grid {
