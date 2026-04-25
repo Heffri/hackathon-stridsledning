@@ -266,7 +266,14 @@ class SimRunner:
                     f"[{MIN_BUDGET}, {MAX_BUDGET}]"
                 ),
             }
-        self.scenario.set_initial_budgets(red_usd, blue_usd)
+        try:
+            self.scenario.set_initial_budgets(red_usd, blue_usd)
+        except ValueError as e:
+            return {
+                "type": "error",
+                "reason": "illegal_budget_edit",
+                "detail": str(e),
+            }
         return None
 
     # --- W16: live-demo defensive-layout selector (backed by
@@ -343,6 +350,7 @@ class SimRunner:
             "slot": match.get("slot"),
             "name": match.get("name", match.get("slot")),
             "launcher_count": match.get("launcher_count", 0),
+            "base_cost_usd": match.get("base_cost_usd", 0),
         }
 
     # --- M-TIER2-J Part 1: deployment-phase placement API ---

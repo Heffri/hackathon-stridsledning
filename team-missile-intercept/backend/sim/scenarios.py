@@ -29,6 +29,10 @@ class Scenario:
         self.world = World()
         self.red = RedAI(build_demo_waves())
         self.blue = BlueAI()
+        # Track layout base cost so budget changes can re-deduct it
+        # (makes budget ↔ layout order-independent). Default layout is
+        # "free" — its cost is baked into BLUE_BUDGET_START.
+        self._layout_base_cost: int = 0
         if layout_override is not None:
             # Swap the default BlueAI fleet for one built from the supplied
             # positions dict. Caller is responsible for terrain-validated
@@ -78,8 +82,14 @@ class Scenario:
         for kind_str, pos_list in config.BLUE_LAUNCHER_POSITIONS.items():
             cost = config.LAUNCHER_BASE_COSTS.get(kind_str, 0)
             base_cost_total += cost * len(pos_list)
+        if base_cost_total > self.world.blue_budget_max:
+            raise ValueError(
+                f"layout costs ${base_cost_total:,} but Blue budget is "
+                f"${self.world.blue_budget_max:,}"
+            )
+        self._layout_base_cost = base_cost_total
         self.world.blue_budget = max(
-            0, config.BLUE_BUDGET_START - base_cost_total
+            0, self.world.blue_budget_max - base_cost_total
         )
 
     def set_initial_budgets(self, red_usd: int, blue_usd: int) -> None:
@@ -104,8 +114,14 @@ class Scenario:
         )
         self.world.red_budget = int(red_usd)
         self.world.red_budget_max = int(red_usd)
-        self.world.blue_budget = int(blue_usd)
-        self.world.blue_budget_max = int(blue_usd)
+        blue = int(blue_usd)
+        if self._layout_base_cost > blue:
+            raise ValueError(
+                f"current layout costs ${self._layout_base_cost:,} "
+                f"but new Blue budget is ${blue:,}"
+            )
+        self.world.blue_budget_max = blue
+        self.world.blue_budget = max(0, blue - self._layout_base_cost)
 
     def step(self, dt: float) -> None:
         """Advance one sim tick, respecting the Match Phase FSM.

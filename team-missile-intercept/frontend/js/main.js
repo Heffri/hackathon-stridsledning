@@ -58,7 +58,9 @@ function openWs() {
         // W16: ack from the backend set_layout handler.
         const name = msg.name || msg.slot || 'layout';
         const n = msg.launcher_count ?? 0;
-        showLayoutStatus(`Applied: ${name} (${n} launchers)`, true);
+        const cost = msg.base_cost_usd;
+        const costStr = cost ? ` — $${(cost / 1e6).toFixed(1)}M` : '';
+        showLayoutStatus(`Applied: ${name} (${n} launchers${costStr})`, true);
       } else if (msg.type !== 'phase_change') {
         console.warn('ws unknown typed frame:', msg);
       }
