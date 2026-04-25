@@ -43,7 +43,14 @@
     </label>
     <button id="btn-add-launcher" class="setup-ribbon-btn">+ Add</button>
     <button id="btn-remove-launcher" class="setup-ribbon-btn" disabled>− Remove</button>
-    <button id="btn-ai-auto" class="setup-ribbon-btn">AI Auto</button>
+    <label class="setup-ribbon-roster">
+      <select id="blue-ai-select" class="setup-ribbon-select" title="Blue AI model">
+        <option value="rule">Blue AI: Rule-Based</option>
+        <option value="blue1">Blue AI: Blue-1 (2x)</option>
+        <option value="blue2">Blue AI: Blue-2 (1x)</option>
+        <option value="aoe">Blue AI: Aggressive AOE</option>
+      </select>
+    </label>
     <!-- W16: defensive-layout selector — dropdown of pre-designed
          rosters from CANDIDATE_LAYOUTS_2026-04-22.json. Apply swaps
          the whole fleet + resets Blue budget to match the roster's

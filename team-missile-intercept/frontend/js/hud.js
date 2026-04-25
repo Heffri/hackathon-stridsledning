@@ -56,12 +56,9 @@ export function wireHud(sendCmd) {
   document.getElementById('btn-start-match')?.addEventListener('click', () => {
     sendCmd({ cmd: 'start' });
   });
-  // M-TIER2-J Part 1: AI Auto button on the SETUP ribbon. M-TIER2-J
-  // Part 2 extended the backend handler to also restore the full
-  // config-default roster (not just positions). Same WS command;
-  // frontend just triggers it.
-  document.getElementById('btn-ai-auto')?.addEventListener('click', () => {
-    sendCmd({ cmd: 'ai_auto' });
+  // Blue AI model selector — sends set_blue_ai command on change.
+  document.getElementById('blue-ai-select')?.addEventListener('change', (e) => {
+    sendCmd({ cmd: 'set_blue_ai', slot: e.target.value });
   });
   // M-TIER2-J Part 2 (Issue #6): roster Add button. Reads the kind
   // dropdown + sends add_launcher at a safe south-mainland default pos
@@ -1023,7 +1020,11 @@ function renderBlueDashboard(snap) {
   const launchers = snap.launchers || [];
   const ready = launchers.filter(l => (l.current ?? 0) > 0).length;
 
+  const aiName = snap.blue_ai_name || 'Rule-Based AI';
   let html =
+    `<div class="dash-row"><span class="dash-label">Model</span>` +
+    `<span class="dash-value dash-ai-tag">${aiName}</span></div>` +
+    `<div class="dash-sep"></div>` +
     `<div class="dash-row"><span class="dash-label">Missile intercept</span>` +
     `<span class="dash-value dash-highlight">${mRate}%</span></div>` +
     `<div class="dash-bar-outer"><div class="dash-bar-fill dash-bar-blue" style="width:${mRate}%"></div></div>` +

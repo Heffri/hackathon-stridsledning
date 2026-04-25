@@ -605,6 +605,13 @@ class EntityMesh {
     this.team = team;
     this.kind = kind;
 
+    // Interpolation state: world-space pos/vel from last snapshot.
+    // Between snapshots, interpolate() extrapolates using velocity.
+    this._worldPos = null;  // [x, y, z] from last snapshot
+    this._worldVel = null;  // [vx, vy, vz] from last snapshot
+    this._thrustActive = false;
+    this._targetState = null;
+
     this.mesh = buildModel(kind, team, color);
     // Per-kind scale: threats bigger = scarier, interceptors stay compact.
     this.mesh.scale.setScalar(KIND_SCALE[kind] ?? 2.0);
@@ -641,30 +648,47 @@ class EntityMesh {
   }
 
   update(pos, vel, thrustActive, targetState) {
-    const [x, y, z] = worldToScene(pos[0], pos[1], pos[2]);
+    // Store world-space state for interpolation between snapshots.
+    this._worldPos = [pos[0], pos[1], pos[2]];
+    this._worldVel = [vel[0], vel[1], vel[2]];
+    this._thrustActive = thrustActive;
+    this._targetState = targetState;
+
+    this._applyScenePosition(pos[0], pos[1], pos[2], vel, true);
+  }
+
+  /** Extrapolate position forward by dt seconds of sim-time. */
+  interpolate(simDt) {
+    if (!this._worldPos || !this._worldVel) return;
+    const wp = this._worldPos;
+    const wv = this._worldVel;
+    const px = wp[0] + wv[0] * simDt;
+    const py = wp[1] + wv[1] * simDt;
+    const pz = wp[2] + wv[2] * simDt;
+    this._applyScenePosition(px, py, pz, wv, false);
+  }
+
+  _applyScenePosition(wx, wy, wz, vel, updateTrail = false) {
+    const [x, y, z] = worldToScene(wx, wy, wz);
     this.mesh.position.set(x, y, z);
 
     // Orient cone along velocity vector
     const [vx, vy, vz] = worldToScene(
-      pos[0] + vel[0],
-      pos[1] + vel[1],
-      pos[2] + vel[2],
+      wx + vel[0],
+      wy + vel[1],
+      wz + vel[2],
     );
     const dir = new THREE.Vector3(vx - x, vy - y, vz - z);
     if (dir.lengthSq() > 1e-10) {
       dir.normalize();
-      // All models are built with long axis = +Y in local space so this
-      // single rotation works for every kind.
       const up = new THREE.Vector3(0, 1, 0);
       this.mesh.quaternion.setFromUnitVectors(up, dir);
     }
 
     // Flicker the SAM exhaust plume only while the motor is burning.
-    // thrustActive is sent by the backend and goes false once fuel_s has
-    // elapsed — interceptors coast silently on fins after that.
     const flame = this.mesh.userData?.flame;
     if (flame) {
-      if (thrustActive) {
+      if (this._thrustActive) {
         flame.visible = true;
         const t = performance.now() / 1000;
         flame.material.opacity = 0.55 + 0.25 * Math.sin(t * 22 + this.id);
@@ -675,23 +699,20 @@ class EntityMesh {
       }
     }
 
-    // Spin the drone propeller around the flight axis (its local +Y, which
-    // is the cylinder's "ring" axis after the rotation.x = π/2 we applied).
+    // Spin the drone propeller
     const prop = this.mesh.userData?.propeller;
     if (prop) {
-      prop.rotation.y += 0.6; // ~ visual spin per frame
+      prop.rotation.y += 0.6;
     }
 
-    // Seeker scanning cone: cyan default, shifts to orange when the
-    // interceptor's target is within 2 km (locked). Hidden when no live
-    // target. Range uses world-space positions so it stays truthful at
-    // any scene scale; the mesh itself sits in scene units.
+    // Seeker scanning cone
     const seeker = this.mesh.userData?.seeker;
     if (seeker) {
-      if (targetState) {
-        const dx = targetState.pos[0] - pos[0];
-        const dy = targetState.pos[1] - pos[1];
-        const dz = targetState.pos[2] - pos[2];
+      const ts = this._targetState;
+      if (ts) {
+        const dx = ts.pos[0] - wx;
+        const dy = ts.pos[1] - wy;
+        const dz = ts.pos[2] - wz;
         const distM = Math.sqrt(dx * dx + dy * dy + dz * dz);
         const locked = distM < 2000;
         seeker.material.color.setHex(locked ? 0xff8844 : 0x44ccff);
@@ -702,9 +723,17 @@ class EntityMesh {
       }
     }
 
-    // Trail with vertex-color opacity falloff
-    this.trailPoints.push([x, y, z]);
-    if (this.trailPoints.length > TRAIL_LEN) this.trailPoints.shift();
+    // Trail: only append points on snapshot updates (15Hz), not every
+    // interpolation frame (60Hz), so the 60-point buffer covers ~4s.
+    // On interpolation frames, just update the last trail point position
+    // so the trail tip tracks the smoothly-interpolated entity.
+    if (updateTrail) {
+      this.trailPoints.push([x, y, z]);
+      if (this.trailPoints.length > TRAIL_LEN) this.trailPoints.shift();
+    } else if (this.trailPoints.length > 0) {
+      // Move trail tip to interpolated position for smooth trail head.
+      this.trailPoints[this.trailPoints.length - 1] = [x, y, z];
+    }
     const posArr = this.trail.geometry.attributes.position.array;
     const colArr = this.trail.geometry.attributes.color.array;
     const n = this.trailPoints.length;
@@ -749,6 +778,9 @@ export class EntityRegistry {
     this.scene = scene;
     this.byId = new Map();
     this.explosions = [];
+    // Interpolation: time of last snapshot arrival (real-time seconds)
+    this._lastSnapRealTime = 0;
+    this._simSpeed = 1;
     // Engagement lines: blue interceptor → assigned red target
     this.engagementLines = new Map();
     this._engLineMat = new THREE.LineBasicMaterial({
@@ -760,6 +792,10 @@ export class EntityRegistry {
   }
 
   updateFromSnapshot(snap) {
+    // Record snapshot arrival time + sim speed for interpolation.
+    this._lastSnapRealTime = performance.now() / 1000;
+    this._simSpeed = snap.speed ?? 1;
+
     // Build an id→state map so interceptors can look up their target
     // (for seeker-cone colour / opacity). Only include alive entities —
     // dead targets should make the seeker snap off.
@@ -838,14 +874,30 @@ export class EntityRegistry {
         }
       }
     }
-    // Step explosion animations
-    const now = performance.now() / 1000;
+  }
+
+  /**
+   * Extrapolate all alive entities forward from their last snapshot
+   * position using stored velocity. Called every RAF frame for smooth
+   * 60Hz motion between 15Hz backend snapshots.
+   */
+  interpolateEntities() {
+    const realNow = performance.now() / 1000;
+    const realDt = realNow - this._lastSnapRealTime;
+    // Convert real-time delta to sim-time delta
+    const simDt = realDt * this._simSpeed;
+    // Clamp to avoid overshooting on lag spikes or tab-switch
+    const clampedDt = Math.min(simDt, 0.2 * this._simSpeed);
+    for (const em of this.byId.values()) {
+      em.interpolate(clampedDt);
+    }
+
+    // Step explosion animations (runs every frame for smooth visuals)
     for (const ex of this.explosions) {
-      const age = now - ex.born;
+      const age = realNow - ex.born;
       const t = Math.min(1, age / ex.lifetime);
       if (ex.isDebris) {
-        // Debris: move outward, fade and shrink
-        const dt = 1 / 60; // approx per-frame
+        const dt = 1 / 60;
         ex.mesh.position.x += ex.vel[0] * SCALE * dt;
         ex.mesh.position.y += ex.vel[1] * SCALE * dt;
         ex.mesh.position.z += ex.vel[2] * SCALE * dt;
@@ -859,7 +911,7 @@ export class EntityRegistry {
       }
     }
     this.explosions = this.explosions.filter((ex) => {
-      const age = now - ex.born;
+      const age = realNow - ex.born;
       if (age >= ex.lifetime) {
         this.scene.remove(ex.mesh);
         ex.mesh.geometry.dispose();

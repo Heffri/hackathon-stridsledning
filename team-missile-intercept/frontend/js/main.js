@@ -61,12 +61,19 @@ function openWs() {
         const cost = msg.base_cost_usd;
         const costStr = cost ? ` — $${(cost / 1e6).toFixed(1)}M` : '';
         showLayoutStatus(`Applied: ${name} (${n} launchers${costStr})`, true);
+      } else if (msg.type === 'blue_ai_changed') {
+        showLayoutStatus(`Blue AI: ${msg.name}`, true);
       } else if (msg.type !== 'phase_change') {
         console.warn('ws unknown typed frame:', msg);
       }
       return;
     }
     latestSnap = msg;
+    // Sync Blue AI dropdown to server state (covers restart / reconnect).
+    const aiSelect = document.getElementById('blue-ai-select');
+    if (aiSelect && msg.blue_ai_slot && aiSelect.value !== msg.blue_ai_slot) {
+      aiSelect.value = msg.blue_ai_slot;
+    }
     // Show one-shot setup tips when phase first becomes 'setup'.
     const phase = msg.phase || 'setup';
     if (phase === 'setup' && _lastPhase !== 'setup') showSetupTip();
@@ -166,15 +173,18 @@ function animate() {
   animateRadar(elapsed);
   waterUpdate(elapsed);
   if (latestSnap) {
-    registry.updateFromSnapshot(latestSnap);
-    sites.updateFromSnapshot(latestSnap);
+    // On new snapshot: reconcile entities, update HUD, etc.
     if (latestSnap !== _lastSnapProcessed) {
+      registry.updateFromSnapshot(latestSnap);
       launchers.updateFromSnapshot(latestSnap);
       redLaunchers.updateFromSnapshot(latestSnap);
       updateHud(latestSnap);
       updateStatusPanel(latestSnap);
       _lastSnapProcessed = latestSnap;
     }
+    // Every frame: smooth interpolation + explosion/site animations.
+    registry.interpolateEntities();
+    sites.updateFromSnapshot(latestSnap);
   }
   composer.render();
 }

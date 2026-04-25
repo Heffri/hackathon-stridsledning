@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { BOREAL_TERRAIN, BOREAL_LOCATIONS } from './terrain_data.js';
 import { enhanceTerrainGeometry, scatterTrees, createRoads, createCoastlines, createRadarScanDome } from './scene_visuals.js';
 
@@ -77,14 +78,14 @@ export function createScene(canvas) {
   renderer.toneMappingExposure = 1.1;
 
   const camera = new THREE.PerspectiveCamera(
-    72,
+    50,
     window.innerWidth / window.innerHeight,
-    0.1,
+    0.5,
     2000,
   );
   // W13 Phase 7: named constants let resetCameraView restore demo framing.
-  const DEFAULT_CAMERA_POS = [0, 42, 95];
-  const DEFAULT_CONTROLS_TARGET = [0, 0, -90];
+  const DEFAULT_CAMERA_POS = [0, 30, 55];
+  const DEFAULT_CONTROLS_TARGET = [0, 0, -60];
   camera.position.set(...DEFAULT_CAMERA_POS);
   camera.lookAt(...DEFAULT_CONTROLS_TARGET);
 
@@ -95,7 +96,10 @@ export function createScene(canvas) {
 
   // Post-processing: bloom gives explosions, thrust flames, city lights a
   // cinematic glow — free visual upgrade for the demo presentation.
+  const pixelRatio = renderer.getPixelRatio();
   const composer = new EffectComposer(renderer);
+  composer.setPixelRatio(pixelRatio);
+  composer.setSize(window.innerWidth, window.innerHeight);
   composer.addPass(new RenderPass(scene, camera));
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -104,6 +108,13 @@ export function createScene(canvas) {
     0.6,   // threshold
   );
   composer.addPass(bloomPass);
+  // SMAA anti-aliasing — the renderer's native MSAA is bypassed by
+  // EffectComposer's framebuffer, so add a post-process AA pass.
+  const smaaPass = new SMAAPass(
+    window.innerWidth * pixelRatio,
+    window.innerHeight * pixelRatio,
+  );
+  composer.addPass(smaaPass);
   // OutputPass applies tone mapping + sRGB conversion so the final image
   // isn't washed-out/black from the linear intermediate render target.
   composer.addPass(new OutputPass());
@@ -439,8 +450,9 @@ export function createScene(canvas) {
 
   // Stylized terrain decorations: trees, roads, coastline shore lines.
   scatterTrees(scene, BOREAL_TERRAIN, saabToScene, BOREAL_LOCATIONS);
-  createRoads(scene, BOREAL_LOCATIONS, saabToScene);
-  createCoastlines(scene, BOREAL_TERRAIN, saabToScene);
+  // Roads and coastline outlines removed — they alias badly at this
+  // camera distance and the extruded terrain shapes already define
+  // land boundaries visually.
 
   // The old blue base cylinder (CylinderGeometry(2.0, 2.5, 1.2, 12) at
   // BASE_POS) was removed in Milestone G: the base is now just one site
@@ -581,7 +593,10 @@ export function createScene(canvas) {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    const pr = renderer.getPixelRatio();
+    composer.setPixelRatio(pr);
     composer.setSize(window.innerWidth, window.innerHeight);
+    smaaPass.setSize(window.innerWidth * pr, window.innerHeight * pr);
   });
 
   return {
