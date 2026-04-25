@@ -157,9 +157,9 @@ export function createScene(canvas) {
   // Sea plane — brighter ocean blue, no grid overlay.
   const groundGeom = new THREE.PlaneGeometry(widthUnits, depthUnits);
   const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x1e4870,
-    roughness: 0.7,
-    metalness: 0.15,
+    color: 0x2a7ab8,
+    roughness: 0.6,
+    metalness: 0.2,
   });
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
@@ -576,58 +576,6 @@ export function createScene(canvas) {
     }
   }
 
-  // Camera auto-pilot: cycles through preset viewpoints for hands-free demo.
-  // Toggle with C key or the HUD button. Smooth lerp between presets.
-  const CAMERA_PRESETS = [
-    { pos: [0, 42, 95],     target: [0, 0, -90],   label: 'Overview' },
-    { pos: [0, 55, -30],    target: [0, 0, -180],   label: 'North Threats' },
-    { pos: [30, 18, 20],    target: [0, 0, -40],    label: 'Engagement Zone' },
-    { pos: [-40, 25, 60],   target: [0, 0, -20],    label: 'Southern Defense' },
-    { pos: [60, 8, 30],     target: [0, 4, -60],    label: 'Cinematic Low' },
-  ];
-  let _autoCam = false;
-  let _autoCamIdx = 0;
-  let _autoCamT = 0;
-  const _autoCamLerpSpeed = 0.015;   // per-frame lerp factor
-  const _autoCamDwell = 15;          // seconds per viewpoint
-  let _autoCamDwellTimer = 0;
-  const _tmpPos = new THREE.Vector3();
-  const _tmpTgt = new THREE.Vector3();
-
-  function toggleAutoCam() {
-    _autoCam = !_autoCam;
-    if (_autoCam) {
-      _autoCamIdx = 0;
-      _autoCamT = 0;
-      _autoCamDwellTimer = 0;
-    }
-    return _autoCam;
-  }
-
-  function setAutoCamPreset(idx) {
-    if (idx >= 0 && idx < CAMERA_PRESETS.length) {
-      _autoCamIdx = idx;
-      _autoCamT = 0;
-      _autoCamDwellTimer = 0;
-    }
-  }
-
-  function stepAutoCam(dt) {
-    if (!_autoCam) return;
-    const preset = CAMERA_PRESETS[_autoCamIdx];
-    _tmpPos.set(...preset.pos);
-    _tmpTgt.set(...preset.target);
-
-    camera.position.lerp(_tmpPos, _autoCamLerpSpeed);
-    controls.target.lerp(_tmpTgt, _autoCamLerpSpeed);
-
-    _autoCamDwellTimer += dt;
-    if (_autoCamDwellTimer >= _autoCamDwell) {
-      _autoCamDwellTimer = 0;
-      _autoCamIdx = (_autoCamIdx + 1) % CAMERA_PRESETS.length;
-    }
-  }
-
   // Resize
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -638,9 +586,7 @@ export function createScene(canvas) {
 
   return {
     scene, camera, renderer, controls, resetCameraView, animateRadar,
-    composer, waterUpdate, toggleAutoCam, stepAutoCam, setAutoCamPreset,
-    isAutoCam: () => _autoCam,
-    CAMERA_PRESETS,
+    composer, waterUpdate,
   };
 }
 

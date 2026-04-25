@@ -12,8 +12,7 @@ import { showIntro, showSetupTip } from './tutorial.js';
 const canvas = document.getElementById('view');
 const {
   scene, camera, renderer, controls, resetCameraView, animateRadar,
-  composer, waterUpdate, toggleAutoCam, stepAutoCam, setAutoCamPreset,
-  isAutoCam, CAMERA_PRESETS,
+  composer, waterUpdate,
 } = createScene(canvas);
 const registry = new EntityRegistry(scene);
 const launchers = new LauncherRegistry(scene);
@@ -28,7 +27,11 @@ let ws = null;
 function openWs() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws`);
-  ws.addEventListener('open', () => setWsStatus(true));
+  ws.addEventListener('open', () => {
+    setWsStatus(true);
+    // Sync speed to 1x on connect — backend may retain 50x from a previous session.
+    sendCmd({ cmd: 'speed', value: 1 });
+  });
   ws.addEventListener('close', () => {
     setWsStatus(false);
     setTimeout(openWs, 1500);
@@ -86,6 +89,14 @@ initLauncherDrag({
   getPhase: () => latestSnap?.phase || 'setup',
 });
 
+// Force speed slider to 1x on load — browsers may restore a cached
+// value from a previous session (form autofill), causing 50x on start.
+const _speedSlider = document.getElementById('speed');
+if (_speedSlider) {
+  _speedSlider.value = '1';
+  document.getElementById('speed-val').textContent = '1.0x';
+}
+
 // Show intro modal on load; open WS only after user dismisses so the
 // server isn't stalled waiting while the user reads the intro.
 showIntro().then(() => openWs());
@@ -104,12 +115,6 @@ window.addEventListener('keydown', (ev) => {
     case 'r': case 'R':
       resetCameraView();
       break;
-    case 'c': case 'C': {
-      const on = toggleAutoCam();
-      const btn = document.getElementById('btn-auto-cam');
-      if (btn) btn.textContent = on ? 'Auto Cam: ON' : 'Auto Cam: OFF';
-      break;
-    }
     case ' ':
       ev.preventDefault();
       sendCmd({ cmd: latestSnap?.phase === 'paused' ? 'resume' : 'pause' });
@@ -130,21 +135,11 @@ window.addEventListener('keydown', (ev) => {
       }
       break;
     }
-    case '1': case '2': case '3': case '4': case '5':
-      setAutoCamPreset(parseInt(ev.key) - 1);
-      break;
   }
 });
 document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
   resetCameraView();
 });
-// Auto Camera button in #hud-bottom
-document.getElementById('btn-auto-cam')?.addEventListener('click', () => {
-  const on = toggleAutoCam();
-  const btn = document.getElementById('btn-auto-cam');
-  if (btn) btn.textContent = on ? 'Auto Cam: ON' : 'Auto Cam: OFF';
-});
-
 // --- Render loop ---
 // W13 perf: only the registries that carry per-frame animations
 // (EntityRegistry — thrust flame, propeller spin, seeker cone, trail,
@@ -161,15 +156,10 @@ let _lastSnapProcessed = null;
 // the gated HUD/launcher render with the current snapshot.
 onSelectionChange(() => { _lastSnapProcessed = null; });
 const _startTime = performance.now() / 1000;
-let _prevTime = _startTime;
 function animate() {
   requestAnimationFrame(animate);
-  const now = performance.now() / 1000;
-  const elapsed = now - _startTime;
-  const dt = now - _prevTime;
-  _prevTime = now;
+  const elapsed = performance.now() / 1000 - _startTime;
 
-  stepAutoCam(dt);
   controls.update();
   animateRadar(elapsed);
   waterUpdate(elapsed);

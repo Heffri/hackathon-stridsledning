@@ -76,8 +76,12 @@ class SimRunner:
         # real Match Phase FSM instead of a hidden auto-start bool.
         # Speed is preserved across resets — operators demoing at 20x
         # keep their pace between matches.
+        # Preserve custom budgets so Restart doesn't clobber them.
+        old_red = self.scenario.world.red_budget_max
+        old_blue = self.scenario.world.blue_budget_max
         self.scenario = build_default_scenario(auto_start=False)
         self._apply_learned_policies()
+        self.scenario.set_initial_budgets(old_red, old_blue)
 
     def _apply_learned_policies(self) -> None:
         """Live-demo hook. If ``RED_POLICY_PATH`` / ``BLUE_POLICY_PATH`` env
