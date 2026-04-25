@@ -475,7 +475,15 @@ class MissileInterceptEnv(gym.Env):
                 elif kind == "cruise_sub":
                     r -= float(dmg) * 3.0 * weight
                 else:  # drone or unknown
-                    r -= float(dmg) * 2.0 * weight
+                    # v4 (2026-04-25): drone leak penalty doubled (2.0 →
+                    # 4.0). v3 fine-tune showed CIWS firing willingness
+                    # was untouched — single CIWS round costs ~$50K so
+                    # the spend×0.5 penalty barely registered, leaving
+                    # the warmstart's "lazy CIWS" behavior in place. The
+                    # only lever left is the leak penalty: making drones
+                    # 2× more painful to lose forces the policy to
+                    # actually fire CIWS at the cheap saturating waves.
+                    r -= float(dmg) * 4.0 * weight
             elif et == "ground_crash" and ev.get("threat") is not None:
                 # Red threat crashed w/o hitting a site — small credit.
                 # Gate on 'threat' key so interceptor ground crashes
