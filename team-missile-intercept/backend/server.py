@@ -22,6 +22,16 @@ from sim.launcher import LAUNCHER_TEMPLATES, Launcher
 from sim.scenarios import build_default_scenario
 from sim.types import InterceptorType, MatchPhase
 
+# Available Blue AI models — order matches the frontend dropdown.
+# Each entry: (slot_id, display_name, model_path_or_None).
+# None = rule-based BlueAI (no learned policy).
+BLUE_AI_MODELS = [
+    ("rule", "Rule-Based AI", None),
+    ("blue1", "Blue-1 (2x penalty)", "rl/models/blue_ai_1m_2xpenalty/model.zip"),
+    ("blue2", "Blue-2 (1x penalty)", "rl/models/blue_ai_1m_1xpenalty/model.zip"),
+    ("aoe", "Aggressive AOE", "rl/runs/blue_local/blue_aoe_aggressive_B_shaped/model.zip"),
+]
+
 
 # Live-demo hook: learned-policy paths read from env vars at import time.
 # Unset → scenario uses the rule-based RedAI / BlueAI as before (zero
@@ -58,6 +68,8 @@ class SimRunner:
         # keep the old auto_start=True default when they call
         # build_default_scenario() themselves.
         self.scenario = build_default_scenario(auto_start=False)
+        self._blue_ai_slot: str = "rule"
+        self._blue_ai_name: str = "Rule-Based AI"
         self._apply_learned_policies()
         self.speed: float = 1.0   # time multiplier
         self._subscribers: set[asyncio.Queue] = set()
@@ -76,12 +88,17 @@ class SimRunner:
         # real Match Phase FSM instead of a hidden auto-start bool.
         # Speed is preserved across resets — operators demoing at 20x
         # keep their pace between matches.
-        # Preserve custom budgets so Restart doesn't clobber them.
+        # Preserve custom budgets and Blue AI selection across resets.
         old_red = self.scenario.world.red_budget_max
         old_blue = self.scenario.world.blue_budget_max
+        old_ai_slot = self._blue_ai_slot
         self.scenario = build_default_scenario(auto_start=False)
         self._apply_learned_policies()
         self.scenario.set_initial_budgets(old_red, old_blue)
+        # Re-apply the operator's Blue AI selection if it differs from
+        # the env-var default (which _apply_learned_policies already set).
+        if old_ai_slot != self._blue_ai_slot:
+            self._set_blue_ai_cmd({"slot": old_ai_slot})
 
     def _apply_learned_policies(self) -> None:
         """Live-demo hook. If ``RED_POLICY_PATH`` / ``BLUE_POLICY_PATH`` env
@@ -114,6 +131,15 @@ class SimRunner:
             self.scenario.blue = LearnedBlueAI(
                 _BLUE_POLICY_PATH, self.scenario
             )
+            # Match env-var path to a known slot for the dropdown
+            for slot, name, path in BLUE_AI_MODELS:
+                if path and _BLUE_POLICY_PATH.endswith(path):
+                    self._blue_ai_slot = slot
+                    self._blue_ai_name = name
+                    break
+            else:
+                self._blue_ai_slot = "custom"
+                self._blue_ai_name = _BLUE_POLICY_PATH
             print(
                 f"[server] Loaded learned Blue policy: {_BLUE_POLICY_PATH}",
                 flush=True,
@@ -147,6 +173,8 @@ class SimRunner:
             snap = self.scenario.snapshot()
             snap["running"] = self.running
             snap["speed"] = self.speed
+            snap["blue_ai_slot"] = self._blue_ai_slot
+            snap["blue_ai_name"] = self._blue_ai_name
             msg = json.dumps(snap)
             for q in list(self._subscribers):
                 try:
@@ -216,6 +244,8 @@ class SimRunner:
             return self._set_layout_cmd(cmd)
         if kind == "set_budget":
             return self._set_budget_cmd(cmd)
+        if kind == "set_blue_ai":
+            return self._set_blue_ai_cmd(cmd)
         return None
 
     def _set_budget_cmd(self, cmd: dict) -> "dict | None":
@@ -275,6 +305,52 @@ class SimRunner:
                 "detail": str(e),
             }
         return None
+
+    def _set_blue_ai_cmd(self, cmd: dict) -> "dict | None":
+        """Handle `{cmd: 'set_blue_ai', slot}`. Switches the Blue AI
+        between rule-based and learned policy models. SETUP only."""
+        phase = self.scenario.world.phase
+        if phase != MatchPhase.SETUP:
+            return {
+                "type": "error",
+                "reason": "illegal_ai_switch",
+                "detail": f"phase is {phase.value}, must be setup",
+            }
+        slot = cmd.get("slot")
+        match = next(
+            (m for m in BLUE_AI_MODELS if m[0] == slot), None
+        )
+        if match is None:
+            return {
+                "type": "error",
+                "reason": "illegal_ai_switch",
+                "detail": f"unknown slot {slot!r}",
+            }
+        _, name, path = match
+        if path is None:
+            # Rule-based
+            from sim.blue_ai import BlueAI
+            self.scenario.blue = BlueAI()
+            # Rebuild fleet from current config positions
+            self.scenario.blue.launchers = self.scenario.blue.launchers
+        else:
+            try:
+                from rl.live_ai import LearnedBlueAI
+                self.scenario.blue = LearnedBlueAI(path, self.scenario)
+            except Exception as e:
+                return {
+                    "type": "error",
+                    "reason": "illegal_ai_switch",
+                    "detail": f"failed to load {name}: {e}",
+                }
+        self._blue_ai_slot = slot
+        self._blue_ai_name = name
+        print(f"[server] Blue AI switched: {name}", flush=True)
+        return {
+            "type": "blue_ai_changed",
+            "slot": slot,
+            "name": name,
+        }
 
     # --- W16: live-demo defensive-layout selector (backed by
     # team-missile-intercept/game-core/CANDIDATE_LAYOUTS_2026-04-22.json).
