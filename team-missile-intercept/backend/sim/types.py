@@ -167,7 +167,12 @@ THREAT_SPECS = {
     # the last 30 km.
     ThreatType.BALLISTIC: ThreatSpec(
         kind=ThreatType.BALLISTIC,
-        cruise_speed=4459.0,
+        # Demo nerf 2026-04-25 (Hack Day): Mach 13 → Mach 7 (4459 → 2401 m/s).
+        # PAC-2 (Mach 5) couldn't catch Mach-13 ballistic on the 350 km
+        # arena. New Mach-7 closes the geometry gap so PAC-2 actually
+        # contributes. Game-balance arcade number; trained policy still
+        # works (slower threat is strictly easier).
+        cruise_speed=2401.0,
         cruise_alt=0.0,
         max_g=3.0,
         drag_k=2.0e-6,
@@ -185,7 +190,11 @@ THREAT_SPECS = {
     # below _HGV_STALL_SPEED lift collapses and the HGV crashes.
     ThreatType.HGV: ThreatSpec(
         kind=ThreatType.HGV,
-        cruise_speed=5831.0,
+        # Demo nerf 2026-04-25 (Hack Day): Mach 17 → Mach 13 (5831 → 4459 m/s).
+        # Inherits old ballistic speed slot. PAC-3 (Mach 7.5 buff) can
+        # now physically catch HGV on closing geometry. Old Mach 17 was
+        # essentially uninterceptable except by lucky lead shots.
+        cruise_speed=4459.0,
         cruise_alt=35_000.0,
         # max_g 10 → 6 as part of the 2026-04-22 balance pass. Pure
         # ~100 % leak rate vs PAC-3 PN made HGV the only rational Red
