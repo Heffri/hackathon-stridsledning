@@ -596,37 +596,85 @@ html, body {
    SETUP RIBBON (M-TIER2-J Part 1)
    Fixed top bar, SETUP phase only.
    ───────────────────────────────────────── */
+/* ── Setup panel: centered floating card, map visible behind ── */
 .setup-ribbon {
   position: fixed;
-  top: 0; left: 0; right: 0;
-  height: 44px;
-  display: flex; align-items: center; justify-content: center;
-  gap: 16px; padding: 0 20px;
-  background: rgba(12, 24, 40, 0.92);
-  border-bottom: 1px solid rgba(63, 193, 255, 0.45);
-  backdrop-filter: blur(6px);
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 10px; padding: 20px 28px 16px;
+  min-width: 420px;
+  background: rgba(12, 24, 40, 0.88);
+  border: 1px solid rgba(63, 193, 255, 0.45);
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
   color: #cfe0f5; font-size: 13px; font-weight: 600;
   font-family: 'Rajdhani', sans-serif;
   letter-spacing: 1.2px; text-transform: uppercase;
-  z-index: 15;
+  z-index: 1100;
+  pointer-events: auto;
 }
+/* Toggle button: visible during SETUP so the user can hide/show the panel */
+#btn-toggle-setup {
+  position: fixed;
+  top: 10px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 1101;
+  background: rgba(12, 24, 40, 0.85);
+  color: #3fc1ff;
+  border: 1px solid rgba(63, 193, 255, 0.45);
+  padding: 5px 16px; border-radius: 3px;
+  cursor: pointer;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 1.2px; text-transform: uppercase;
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+#btn-toggle-setup:hover { background: rgba(63, 193, 255, 0.15); }
+#btn-toggle-setup.hidden { display: none; }
 .setup-ribbon.hidden { display: none; }
-.setup-ribbon-text   { color: #9fb8d4; }
-.setup-ribbon-hint   {
-  color: #6a809b; font-size: 10px;
-  letter-spacing: 0.8px; text-transform: none; margin-left: 8px;
+.setup-panel-title {
+  text-align: center;
+  font-size: 16px; font-weight: 700;
+  color: #3fc1ff;
+  letter-spacing: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(63, 193, 255, 0.25);
+}
+.setup-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.setup-row-label {
+  width: 52px; flex-shrink: 0;
+  color: #6a809b; font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
   font-family: 'Share Tech Mono', 'Consolas', monospace;
+}
+.setup-ribbon-hint {
+  color: #6a809b; font-size: 10px;
+  letter-spacing: 0.8px; text-transform: none;
+  font-family: 'Share Tech Mono', 'Consolas', monospace;
+  text-align: center;
 }
 .setup-ribbon-btn {
   background: transparent; color: #3fc1ff;
   border: 1px solid rgba(63, 193, 255, 0.45);
-  padding: 6px 14px; border-radius: 1px;
+  padding: 6px 14px; border-radius: 2px;
   cursor: pointer; font: inherit; font-weight: 600;
   font-family: 'Rajdhani', sans-serif;
   letter-spacing: 1.2px; text-transform: uppercase;
 }
 .setup-ribbon-btn:hover:not(:disabled) { background: rgba(63, 193, 255, 0.15); }
 .setup-ribbon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.setup-start-btn {
+  margin-top: 4px; padding: 10px 14px;
+  font-size: 15px; font-weight: 700;
+  border-color: #3fc1ff;
+  color: #fff;
+  background: rgba(63, 193, 255, 0.12);
+}
+.setup-start-btn:hover { background: rgba(63, 193, 255, 0.28); }
 .setup-ribbon-roster { display: flex; align-items: center; }
 .setup-ribbon-select {
   background: #0c1b30; color: #cfe1ff;
@@ -635,17 +683,11 @@ html, body {
   font-size: 12px; font-weight: 600;
   font-family: 'Share Tech Mono', 'Consolas', monospace;
   letter-spacing: 0.6px; text-transform: uppercase; cursor: pointer;
+  position: relative; z-index: 1;
 }
 .setup-ribbon-select:hover { border-color: #3fc1ff; }
-/* Budget panel on SETUP ribbon: separator splits "what to buy" (roster)
-   from "how much money" (budget). Worker 3/4 additions. */
 .setup-ribbon-sep {
-  display: inline-block;
-  width: 1px;
-  height: 22px;
-  background: rgba(63, 193, 255, 0.35);
-  opacity: 0.6;
-  margin: 0 4px;
+  display: none; /* separators replaced by row layout */
 }
 .setup-ribbon-budget {
   display: inline-flex;
@@ -664,6 +706,7 @@ html, body {
   border: 1px solid rgba(63, 193, 255, 0.35);
   padding: 5px 6px;
   border-radius: 2px;
+  position: relative; z-index: 1;
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -673,12 +716,6 @@ html, body {
 }
 .setup-ribbon-budget-input:hover,
 .setup-ribbon-budget-input:focus { border-color: #3fc1ff; outline: none; }
-/* Push HUD down by ribbon height while ribbon is visible. 62px = ribbon
-   including the wider budget panel (Sebastijan's base had 54px for the
-   pre-budget ribbon — bumped to 62px to match the taller row). */
-#setup-ribbon:not(.hidden) ~ #hud {
-  padding-top: 62px;
-}
 
 /* ─────────────────────────────────────────
    MATCH-END OVERLAY (Milestone I)
@@ -1446,28 +1483,173 @@ html, body {
   animation: ammoFlash 0.8s ease-in-out infinite alternate;
 }
 
-/* KPI cards — 2x2 grid */
-.pms-kpi-grid {
-  display: grid; grid-template-columns: 1fr 1fr;
-  gap: 8px;
+/* Match config banner — horizontal strip below header */
+.pms-config-banner {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  align-items: center; gap: 4px 0;
+  padding: 8px 12px; margin-bottom: 12px;
+  background: rgba(63, 193, 255, 0.04);
+  border: 1px solid rgba(63, 193, 255, 0.12);
+  border-radius: 2px;
+  animation: tutSlideIn 0.35s cubic-bezier(.22,.9,.36,1) both;
+  animation-delay: 0.03s;
+}
+.pms-config-item {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px;
+}
+.pms-config-key {
+  font-family: 'Share Tech Mono', 'Consolas', monospace;
+  font-size: 9px; color: #8295ad;
+  text-transform: uppercase; letter-spacing: 0.6px;
+}
+.pms-config-val {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px; font-weight: 600; color: #eaf3ff;
+}
+.pms-config-blue { color: #3fc1ff; }
+.pms-config-red  { color: #ff6a5a; }
+.pms-config-sep {
+  width: 1px; height: 14px; margin: 0 10px;
+  background: rgba(63, 193, 255, 0.2);
+}
+
+/* KPI strip — horizontal row of cards */
+.pms-kpi-strip {
+  display: flex; gap: 6px; margin-bottom: 14px;
+  animation: tutSlideIn 0.35s cubic-bezier(.22,.9,.36,1) both;
+  animation-delay: 0.06s;
 }
 .pms-kpi-card {
+  flex: 1;
   background: rgba(63, 193, 255, 0.05);
   border: 1px solid rgba(63, 193, 255, 0.15);
   border-radius: 2px;
-  padding: 10px 8px;
+  padding: 10px 6px;
   text-align: center;
 }
 .pms-kpi-val {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 22px; font-weight: 700;
+  font-size: 20px; font-weight: 700;
   color: #eaf3ff; line-height: 1.1;
+}
+.pms-kpi-val.pms-kpi-big {
+  font-size: 28px;
+  color: #00e676;
 }
 .pms-kpi-label {
   font-family: 'Share Tech Mono', 'Consolas', monospace;
-  font-size: 9px; color: #8295ad;
-  letter-spacing: 0.6px; text-transform: uppercase;
+  font-size: 8px; color: #8295ad;
+  letter-spacing: 0.5px; text-transform: uppercase;
   margin-top: 2px;
+}
+
+/* Threat breakdown rows */
+.pms-threat-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(63, 193, 255, 0.06);
+  font-size: 12px; color: #cfe0f5;
+}
+.pms-threat-row:last-of-type { border-bottom: none; }
+.pms-threat-dot {
+  width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0;
+}
+.pms-threat-label {
+  width: 60px; flex-shrink: 0;
+  font-family: 'Rajdhani', sans-serif; font-weight: 600;
+}
+.pms-threat-counts {
+  width: 40px; flex-shrink: 0; text-align: right;
+  font-family: 'Share Tech Mono', monospace; font-size: 11px;
+  color: #9fb8d4; font-variant-numeric: tabular-nums;
+}
+.pms-threat-bar-outer {
+  flex: 1; height: 6px;
+  background: rgba(63, 193, 255, 0.08);
+  border: 1px solid rgba(63, 193, 255, 0.1);
+  border-radius: 1px; overflow: hidden;
+}
+.pms-threat-bar-inner {
+  height: 100%; transition: width 0.3s ease-out;
+  border-radius: 1px;
+}
+.pms-threat-pct {
+  width: 32px; text-align: right; flex-shrink: 0;
+  font-family: 'Rajdhani', sans-serif; font-weight: 700;
+  font-size: 13px; color: #eaf3ff;
+}
+.pms-threat-summary {
+  margin-top: 8px; padding-top: 6px;
+  border-top: 1px solid rgba(63, 193, 255, 0.12);
+  font-family: 'Rajdhani', sans-serif; font-size: 12px;
+  font-weight: 600;
+}
+
+/* Site summary + leak counts */
+.pms-site-summary {
+  font-family: 'Share Tech Mono', monospace; font-size: 10px;
+  color: #9fb8d4; margin-bottom: 6px;
+  letter-spacing: 0.3px;
+}
+.pms-site-leaks {
+  flex-shrink: 0; font-size: 10px; color: #ff8a52;
+  font-family: 'Share Tech Mono', monospace; margin-left: 4px;
+}
+
+/* Weapon system summary rows */
+.pms-weapon-row {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(63, 193, 255, 0.06);
+  font-size: 11px; color: #cfe0f5;
+}
+.pms-weapon-row:last-child { border-bottom: none; }
+.pms-weapon-dot {
+  width: 6px; height: 6px; border-radius: 1px; flex-shrink: 0;
+}
+.pms-weapon-name {
+  flex: 1; min-width: 0;
+  font-family: 'Rajdhani', sans-serif; font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pms-weapon-count {
+  width: 22px; text-align: right; flex-shrink: 0;
+  font-family: 'Share Tech Mono', monospace; font-size: 10px;
+  color: #9fb8d4;
+}
+.pms-weapon-fired {
+  width: 50px; text-align: right; flex-shrink: 0;
+  font-family: 'Share Tech Mono', monospace; font-size: 10px;
+  color: #ffab00; font-weight: 700;
+}
+.pms-weapon-bar-outer {
+  width: 40px; height: 5px; flex-shrink: 0;
+  background: rgba(63, 193, 255, 0.08);
+  border: 1px solid rgba(63, 193, 255, 0.1);
+  border-radius: 1px; overflow: hidden;
+}
+.pms-weapon-bar-inner {
+  height: 100%; transition: width 0.3s ease-out;
+  border-radius: 1px;
+}
+.pms-weapon-cost {
+  width: 50px; text-align: right; flex-shrink: 0;
+  font-family: 'Share Tech Mono', monospace; font-size: 10px;
+  color: #9fb8d4;
+}
+
+/* Budget detail line */
+.pms-budget-detail {
+  font-family: 'Share Tech Mono', monospace; font-size: 10px;
+  color: #8295ad; margin-top: 2px; padding-left: 46px;
+}
+
+/* Legacy KPI grid */
+.pms-kpi-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 /* Footer */

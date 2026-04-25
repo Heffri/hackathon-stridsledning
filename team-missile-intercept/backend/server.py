@@ -26,12 +26,21 @@ from sim.types import InterceptorType, MatchPhase
 # Each entry: (slot_id, display_name, model_path_or_None).
 # None = rule-based BlueAI (no learned policy).
 BLUE_AI_MODELS = [
-    ("rule", "Rule-Based AI", None),
-    ("blue1", "Blue-1 (2x penalty)", "rl/models/blue_ai_1m_2xpenalty/model.zip"),
-    ("blue2", "Blue-2 (1x penalty)", "rl/models/blue_ai_1m_1xpenalty/model.zip"),
-    ("aoe", "Aggressive AOE", "rl/runs/blue_local/blue_aoe_aggressive_B_shaped/model.zip"),
-    ("v3", "v3 Reward (Weighted Sites)", "rl/runs/blue_reward_v2_finetune/model.zip"),
-    ("v4", "v4 Reward (CIWS Active)", "rl/runs/blue_reward_v4_finetune/model.zip"),
+    ("rule", "Heuristic", None),
+    ("blue1", "RL Cautious (2x leak penalty)", "rl/models/blue_ai_1m_2xpenalty/model.zip"),
+    ("blue2", "RL Balanced (1x leak penalty)", "rl/models/blue_ai_1m_1xpenalty/model.zip"),
+    ("aoe", "RL Aggressive (AOE shaped)", "rl/runs/blue_local/blue_aoe_aggressive_B_shaped/model.zip"),
+    ("v3", "RL Site-Priority (weighted)", "rl/runs/blue_reward_v2_finetune/model.zip"),
+    ("v4", "RL CIWS Active (v4)", "rl/runs/blue_reward_v4_finetune/model.zip"),
+]
+
+# Available Red AI models — order matches the frontend dropdown.
+# "rule" = wave-based RedAI, "scripted" = ScriptedRedAI, others = learned.
+RED_AI_MODELS = [
+    ("rule", "5-Wave Heuristic", None),
+    ("scripted", "Scripted 3-Chain", "scripted"),
+    ("red1", "RL Learned v1", "rl/runs/red_20260421_205051/model.zip"),
+    ("red2", "RL Learned v2", "rl/runs/red_20260421_234425/model.zip"),
 ]
 
 
@@ -72,6 +81,8 @@ class SimRunner:
         self.scenario = build_default_scenario(auto_start=False)
         self._blue_ai_slot: str = "rule"
         self._blue_ai_name: str = "Rule-Based AI"
+        self._red_ai_slot: str = "rule"
+        self._red_ai_name: str = "Rule-Based (5 Waves)"
         self._apply_learned_policies()
         self.speed: float = 1.0   # time multiplier
         self._subscribers: set[asyncio.Queue] = set()
@@ -93,14 +104,23 @@ class SimRunner:
         # Preserve custom budgets and Blue AI selection across resets.
         old_red = self.scenario.world.red_budget_max
         old_blue = self.scenario.world.blue_budget_max
-        old_ai_slot = self._blue_ai_slot
+        old_layout_cost = self.scenario._layout_base_cost
+        old_blue_ai_slot = self._blue_ai_slot
+        old_red_ai_slot = self._red_ai_slot
         self.scenario = build_default_scenario(auto_start=False)
         self._apply_learned_policies()
+        # Restore layout cost tracking — config.BLUE_LAUNCHER_POSITIONS
+        # was mutated in-place by set_layout, so the new Scenario already
+        # built the fleet from the layout's positions, but _layout_base_cost
+        # reset to 0. Restore it so set_initial_budgets re-deducts properly.
+        self.scenario._layout_base_cost = old_layout_cost
         self.scenario.set_initial_budgets(old_red, old_blue)
-        # Re-apply the operator's Blue AI selection if it differs from
-        # the env-var default (which _apply_learned_policies already set).
-        if old_ai_slot != self._blue_ai_slot:
-            self._set_blue_ai_cmd({"slot": old_ai_slot})
+        # Re-apply the operator's AI selections if they differ from
+        # the env-var defaults (which _apply_learned_policies already set).
+        if old_blue_ai_slot != self._blue_ai_slot:
+            self._set_blue_ai_cmd({"slot": old_blue_ai_slot})
+        if old_red_ai_slot != self._red_ai_slot:
+            self._set_red_ai_cmd({"slot": old_red_ai_slot})
 
     def _apply_learned_policies(self) -> None:
         """Live-demo hook. If ``RED_POLICY_PATH`` / ``BLUE_POLICY_PATH`` env
@@ -116,6 +136,14 @@ class SimRunner:
         if _RED_POLICY_PATH:
             from rl.live_ai import LearnedRedAI
             self.scenario.red = LearnedRedAI(_RED_POLICY_PATH, self.scenario)
+            for slot, name, path in RED_AI_MODELS:
+                if path and _RED_POLICY_PATH.endswith(path):
+                    self._red_ai_slot = slot
+                    self._red_ai_name = name
+                    break
+            else:
+                self._red_ai_slot = "custom"
+                self._red_ai_name = _RED_POLICY_PATH
             print(
                 f"[server] Loaded learned Red policy: {_RED_POLICY_PATH}",
                 flush=True,
@@ -123,6 +151,8 @@ class SimRunner:
         elif _RED_WAVE_MODE == "scripted":
             from sim.red_ai import ScriptedRedAI
             self.scenario.red = ScriptedRedAI(self.scenario)
+            self._red_ai_slot = "scripted"
+            self._red_ai_name = "Scripted (3 Chains)"
             print(
                 "[server] Red wave mode: scripted "
                 "(3 parallel chains per military site)",
@@ -177,6 +207,8 @@ class SimRunner:
             snap["speed"] = self.speed
             snap["blue_ai_slot"] = self._blue_ai_slot
             snap["blue_ai_name"] = self._blue_ai_name
+            snap["red_ai_slot"] = self._red_ai_slot
+            snap["red_ai_name"] = self._red_ai_name
             msg = json.dumps(snap)
             for q in list(self._subscribers):
                 try:
@@ -248,6 +280,8 @@ class SimRunner:
             return self._set_budget_cmd(cmd)
         if kind == "set_blue_ai":
             return self._set_blue_ai_cmd(cmd)
+        if kind == "set_red_ai":
+            return self._set_red_ai_cmd(cmd)
         return None
 
     def _set_budget_cmd(self, cmd: dict) -> "dict | None":
@@ -350,6 +384,53 @@ class SimRunner:
         print(f"[server] Blue AI switched: {name}", flush=True)
         return {
             "type": "blue_ai_changed",
+            "slot": slot,
+            "name": name,
+        }
+
+    def _set_red_ai_cmd(self, cmd: dict) -> "dict | None":
+        """Handle `{cmd: 'set_red_ai', slot}`. Switches the Red AI
+        between rule-based, scripted, and learned policy models. SETUP only."""
+        phase = self.scenario.world.phase
+        if phase != MatchPhase.SETUP:
+            return {
+                "type": "error",
+                "reason": "illegal_ai_switch",
+                "detail": f"phase is {phase.value}, must be setup",
+            }
+        slot = cmd.get("slot")
+        match = next(
+            (m for m in RED_AI_MODELS if m[0] == slot), None
+        )
+        if match is None:
+            return {
+                "type": "error",
+                "reason": "illegal_ai_switch",
+                "detail": f"unknown slot {slot!r}",
+            }
+        _, name, path = match
+        if path is None:
+            # Rule-based waves
+            from sim.red_ai import RedAI, build_demo_waves
+            self.scenario.red = RedAI(build_demo_waves())
+        elif path == "scripted":
+            from sim.red_ai import ScriptedRedAI
+            self.scenario.red = ScriptedRedAI(self.scenario)
+        else:
+            try:
+                from rl.live_ai import LearnedRedAI
+                self.scenario.red = LearnedRedAI(path, self.scenario)
+            except Exception as e:
+                return {
+                    "type": "error",
+                    "reason": "illegal_ai_switch",
+                    "detail": f"failed to load {name}: {e}",
+                }
+        self._red_ai_slot = slot
+        self._red_ai_name = name
+        print(f"[server] Red AI switched: {name}", flush=True)
+        return {
+            "type": "red_ai_changed",
             "slot": slot,
             "name": name,
         }

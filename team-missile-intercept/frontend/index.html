@@ -26,62 +26,87 @@
   <!-- Sim clock progress bar -->
   <div id="sim-clock-bar"><div id="sim-clock-fill"></div></div>
 
-  <!-- SETUP ribbon: thin top bar visible only in SETUP phase.
-       Sibling combinator pushes #hud down while visible. -->
+  <!-- Toggle button to hide/show the setup panel (M key or click) -->
+  <button id="btn-toggle-setup" class="hidden">Setup Menu (M)</button>
+  <!-- SETUP panel: centered floating card visible only in SETUP phase. -->
   <div id="setup-ribbon" class="setup-ribbon hidden">
-    <span class="setup-ribbon-text">MATCH SETUP — drag, add/remove launchers, then Start Match</span>
+    <div class="setup-panel-title">Match Setup</div>
+
+    <!-- Row 1: Budget -->
+    <div class="setup-row">
+      <span class="setup-row-label">Budget</span>
+      <label class="setup-ribbon-budget" title="Red starting budget ($M). Only editable in SETUP.">
+        Red $M
+        <input id="red-budget-input" class="setup-ribbon-budget-input" type="number" value="100" min="10" max="1000" step="10" />
+      </label>
+      <label class="setup-ribbon-budget" title="Blue starting budget ($M). Only editable in SETUP.">
+        Blue $M
+        <input id="blue-budget-input" class="setup-ribbon-budget-input" type="number" value="120" min="10" max="1000" step="10" />
+      </label>
+      <button id="btn-apply-budget" class="setup-ribbon-btn" title="Apply budget overrides to the current match (SETUP only).">Apply</button>
+    </div>
+
+    <!-- Row 2: Layout preset -->
+    <div class="setup-row">
+      <span class="setup-row-label">Layout</span>
+      <label class="setup-ribbon-roster">
+        <select id="layout-slot" class="setup-ribbon-select" title="Defensive layout preset">
+          <option value="current">Layout: Current</option>
+          <option value="A">Layout A — Forward HGV Hunter (9)</option>
+          <option value="B">Layout B — East Reinforced (10)</option>
+          <option value="C">Layout C — Heavy Saturation (23)</option>
+          <option value="D">Layout D — Island HGV Hunter (19)</option>
+          <option value="E">Layout E — Balanced Shield (12)</option>
+          <option value="F">Layout F — PAC-3 Fence (4)</option>
+        </select>
+      </label>
+      <button id="btn-apply-layout" class="setup-ribbon-btn">Apply</button>
+      <span id="layout-status" class="setup-ribbon-hint"></span>
+    </div>
+
+    <!-- Row 3: AI selectors -->
+    <div class="setup-row">
+      <span class="setup-row-label">AI</span>
+      <label class="setup-ribbon-roster">
+        <select id="blue-ai-select" class="setup-ribbon-select" title="Blue AI model">
+          <option value="rule">Blue: Heuristic</option>
+          <option value="blue1">Blue: RL Cautious (2x leak penalty)</option>
+          <option value="blue2">Blue: RL Balanced (1x leak penalty)</option>
+          <option value="aoe">Blue: RL Aggressive (AOE shaped)</option>
+          <option value="v3">Blue: RL Site-Priority (weighted)</option>
+          <option value="v4">Blue: RL CIWS Active (v4)</option>
+        </select>
+      </label>
+      <label class="setup-ribbon-roster">
+        <select id="red-ai-select" class="setup-ribbon-select" title="Red AI model">
+          <option value="rule">Red: 5-Wave Heuristic</option>
+          <option value="scripted">Red: Scripted 3-Chain</option>
+          <option value="red1">Red: RL Learned v1</option>
+          <option value="red2">Red: RL Learned v2</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- Row 4: Roster fine-tuning -->
+    <div class="setup-row">
+      <span class="setup-row-label">Roster</span>
+      <label class="setup-ribbon-roster">
+        <select id="roster-kind" class="setup-ribbon-select">
+          <option value="ciws">CIWS ($0.5M)</option>
+          <option value="rbs_70">RBS-70 NG ($1M)</option>
+          <option value="iris_t_sls">IRIS-T SLS ($2M)</option>
+          <option value="iris_t_slm">IRIS-T SLM ($5M)</option>
+          <option value="pac_2">PAC-2 GEM+ ($10M)</option>
+          <option value="pac_3" selected>PAC-3 MSE ($15M)</option>
+        </select>
+      </label>
+      <button id="btn-add-launcher" class="setup-ribbon-btn">+ Add</button>
+      <button id="btn-remove-launcher" class="setup-ribbon-btn" disabled>− Remove</button>
+    </div>
+
+    <!-- Row 5: Start -->
+    <button id="btn-start-match" class="setup-ribbon-btn setup-start-btn">Start Match</button>
     <span class="setup-ribbon-hint">Click launcher to inspect · Drag to reposition · R to reset camera</span>
-    <label class="setup-ribbon-roster">
-      <select id="roster-kind" class="setup-ribbon-select">
-        <option value="ciws">CIWS ($0.5M)</option>
-        <option value="rbs_70">RBS-70 NG ($1M)</option>
-        <option value="iris_t_sls">IRIS-T SLS ($2M)</option>
-        <option value="iris_t_slm">IRIS-T SLM ($5M)</option>
-        <option value="pac_2">PAC-2 GEM+ ($10M)</option>
-        <option value="pac_3" selected>PAC-3 MSE ($15M)</option>
-      </select>
-    </label>
-    <button id="btn-add-launcher" class="setup-ribbon-btn">+ Add</button>
-    <button id="btn-remove-launcher" class="setup-ribbon-btn" disabled>− Remove</button>
-    <label class="setup-ribbon-roster">
-      <select id="blue-ai-select" class="setup-ribbon-select" title="Blue AI model">
-        <option value="rule">Blue AI: Rule-Based</option>
-        <option value="blue1">Blue AI: Blue-1 (2x)</option>
-        <option value="blue2">Blue AI: Blue-2 (1x)</option>
-        <option value="aoe">Blue AI: Aggressive AOE</option>
-        <option value="v3">Blue AI: v3 (Weighted Sites)</option>
-        <option value="v4">Blue AI: v4 (CIWS Active)</option>
-      </select>
-    </label>
-    <!-- W16: defensive-layout selector — dropdown of pre-designed
-         rosters from CANDIDATE_LAYOUTS_2026-04-22.json. Apply swaps
-         the whole fleet + resets Blue budget to match the roster's
-         base cost. SETUP-phase-only (ribbon is hidden otherwise). -->
-    <label class="setup-ribbon-roster">
-      <select id="layout-slot" class="setup-ribbon-select" title="Defensive layout preset">
-        <option value="current">Layout: Current</option>
-        <option value="A">Layout A — Forward HGV Hunter (9)</option>
-        <option value="B">Layout B — East Reinforced (10)</option>
-        <option value="C">Layout C — Heavy Saturation (23)</option>
-        <option value="D">Layout D — Island HGV Hunter (19)</option>
-        <option value="E">Layout E — Balanced Shield (12)</option>
-        <option value="F">Layout F — PAC-3 Fence (4)</option>
-      </select>
-    </label>
-    <button id="btn-apply-layout" class="setup-ribbon-btn">Apply Layout</button>
-    <span id="layout-status" class="setup-ribbon-hint"></span>
-    <span class="setup-ribbon-sep"></span>
-    <label class="setup-ribbon-budget" title="Red starting budget ($M). Only editable in SETUP.">
-      Red $M
-      <input id="red-budget-input" class="setup-ribbon-budget-input" type="number" value="100" min="10" max="1000" step="10" />
-    </label>
-    <label class="setup-ribbon-budget" title="Blue starting budget ($M). Only editable in SETUP.">
-      Blue $M
-      <input id="blue-budget-input" class="setup-ribbon-budget-input" type="number" value="120" min="10" max="1000" step="10" />
-    </label>
-    <button id="btn-apply-budget" class="setup-ribbon-btn" title="Apply budget overrides to the current match (SETUP only).">Apply</button>
-    <span class="setup-ribbon-sep"></span>
-    <button id="btn-start-match" class="setup-ribbon-btn">Start Match</button>
   </div>
 
   <div id="match-overlay" class="hidden">

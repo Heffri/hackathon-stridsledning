@@ -3,7 +3,7 @@ import { createScene } from './scene.js';
 import { EntityRegistry } from './entities.js';
 import { LauncherRegistry, RedLauncherRegistry } from './launchers.js';
 import { SiteRegistry } from './sites.js';
-import { wireHud, updateHud, setWsStatus, showWsError, showLayoutStatus } from './hud.js';
+import { wireHud, updateHud, setWsStatus, showWsError, showLayoutStatus, toggleSetupPanel } from './hud.js';
 import { initStatusPanel, updateStatusPanel } from './status_panel.js';
 import { initLauncherDrag } from './drag_launchers.js';
 import { onSelectionChange } from './launcher_selection.js';
@@ -62,16 +62,22 @@ function openWs() {
         showLayoutStatus(`Applied: ${name} (${n} launchers${costStr})`, true);
       } else if (msg.type === 'blue_ai_changed') {
         showLayoutStatus(`Blue AI: ${msg.name}`, true);
+      } else if (msg.type === 'red_ai_changed') {
+        showLayoutStatus(`Red AI: ${msg.name}`, true);
       } else if (msg.type !== 'phase_change') {
         console.warn('ws unknown typed frame:', msg);
       }
       return;
     }
     latestSnap = msg;
-    // Sync Blue AI dropdown to server state (covers restart / reconnect).
+    // Sync AI dropdowns to server state (covers restart / reconnect).
     const aiSelect = document.getElementById('blue-ai-select');
     if (aiSelect && msg.blue_ai_slot && aiSelect.value !== msg.blue_ai_slot) {
       aiSelect.value = msg.blue_ai_slot;
+    }
+    const redAiSelect = document.getElementById('red-ai-select');
+    if (redAiSelect && msg.red_ai_slot && redAiSelect.value !== msg.red_ai_slot) {
+      redAiSelect.value = msg.red_ai_slot;
     }
     _lastPhase = msg.phase || 'setup';
   });
@@ -137,7 +143,13 @@ window.addEventListener('keydown', (ev) => {
       }
       break;
     }
+    case 'm': case 'M':
+      if (latestSnap?.phase === 'setup') toggleSetupPanel();
+      break;
   }
+});
+document.getElementById('btn-toggle-setup')?.addEventListener('click', () => {
+  toggleSetupPanel();
 });
 document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
   resetCameraView();

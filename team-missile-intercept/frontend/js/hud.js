@@ -60,6 +60,10 @@ export function wireHud(sendCmd) {
   document.getElementById('blue-ai-select')?.addEventListener('change', (e) => {
     sendCmd({ cmd: 'set_blue_ai', slot: e.target.value });
   });
+  // Red AI model selector — sends set_red_ai command on change.
+  document.getElementById('red-ai-select')?.addEventListener('change', (e) => {
+    sendCmd({ cmd: 'set_red_ai', slot: e.target.value });
+  });
   // M-TIER2-J Part 2 (Issue #6): roster Add button. Reads the kind
   // dropdown + sends add_launcher at a safe south-mainland default pos
   // (near Blue base). Operator drags afterward via the W8 drag handler.
@@ -475,13 +479,30 @@ function renderPauseResumeButton(phase) {
   btn.dataset.mode = 'pause';
 }
 
-// Top SETUP ribbon — non-blocking, shown only during SETUP phase so the
-// 3D canvas stays visible for launcher drag-drop (M-TIER2-J Part 1).
-// Replaces the old centre-screen MATCH SETUP overlay.
+// SETUP panel — centered floating card, visible only during SETUP phase.
+// Toggle button lets the user hide the panel to see the map, then bring
+// it back. 'M' keyboard shortcut toggles during SETUP.
+let _setupPanelCollapsed = false;
 function renderSetupRibbon(phase) {
   const el = document.getElementById('setup-ribbon');
+  const btn = document.getElementById('btn-toggle-setup');
   if (!el) return;
-  el.classList.toggle('hidden', phase !== 'setup');
+  const isSetup = phase === 'setup';
+  if (btn) btn.classList.toggle('hidden', !isSetup);
+  if (!isSetup) {
+    el.classList.add('hidden');
+    _setupPanelCollapsed = false;
+    return;
+  }
+  el.classList.toggle('hidden', _setupPanelCollapsed);
+  if (btn) btn.textContent = _setupPanelCollapsed ? 'Show Setup (M)' : 'Hide Setup (M)';
+}
+export function toggleSetupPanel() {
+  _setupPanelCollapsed = !_setupPanelCollapsed;
+  const el = document.getElementById('setup-ribbon');
+  const btn = document.getElementById('btn-toggle-setup');
+  if (el) el.classList.toggle('hidden', _setupPanelCollapsed);
+  if (btn) btn.textContent = _setupPanelCollapsed ? 'Show Setup (M)' : 'Hide Setup (M)';
 }
 
 // ── Post-Match Summary — metrics computation ─────────────────────────
@@ -510,6 +531,21 @@ function computeDashboardMetrics(snap) {
   const droneRate = droneSpawned > 0 ? (droneInt / droneSpawned) * 100 : 0;
   const missileRate = missileSpawned > 0 ? (missileInt / missileSpawned) * 100 : 0;
 
+  // Per-threat-kind detail breakdown
+  const THREAT_KINDS = ['drone', 'cruise_sub', 'ballistic', 'hgv'];
+  const threatBreakdown = THREAT_KINDS.map((k) => {
+    const sp = spByKind[k] ?? 0;
+    const int = intByKind[k] ?? 0;
+    const lk = leakByKind[k] ?? 0;
+    return {
+      kind: k,
+      spawned: sp,
+      intercepted: int,
+      leaked: lk,
+      rate: sp > 0 ? (int / sp) * 100 : 0,
+    };
+  }).filter((t) => t.spawned > 0);
+
   const blueBudgetMax = stats.blue_budget_max ?? 0;
   const blueBudget = stats.blue_budget ?? 0;
   const redBudgetMax = stats.red_budget_max ?? 0;
@@ -521,9 +557,11 @@ function computeDashboardMetrics(snap) {
 
   const sites = snap.sites || [];
   const sitesIntact = sites.filter((s) => (s.hp ?? 0) > 0).length;
+  const sitesDestroyed = sites.filter((s) => (s.hp ?? 0) <= 0).length;
   const totalHp = sites.reduce((a, s) => a + Math.max(0, s.hp ?? 0), 0);
   const totalHpMax = sites.reduce((a, s) => a + Math.max(1, s.hp_max ?? 100), 0);
   const totalSiteHpPct = totalHpMax > 0 ? (totalHp / totalHpMax) * 100 : 0;
+  const totalLeaks = sites.reduce((a, s) => a + (s.leaks ?? 0), 0);
 
   const t = snap.t ?? 0;
   const matchMinutes = Math.floor(t / 60);
@@ -544,26 +582,34 @@ function computeDashboardMetrics(snap) {
     kindMap[k].launchers.push(lch);
   }
   // ammo fired — use backend-tracked total_fired (reliable at any speed)
+  let totalFired = 0;
   for (const v of Object.values(kindMap)) {
     v.totalFired = 0;
     for (const lch of v.launchers) {
       v.totalFired += lch.total_fired ?? 0;
     }
+    totalFired += v.totalFired;
   }
+
+  // AI model names
+  const blueAiName = snap.blue_ai_name || 'Rule-Based AI';
+  const redAiName = snap.red_ai_name || 'Rule-Based (5 Waves)';
 
   return {
     spawned, intercepts, leaked, activeThreats,
     interceptRate, leakRate, activeRate,
     droneSpawned, droneInt, droneLeak, droneRate,
     missileSpawned, missileInt, missileLeak, missileRate,
+    threatBreakdown,
     blueBudget, blueBudgetMax, blueSpent,
     redBudget, redBudgetMax, redSpent,
     costPerIntercept, exchangeRatio,
-    sites, sitesIntact, totalSiteHpPct,
+    sites, sitesIntact, sitesDestroyed, totalSiteHpPct, totalLeaks,
     matchMinutes, matchSeconds,
-    kindMap, launchers,
+    kindMap, launchers, totalFired,
     wave: snap.wave ?? 0,
     totalWaves: snap.total_waves ?? 0,
+    blueAiName, redAiName,
   };
 }
 
@@ -680,6 +726,7 @@ function buildDashboardHtml(snap, m) {
     const hpMax = Math.max(1, s.hp_max ?? 100);
     const pct = Math.min(100, (hp / hpMax) * 100);
     const dead = hp <= 0;
+    const leaks = s.leaks ?? 0;
     return (
       `<div class="pms-site-row">` +
         `<span class="pms-site-dot" style="background:${color};color:${color}"></span>` +
@@ -687,7 +734,8 @@ function buildDashboardHtml(snap, m) {
         `<div class="pms-site-bar-outer">` +
           `<div class="pms-site-bar-inner${dead ? ' dead' : ''}" id="pms-site-bar-${s.name}" style="width:${pct}%"></div>` +
         `</div>` +
-        `<span class="pms-site-pct${dead ? ' pms-site-dead' : ''}" id="pms-site-pct-${s.name}">${dead ? 'DEAD' : pct.toFixed(0) + '%'}</span>` +
+        `<span class="pms-site-pct${dead ? ' pms-site-dead' : ''}" id="pms-site-pct-${s.name}">${dead ? 'DESTROYED' : pct.toFixed(0) + '%'}</span>` +
+        (leaks > 0 ? `<span class="pms-site-leaks">${leaks} hit${leaks > 1 ? 's' : ''}</span>` : '') +
       `</div>`
     );
   }).join('');
@@ -695,18 +743,57 @@ function buildDashboardHtml(snap, m) {
   // Budget bars
   const blueSpentPct = m.blueBudgetMax > 0 ? Math.min(100, (m.blueSpent / m.blueBudgetMax) * 100) : 0;
   const redSpentPct = m.redBudgetMax > 0 ? Math.min(100, (m.redSpent / m.redBudgetMax) * 100) : 0;
+  const blueRemaining = m.blueBudgetMax - m.blueSpent;
+  const redRemaining = m.redBudgetMax - m.redSpent;
 
-  // Per-launcher rows grouped by kind
+  // Per-threat-kind intercept breakdown rows
+  const threatRows = m.threatBreakdown.map((t) => {
+    const color = THREAT_COLORS[t.kind] || '#888';
+    const label = THREAT_LABELS[t.kind] || t.kind;
+    const barPct = t.rate.toFixed(1);
+    return (
+      `<div class="pms-threat-row">` +
+        `<span class="pms-threat-dot" style="background:${color}"></span>` +
+        `<span class="pms-threat-label">${label}</span>` +
+        `<span class="pms-threat-counts">${t.intercepted}/${t.spawned}</span>` +
+        `<div class="pms-threat-bar-outer">` +
+          `<div class="pms-threat-bar-inner" style="width:${barPct}%;background:${color}"></div>` +
+        `</div>` +
+        `<span class="pms-threat-pct">${t.rate.toFixed(0)}%</span>` +
+      `</div>`
+    );
+  }).join('');
+
+  // Per-weapon-system summary rows (aggregated, not per-launcher)
   const kindKeys = Object.keys(m.kindMap).sort();
+  const weaponRows = kindKeys.map((k) => {
+    const v = m.kindMap[k];
+    const color = WEAPON_COLORS[k] || '#888';
+    const name = INTERCEPTOR_NAMES[k] || k;
+    const ammoUsedPct = v.totalCapacity > 0
+      ? Math.min(100, (v.totalFired / v.totalCapacity) * 100) : 0;
+    return (
+      `<div class="pms-weapon-row">` +
+        `<span class="pms-weapon-dot" style="background:${color}"></span>` +
+        `<span class="pms-weapon-name">${name}</span>` +
+        `<span class="pms-weapon-count">${v.count}x</span>` +
+        `<span class="pms-weapon-fired">${v.totalFired} fired</span>` +
+        `<div class="pms-weapon-bar-outer">` +
+          `<div class="pms-weapon-bar-inner" style="width:${ammoUsedPct}%;background:${color}"></div>` +
+        `</div>` +
+        `<span class="pms-weapon-cost">${formatMoney(v.totalBaseCost)}</span>` +
+      `</div>`
+    );
+  }).join('');
+
+  // Detailed per-launcher roster table
   const rosterRows = kindKeys.map((k) => {
     const v = m.kindMap[k];
     const color = WEAPON_COLORS[k] || '#888';
     const name = INTERCEPTOR_NAMES[k] || k;
-    // Kind header row with total fired
     let html = `<tr class="pms-roster-kind-header">` +
       `<td colspan="6"><span class="pms-roster-dot" style="background:${color}"></span>${escapeHtml(name)} (${v.count}) — ${v.totalFired} fired</td>` +
       `</tr>`;
-    // Individual launcher rows
     for (const lch of v.launchers) {
       const cap = lch.capacity ?? 0;
       const cur = lch.current ?? 0;
@@ -743,20 +830,58 @@ function buildDashboardHtml(snap, m) {
   return (
     `<div class="pms-dashboard">` +
 
-    // Header
+    // ── Header ──
     `<div class="pms-header">` +
       `<div class="pms-title mo-${winner}">${escapeHtml(text.title)}</div>` +
       `<div class="pms-subtitle">${escapeHtml(text.sub)}</div>` +
-      `<div class="pms-chips">` +
-        `<span class="pms-chip">T: ${m.matchMinutes}m ${String(m.matchSeconds).padStart(2, '0')}s</span>` +
-        `<span class="pms-chip">Waves: ${m.wave}/${m.totalWaves}</span>` +
-        `<span class="pms-chip" id="pms-chip-threats">Threats: ${m.spawned}</span>` +
+    `</div>` +
+
+    // ── Match Config Banner ──
+    `<div class="pms-config-banner">` +
+      `<span class="pms-config-item"><span class="pms-config-key">Duration</span><span class="pms-config-val">${m.matchMinutes}m ${String(m.matchSeconds).padStart(2, '0')}s</span></span>` +
+      `<span class="pms-config-sep"></span>` +
+      `<span class="pms-config-item"><span class="pms-config-key">Waves</span><span class="pms-config-val">${m.wave}/${m.totalWaves}</span></span>` +
+      `<span class="pms-config-sep"></span>` +
+      `<span class="pms-config-item"><span class="pms-config-key">Blue AI</span><span class="pms-config-val pms-config-blue">${escapeHtml(m.blueAiName)}</span></span>` +
+      `<span class="pms-config-sep"></span>` +
+      `<span class="pms-config-item"><span class="pms-config-key">Red AI</span><span class="pms-config-val pms-config-red">${escapeHtml(m.redAiName)}</span></span>` +
+      `<span class="pms-config-sep"></span>` +
+      `<span class="pms-config-item"><span class="pms-config-key">Launchers</span><span class="pms-config-val">${m.launchers.length}</span></span>` +
+      `<span class="pms-config-sep"></span>` +
+      `<span class="pms-config-item" id="pms-chip-threats"><span class="pms-config-key">Threats</span><span class="pms-config-val">${m.spawned}</span></span>` +
+    `</div>` +
+
+    // ── KPI Cards (top-level, full width) ──
+    `<div class="pms-kpi-strip">` +
+      `<div class="pms-kpi-card">` +
+        `<div class="pms-kpi-val pms-kpi-big" id="pms-kpi-defense">${m.missileRate.toFixed(1)}%</div>` +
+        `<div class="pms-kpi-label">Missile Defense Rate</div>` +
+      `</div>` +
+      `<div class="pms-kpi-card">` +
+        `<div class="pms-kpi-val" id="pms-kpi-sites">${m.sitesIntact}/${m.sites.length}</div>` +
+        `<div class="pms-kpi-label">Sites Intact</div>` +
+      `</div>` +
+      `<div class="pms-kpi-card">` +
+        `<div class="pms-kpi-val">${m.totalSiteHpPct.toFixed(0)}%</div>` +
+        `<div class="pms-kpi-label">Total Site HP</div>` +
+      `</div>` +
+      `<div class="pms-kpi-card">` +
+        `<div class="pms-kpi-val" id="pms-kpi-cost">${m.costPerIntercept > 0 ? formatMoney(m.costPerIntercept) : '—'}</div>` +
+        `<div class="pms-kpi-label">Cost / Intercept</div>` +
+      `</div>` +
+      `<div class="pms-kpi-card">` +
+        `<div class="pms-kpi-val" id="pms-kpi-exchange">${m.exchangeRatio > 0 ? m.exchangeRatio.toFixed(1) + ':1' : '—'}</div>` +
+        `<div class="pms-kpi-label">Exchange Ratio</div>` +
+      `</div>` +
+      `<div class="pms-kpi-card">` +
+        `<div class="pms-kpi-val">${m.totalFired}</div>` +
+        `<div class="pms-kpi-label">Interceptors Fired</div>` +
       `</div>` +
     `</div>` +
 
     `<div class="pms-body">` +
 
-    // 1. Intercept Performance (full width)
+    // ── 1. Intercept Performance (full width) ──
     `<div class="pms-section pms-full">` +
       `<div class="pms-section-title">Intercept Performance</div>` +
       `<div class="pms-intercept-row">` +
@@ -764,7 +889,7 @@ function buildDashboardHtml(snap, m) {
           `<div class="pms-ring" style="--pms-intercept-pct:${interceptPct}%;--pms-leak-end:${leakEnd}%">` +
             `<div class="pms-ring-inner">` +
               `<span class="pms-ring-val" id="pms-ring-val">${m.interceptRate.toFixed(0)}%</span>` +
-              `<span class="pms-ring-label">INTERCEPT</span>` +
+              `<span class="pms-ring-label">OVERALL</span>` +
             `</div>` +
           `</div>` +
         `</div>` +
@@ -784,28 +909,38 @@ function buildDashboardHtml(snap, m) {
             `<span><span class="pms-stat-val" id="pms-inflight-count">${m.activeThreats}/${m.spawned}</span>` +
             `<span class="pms-stat-pct" id="pms-inflight-pct">${m.activeRate.toFixed(1)}%</span></span>` +
           `</div>` +
-          `<div class="pms-stat-sep"></div>` +
-          `<div class="pms-stat-row">` +
-            `<span class="pms-stat-label" style="color:#ff6a3a">Missiles</span>` +
-            `<span><span class="pms-stat-val" id="pms-missile-count">${m.missileInt}/${m.missileSpawned}</span>` +
-            `<span class="pms-stat-pct" id="pms-missile-pct">${m.missileRate.toFixed(1)}%</span></span>` +
-          `</div>` +
-          `<div class="pms-stat-row">` +
-            `<span class="pms-stat-label" style="color:#aaa">Drones</span>` +
-            `<span><span class="pms-stat-val" id="pms-drone-count">${m.droneInt}/${m.droneSpawned}</span>` +
-            `<span class="pms-stat-pct" id="pms-drone-pct">${m.droneRate.toFixed(1)}%</span></span>` +
-          `</div>` +
         `</div>` +
       `</div>` +
     `</div>` +
 
-    // 2. Site Damage Report (left)
+    // ── 2. Per-Threat-Type Breakdown (left) ──
+    `<div class="pms-section">` +
+      `<div class="pms-section-title">Threat Breakdown</div>` +
+      threatRows +
+      `<div class="pms-threat-summary">` +
+        `<span style="color:#ff6a3a">Missiles: ${m.missileInt}/${m.missileSpawned} (${m.missileRate.toFixed(0)}%)</span>` +
+        `<span style="color:#8cf;margin-left:12px">Drones: ${m.droneInt}/${m.droneSpawned} (${m.droneRate.toFixed(0)}%)</span>` +
+      `</div>` +
+    `</div>` +
+
+    // ── 3. Site Damage Report (right) ──
     `<div class="pms-section">` +
       `<div class="pms-section-title">Site Damage Report</div>` +
+      `<div class="pms-site-summary">` +
+        `<span>${m.sitesIntact} intact</span>` +
+        (m.sitesDestroyed > 0 ? `<span class="pms-site-dead"> · ${m.sitesDestroyed} destroyed</span>` : '') +
+        `<span> · ${m.totalLeaks} total impacts</span>` +
+      `</div>` +
       siteRows +
     `</div>` +
 
-    // 3. Budget Analysis (right)
+    // ── 4. Weapon Systems (left) ──
+    `<div class="pms-section">` +
+      `<div class="pms-section-title">Weapon Systems</div>` +
+      weaponRows +
+    `</div>` +
+
+    // ── 5. Budget Analysis (right) ──
     `<div class="pms-section">` +
       `<div class="pms-section-title">Budget Analysis</div>` +
       `<div class="pms-budget-row">` +
@@ -815,45 +950,24 @@ function buildDashboardHtml(snap, m) {
         `</div>` +
         `<span class="pms-budget-vals" id="pms-blue-budget-vals">${formatMoney(m.blueSpent)} / ${formatMoney(m.blueBudgetMax)}</span>` +
       `</div>` +
-      `<div class="pms-budget-row">` +
+      `<div class="pms-budget-detail">Spent: ${formatMoney(m.blueSpent)} · Remaining: ${formatMoney(blueRemaining)}</div>` +
+      `<div class="pms-budget-row" style="margin-top:8px">` +
         `<span class="pms-budget-label red">RED</span>` +
         `<div class="pms-budget-bar-outer">` +
           `<div class="pms-budget-bar-inner red" id="pms-red-budget-bar" style="width:${redSpentPct}%"></div>` +
         `</div>` +
         `<span class="pms-budget-vals" id="pms-red-budget-vals">${formatMoney(m.redSpent)} / ${formatMoney(m.redBudgetMax)}</span>` +
       `</div>` +
+      `<div class="pms-budget-detail">Spent: ${formatMoney(m.redSpent)} · Remaining: ${formatMoney(redRemaining)}</div>` +
     `</div>` +
 
-    // 4. Roster Efficiency (left)
-    `<div class="pms-section">` +
-      `<div class="pms-section-title">Roster Efficiency</div>` +
+    // ── 6. Detailed Launcher Roster (full width) ──
+    `<div class="pms-section pms-full">` +
+      `<div class="pms-section-title">Detailed Launcher Roster</div>` +
       `<table class="pms-roster-table">` +
         `<tr><th>ID</th><th>Fired</th><th>Mag</th><th>Level</th><th>Status</th><th>Cost</th></tr>` +
         rosterRows +
       `</table>` +
-    `</div>` +
-
-    // 5. Key Metrics (right)
-    `<div class="pms-section">` +
-      `<div class="pms-section-title">Key Metrics</div>` +
-      `<div class="pms-kpi-grid">` +
-        `<div class="pms-kpi-card">` +
-          `<div class="pms-kpi-val" id="pms-kpi-defense">${m.missileRate.toFixed(1)}%</div>` +
-          `<div class="pms-kpi-label">Missile Defense</div>` +
-        `</div>` +
-        `<div class="pms-kpi-card">` +
-          `<div class="pms-kpi-val" id="pms-kpi-cost">${m.costPerIntercept > 0 ? formatMoney(m.costPerIntercept) : '—'}</div>` +
-          `<div class="pms-kpi-label">Cost / Intercept</div>` +
-        `</div>` +
-        `<div class="pms-kpi-card">` +
-          `<div class="pms-kpi-val" id="pms-kpi-sites">${m.sitesIntact}/${m.sites.length}</div>` +
-          `<div class="pms-kpi-label">Sites Intact</div>` +
-        `</div>` +
-        `<div class="pms-kpi-card">` +
-          `<div class="pms-kpi-val" id="pms-kpi-exchange">${m.exchangeRatio > 0 ? m.exchangeRatio.toFixed(1) + ':1' : '—'}</div>` +
-          `<div class="pms-kpi-label">Exchange Ratio</div>` +
-        `</div>` +
-      `</div>` +
     `</div>` +
 
     `</div>` + // end .pms-body
@@ -1074,7 +1188,11 @@ function renderRedDashboard(snap) {
   const wave = snap.wave ?? 0;
   const totalWaves = snap.total_waves ?? 0;
 
+  const redAiName = snap.red_ai_name || 'Rule-Based (5 Waves)';
   let html =
+    `<div class="dash-row"><span class="dash-label">Model</span>` +
+    `<span class="dash-value dash-ai-tag">${redAiName}</span></div>` +
+    `<div class="dash-sep"></div>` +
     `<div class="dash-row"><span class="dash-label">Active threats</span>` +
     `<span class="dash-value dash-highlight-red">${totalActive}</span></div>` +
     `<div class="dash-row"><span class="dash-label">Total spawned</span>` +
