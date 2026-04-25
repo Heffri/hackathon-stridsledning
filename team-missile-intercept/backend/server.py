@@ -41,6 +41,7 @@ BLUE_AI_MODELS = [
 RED_AI_MODELS = [
     ("rule", "5-Wave Heuristic", None),
     ("scripted", "Scripted 3-Chain", "scripted"),
+    ("attrition", "Attrition (Red Income)", "attrition"),
     ("red1", "RL Learned v1", "rl/runs/red_20260421_205051/model.zip"),
     ("red2", "RL Learned v2", "rl/runs/red_20260421_234425/model.zip"),
 ]
@@ -117,11 +118,15 @@ class SimRunner:
         # reset to 0. Restore it so set_initial_budgets re-deducts properly.
         self.scenario._layout_base_cost = old_layout_cost
         self.scenario.set_initial_budgets(old_red, old_blue)
-        # Re-apply the operator's AI selections if they differ from
-        # the env-var defaults (which _apply_learned_policies already set).
-        if old_blue_ai_slot != self._blue_ai_slot:
+        # Always re-apply the operator's AI selections after reset.
+        # build_default_scenario creates default RedAI/BlueAI ("rule").
+        # _apply_learned_policies may override from env vars, but the
+        # user's dropdown selection must take precedence. Skip only when
+        # both the old slot and current slot are "rule" (default already
+        # correct and no env-var override happened).
+        if old_blue_ai_slot != "rule" or old_blue_ai_slot != self._blue_ai_slot:
             self._set_blue_ai_cmd({"slot": old_blue_ai_slot})
-        if old_red_ai_slot != self._red_ai_slot:
+        if old_red_ai_slot != "rule" or old_red_ai_slot != self._red_ai_slot:
             self._set_red_ai_cmd({"slot": old_red_ai_slot})
 
     def _apply_learned_policies(self) -> None:
@@ -418,6 +423,9 @@ class SimRunner:
         elif path == "scripted":
             from sim.red_ai import ScriptedRedAI
             self.scenario.red = ScriptedRedAI(self.scenario)
+        elif path == "attrition":
+            from sim.red_ai import AttritionRedAI
+            self.scenario.red = AttritionRedAI(self.scenario)
         else:
             try:
                 from rl.live_ai import LearnedRedAI

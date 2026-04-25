@@ -20,6 +20,9 @@ const sites = new SiteRegistry(scene);
 initStatusPanel(canvas, camera, registry);
 
 let latestSnap = null;
+// Sync AI dropdowns from snapshot only once after (re)connect. Typed
+// responses (red_ai_changed / blue_ai_changed) handle ongoing sync.
+let _needsAiSync = true;
 
 // --- WebSocket ---
 let ws = null;
@@ -33,6 +36,7 @@ function openWs() {
   });
   ws.addEventListener('close', () => {
     setWsStatus(false);
+    _needsAiSync = true;
     setTimeout(openWs, 1500);
   });
   ws.addEventListener('error', () => setWsStatus(false));
@@ -62,22 +66,29 @@ function openWs() {
         showLayoutStatus(`Applied: ${name} (${n} launchers${costStr})`, true);
       } else if (msg.type === 'blue_ai_changed') {
         showLayoutStatus(`Blue AI: ${msg.name}`, true);
+        const bSel = document.getElementById('blue-ai-select');
+        if (bSel && msg.slot) bSel.value = msg.slot;
       } else if (msg.type === 'red_ai_changed') {
         showLayoutStatus(`Red AI: ${msg.name}`, true);
+        const rSel = document.getElementById('red-ai-select');
+        if (rSel && msg.slot) rSel.value = msg.slot;
       } else if (msg.type !== 'phase_change') {
         console.warn('ws unknown typed frame:', msg);
       }
       return;
     }
     latestSnap = msg;
-    // Sync AI dropdowns to server state (covers restart / reconnect).
-    const aiSelect = document.getElementById('blue-ai-select');
-    if (aiSelect && msg.blue_ai_slot && aiSelect.value !== msg.blue_ai_slot) {
-      aiSelect.value = msg.blue_ai_slot;
-    }
-    const redAiSelect = document.getElementById('red-ai-select');
-    if (redAiSelect && msg.red_ai_slot && redAiSelect.value !== msg.red_ai_slot) {
-      redAiSelect.value = msg.red_ai_slot;
+    // Sync AI dropdowns to server state ONCE on (re)connect only.
+    // Continuous snapshot sync was reverting user selections before the
+    // set_red_ai / set_blue_ai command round-tripped. After the initial
+    // sync, typed responses (red_ai_changed / blue_ai_changed) keep
+    // the dropdowns in sync.
+    if (_needsAiSync) {
+      const aiSelect = document.getElementById('blue-ai-select');
+      if (aiSelect && msg.blue_ai_slot) aiSelect.value = msg.blue_ai_slot;
+      const redAiSelect = document.getElementById('red-ai-select');
+      if (redAiSelect && msg.red_ai_slot) redAiSelect.value = msg.red_ai_slot;
+      _needsAiSync = false;
     }
     _lastPhase = msg.phase || 'setup';
   });

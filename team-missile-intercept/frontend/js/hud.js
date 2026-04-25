@@ -187,7 +187,7 @@ export function updateHud(snap) {
   // Sim clock progress bar
   updateSimClock(snap.t, snap.max_sim_time);
 
-  // Live battle dashboards (replace old text logs)
+  // Live battle dashboards — Blue defense + Red attack
   renderBlueDashboard(snap);
   renderRedDashboard(snap);
 
@@ -198,10 +198,14 @@ export function updateHud(snap) {
   renderBudget(snap.stats || {});
 
   // Phase chip + phase-gated overlay (M-TIER2-PHASE).
-  renderPhaseChip(snap.phase || 'setup');
-  renderSetupRibbon(snap.phase || 'setup');
-  renderPhaseOverlay(snap.phase || 'setup', snap.winner || null, snap);
-  renderPauseResumeButton(snap.phase || 'setup');
+  const phase = snap.phase || 'setup';
+  renderPhaseChip(phase);
+  renderSetupRibbon(phase);
+  renderPhaseOverlay(phase, snap.winner || null, snap);
+  renderPauseResumeButton(phase);
+  // Drive CSS phase-gated panel visibility on #hud.
+  const hudEl = document.getElementById('hud');
+  if (hudEl) hudEl.dataset.phase = phase;
 
   // M-TIER2-J Part 2: if the currently selected launcher id is no
   // longer in the snapshot (server confirmed the Remove, or ai_auto
@@ -827,6 +831,26 @@ function buildDashboardHtml(snap, m) {
     return html;
   }).join('');
 
+  // Build narrative summary — 3-4 sentences a presenter can read aloud
+  const summaryLines = [];
+  // Line 1: headline result
+  if (winner === 'blue') {
+    summaryLines.push(`Blue's <strong>${escapeHtml(m.blueAiName)}</strong> successfully defended against Red's <strong>${escapeHtml(m.redAiName)}</strong> in ${m.matchMinutes}m ${String(m.matchSeconds).padStart(2, '0')}s.`);
+  } else if (winner === 'red') {
+    summaryLines.push(`Red's <strong>${escapeHtml(m.redAiName)}</strong> overwhelmed Blue's <strong>${escapeHtml(m.blueAiName)}</strong> defense in ${m.matchMinutes}m ${String(m.matchSeconds).padStart(2, '0')}s.`);
+  } else {
+    summaryLines.push(`The match between <strong>${escapeHtml(m.blueAiName)}</strong> and <strong>${escapeHtml(m.redAiName)}</strong> ended in a draw after ${m.matchMinutes}m ${String(m.matchSeconds).padStart(2, '0')}s.`);
+  }
+  // Line 2: missile intercept performance
+  summaryLines.push(`The defense intercepted <strong>${m.missileRate.toFixed(0)}%</strong> of missiles (${m.missileInt}/${m.missileSpawned}) and <strong>${m.droneRate.toFixed(0)}%</strong> of drones (${m.droneInt}/${m.droneSpawned}).`);
+  // Line 3: site survival
+  summaryLines.push(`<strong>${m.sitesIntact}</strong> of ${m.sites.length} sites survived with <strong>${m.totalSiteHpPct.toFixed(0)}%</strong> total HP remaining.`);
+  // Line 4: cost efficiency
+  const costLine = m.costPerIntercept > 0
+    ? `Blue spent ${formatMoney(m.blueSpent)} (${formatMoney(m.costPerIntercept)}/intercept) against Red's ${formatMoney(m.redSpent)}.`
+    : `Blue spent ${formatMoney(m.blueSpent)} against Red's ${formatMoney(m.redSpent)}.`;
+  summaryLines.push(costLine);
+
   return (
     `<div class="pms-dashboard">` +
 
@@ -834,6 +858,11 @@ function buildDashboardHtml(snap, m) {
     `<div class="pms-header">` +
       `<div class="pms-title mo-${winner}">${escapeHtml(text.title)}</div>` +
       `<div class="pms-subtitle">${escapeHtml(text.sub)}</div>` +
+    `</div>` +
+
+    // ── Narrative Summary ──
+    `<div class="pms-summary">` +
+      summaryLines.map(l => `<div class="pms-summary-line">${l}</div>`).join('') +
     `</div>` +
 
     // ── Match Config Banner ──
@@ -1102,14 +1131,9 @@ function renderBlueDashboard(snap) {
   const el = document.getElementById('blue-dashboard');
   if (!el) return;
   const stats = snap.stats || {};
-  const ents = snap.entities || [];
   const intercepts = stats.intercepts ?? 0;
   const leaked = stats.leaked ?? 0;
-  const total = intercepts + leaked;
-  const rate = total > 0 ? Math.round((intercepts / total) * 100) : 0;
-  const blueFlying = ents.filter(e => e.team === 'blue' && e.alive).length;
 
-  // Per-category intercept rates (missiles = cruise + ballistic + HGV)
   const MISSILE_KINDS = ['cruise_sub', 'ballistic', 'hgv'];
   const intByKind = stats.intercepts_by_kind || {};
   const leakByKind = stats.leaked_by_kind || {};
@@ -1122,20 +1146,11 @@ function renderBlueDashboard(snap) {
   const dTotal = dInt + dLeak;
   const dRate = dTotal > 0 ? Math.round((dInt / dTotal) * 100) : 0;
 
-  // Count interceptors in flight by kind
-  const byKind = {};
-  for (const e of ents) {
-    if (e.team === 'blue' && e.alive) {
-      byKind[e.kind] = (byKind[e.kind] || 0) + 1;
-    }
-  }
-
-  // Launcher readiness
   const launchers = snap.launchers || [];
   const ready = launchers.filter(l => (l.current ?? 0) > 0).length;
-
   const aiName = snap.blue_ai_name || 'Rule-Based AI';
-  let html =
+
+  el.innerHTML =
     `<div class="dash-row"><span class="dash-label">Model</span>` +
     `<span class="dash-value dash-ai-tag">${aiName}</span></div>` +
     `<div class="dash-sep"></div>` +
@@ -1145,82 +1160,49 @@ function renderBlueDashboard(snap) {
     `<div class="dash-row"><span class="dash-label">Drone intercept</span>` +
     `<span class="dash-value">${dRate}%</span></div>` +
     `<div class="dash-bar-outer"><div class="dash-bar-fill dash-bar-blue" style="width:${dRate}%;opacity:0.5"></div></div>` +
-    `<div class="dash-row"><span class="dash-label">Interceptors in flight</span>` +
-    `<span class="dash-value">${blueFlying}</span></div>` +
-    `<div class="dash-row"><span class="dash-label">Launchers ready</span>` +
-    `<span class="dash-value">${ready} / ${launchers.length}</span></div>` +
     `<div class="dash-row"><span class="dash-label">Kills / Leaked</span>` +
-    `<span class="dash-value">${intercepts} / ${leaked}</span></div>`;
-
-  // Active interceptors by type
-  const kindEntries = Object.entries(byKind).sort((a, b) => b[1] - a[1]);
-  if (kindEntries.length > 0) {
-    html += `<div class="dash-sep"></div>`;
-    for (const [k, n] of kindEntries) {
-      const label = INTERCEPTOR_LABELS[k] || k;
-      const color = WEAPON_COLORS[k] || '#3fc1ff';
-      html += `<div class="dash-row"><span class="dash-dot" style="background:${color}"></span>` +
-        `<span class="dash-label">${label}</span>` +
-        `<span class="dash-value">${n} flying</span></div>`;
-    }
-  }
-
-  el.innerHTML = html;
+    `<span class="dash-value">${intercepts} / ${leaked}</span></div>` +
+    `<div class="dash-row"><span class="dash-label">Launchers ready</span>` +
+    `<span class="dash-value">${ready} / ${launchers.length}</span></div>`;
 }
 
 function renderRedDashboard(snap) {
-  const el = document.getElementById('red-dashboard');
+  const el = document.getElementById('red-dashboard-left');
   if (!el) return;
   const stats = snap.stats || {};
   const ents = snap.entities || [];
 
-  // Count active threats by kind
-  const byKind = {};
+  const threatByKind = {};
   let totalActive = 0;
   for (const e of ents) {
     if (e.team === 'red' && e.alive) {
-      byKind[e.kind] = (byKind[e.kind] || 0) + 1;
+      threatByKind[e.kind] = (threatByKind[e.kind] || 0) + 1;
       totalActive++;
     }
   }
-
   const spawned = stats.spawned ?? 0;
   const wave = snap.wave ?? 0;
   const totalWaves = snap.total_waves ?? 0;
+  const redAi = snap.red_ai_name || 'Rule-Based';
 
-  const redAiName = snap.red_ai_name || 'Rule-Based (5 Waves)';
   let html =
     `<div class="dash-row"><span class="dash-label">Model</span>` +
-    `<span class="dash-value dash-ai-tag">${redAiName}</span></div>` +
+    `<span class="dash-value dash-ai-tag">${redAi}</span></div>` +
     `<div class="dash-sep"></div>` +
     `<div class="dash-row"><span class="dash-label">Active threats</span>` +
     `<span class="dash-value dash-highlight-red">${totalActive}</span></div>` +
-    `<div class="dash-row"><span class="dash-label">Total spawned</span>` +
-    `<span class="dash-value">${spawned}</span></div>` +
-    `<div class="dash-row"><span class="dash-label">Wave</span>` +
-    `<span class="dash-value">${wave} / ${totalWaves}</span></div>`;
+    `<div class="dash-row"><span class="dash-label">Spawned</span>` +
+    `<span class="dash-value">${spawned} · Wave ${wave}/${totalWaves}</span></div>`;
 
-  // Threat breakdown
   const threatKinds = ['drone', 'cruise_sub', 'ballistic', 'hgv'];
-  html += `<div class="dash-sep"></div>`;
   for (const k of threatKinds) {
-    const n = byKind[k] || 0;
-    const label = THREAT_LABELS[k];
-    const color = THREAT_COLORS[k];
-    html += `<div class="dash-row"><span class="dash-dot" style="background:${color}"></span>` +
-      `<span class="dash-label">${label}</span>` +
-      `<span class="dash-value">${n > 0 ? n + ' active' : '—'}</span></div>`;
-  }
-
-  // Site damage summary
-  const sites = snap.sites || [];
-  const damaged = sites.filter(s => s.hp < s.hp_max);
-  if (damaged.length > 0) {
-    html += `<div class="dash-sep"></div>`;
-    for (const s of damaged) {
-      const pct = Math.round((s.hp / s.hp_max) * 100);
-      html += `<div class="dash-row"><span class="dash-label">${s.name}</span>` +
-        `<span class="dash-value" style="color:${pct < 30 ? '#ff5252' : '#ffa726'}">${pct}% HP</span></div>`;
+    const n = threatByKind[k] || 0;
+    if (n > 0) {
+      const label = THREAT_LABELS[k];
+      const color = THREAT_COLORS[k];
+      html += `<div class="dash-row"><span class="dash-dot" style="background:${color}"></span>` +
+        `<span class="dash-label">${label}</span>` +
+        `<span class="dash-value">${n} active</span></div>`;
     }
   }
 

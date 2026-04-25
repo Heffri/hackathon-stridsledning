@@ -26,8 +26,6 @@
   <!-- Sim clock progress bar -->
   <div id="sim-clock-bar"><div id="sim-clock-fill"></div></div>
 
-  <!-- Toggle button to hide/show the setup panel (M key or click) -->
-  <button id="btn-toggle-setup" class="hidden">Setup Menu (M)</button>
   <!-- SETUP panel: centered floating card visible only in SETUP phase. -->
   <div id="setup-ribbon" class="setup-ribbon hidden">
     <div class="setup-panel-title">Match Setup</div>
@@ -83,6 +81,7 @@
         <select id="red-ai-select" class="setup-ribbon-select" title="Red AI model">
           <option value="rule">Red: 5-Wave Heuristic</option>
           <option value="scripted">Red: Scripted 3-Chain</option>
+          <option value="attrition">Red: Attrition (Wartime Income)</option>
           <option value="red1">Red: RL Learned v1</option>
           <option value="red2">Red: RL Learned v2</option>
         </select>
@@ -134,8 +133,12 @@
         <div class="hud-sub">AI vs AI Missile Intercept <span class="hud-build">v2.6.0</span></div>
       </div>
       <div class="log-col log-col-blue">
-        <div class="log-title">Blue — Defense Status</div>
+        <div class="log-title">Blue — Defense</div>
         <div id="blue-dashboard" class="dash-body"></div>
+      </div>
+      <div class="log-col log-col-red-left">
+        <div class="log-title">Red — Attack</div>
+        <div id="red-dashboard-left" class="dash-body"></div>
       </div>
     </div>
 
@@ -150,6 +153,7 @@
           <div>T <span id="stat-t">0.0</span>s &nbsp;·&nbsp; Wave <span id="stat-wave">0</span>/<span id="stat-waves">0</span></div>
           <div>Active <span id="stat-active-t">0</span> &nbsp;·&nbsp; Intercepts <span id="stat-intercepts">0</span> &nbsp;·&nbsp; Leaked <span id="stat-leaked">0</span></div>
         </div>
+        <button id="btn-toggle-setup" class="hidden">Setup Menu (M)</button>
       </div>
 
       <div id="hud-bottom">
@@ -201,14 +205,10 @@
         <div class="ammo-title" id="ammo-panel-title">Magazine</div>
         <div id="ammo-panel-body"></div>
       </div>
-      <div class="log-col log-col-red">
-        <div class="log-title">Red — Threat Status</div>
-        <div id="red-dashboard" class="dash-body"></div>
-      </div>
     </div>
 
   </div><!-- #hud -->
 
-  <script type="module" src="/static/js/main.js"></script>
+  <script type="module" src="/static/js/main.js?v=2"></script>
 </body>
 </html>

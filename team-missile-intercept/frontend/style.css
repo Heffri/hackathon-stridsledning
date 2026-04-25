@@ -125,6 +125,27 @@ html, body {
 }
 .hud-brand { flex-shrink: 0; }
 
+/* ─── Phase-gated panel visibility ───
+   During RUNNING / PAUSED the 3D view is the show.
+   Hide panels that add noise; keep dashboards (live
+   intercept rate + threat breakdown), Site HP, controls.
+   ──────────────────────────────────── */
+#hud[data-phase="running"] .hud-brand,
+#hud[data-phase="paused"]  .hud-brand,
+#hud[data-phase="running"] #budget-panel,
+#hud[data-phase="paused"]  #budget-panel,
+#hud[data-phase="running"] #red-budget-panel,
+#hud[data-phase="paused"]  #red-budget-panel,
+#hud[data-phase="running"] #ammo-panel,
+#hud[data-phase="paused"]  #ammo-panel {
+  display: none;
+}
+/* Left-column Red attack block — red accent (reuses log-col-red styling) */
+.log-col-red-left { border-color: rgba(255, 61, 61, 0.35); border-top-color: rgba(255, 61, 61, 0.55); }
+.log-col-red-left::before { border-top-color: rgba(255, 61, 61, 0.5); border-left-color: rgba(255, 61, 61, 0.5); }
+.log-col-red-left::after { border-bottom-color: rgba(255, 61, 61, 0.5); border-right-color: rgba(255, 61, 61, 0.5); }
+.log-col-red-left .log-title { color: #ff3d3d; }
+
 /* ─── Brand area ─── */
 .hud-sys-id {
   font-family: 'Share Tech Mono', 'Consolas', monospace;
@@ -616,10 +637,7 @@ html, body {
 }
 /* Toggle button: visible during SETUP so the user can hide/show the panel */
 #btn-toggle-setup {
-  position: fixed;
-  top: 10px; left: 50%;
-  transform: translateX(-50%);
-  z-index: 1101;
+  margin-left: 8px;
   background: rgba(12, 24, 40, 0.85);
   color: #3fc1ff;
   border: 1px solid rgba(63, 193, 255, 0.45);
@@ -1256,6 +1274,25 @@ html, body {
 .pms-subtitle {
   font-size: 13px; opacity: 0.75; margin-bottom: 10px;
   font-family: 'Share Tech Mono', 'Consolas', monospace;
+}
+/* Narrative summary — presenter-friendly sentences */
+.pms-summary {
+  background: rgba(63, 193, 255, 0.06);
+  border: 1px solid rgba(63, 193, 255, 0.18);
+  border-left: 3px solid rgba(63, 193, 255, 0.5);
+  border-radius: 2px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  animation: tutSlideIn 0.35s cubic-bezier(.22,.9,.36,1) both;
+  animation-delay: 0.02s;
+}
+.pms-summary-line {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px; line-height: 1.5;
+  color: #cfe0f5;
+}
+.pms-summary-line strong {
+  color: #eaf3ff; font-weight: 700;
 }
 .pms-chips {
   display: flex; justify-content: center; gap: 12px;
