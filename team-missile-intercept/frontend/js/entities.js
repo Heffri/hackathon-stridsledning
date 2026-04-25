@@ -614,12 +614,23 @@ class EntityMesh {
 
     this.mesh = buildModel(kind, team, color);
     // Per-kind scale: threats bigger = scarier, interceptors stay compact.
-    this.mesh.scale.setScalar(KIND_SCALE[kind] ?? 2.0);
+    const kindScale = KIND_SCALE[kind] ?? 2.0;
+    this.mesh.scale.setScalar(kindScale);
     // Tag the root Group so Raycaster intersections can resolve back to
     // this entity id by walking up .parent from the child Mesh hit.
     this.mesh.userData.entityId = id;
     this.mesh.userData.entityKind = kind;
     this.mesh.userData.entityTeam = team;
+
+    // Invisible hit sphere so in-flight entities are easy to click.
+    // Radius is inversely proportional to kind scale so the clickable
+    // area in screen-space is consistent across all entity sizes.
+    const hitRadius = 3.0 / kindScale;
+    const hitGeo = new THREE.SphereGeometry(hitRadius, 8, 6);
+    const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+    const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+    this.mesh.add(hitMesh);
+
     scene.add(this.mesh);
 
     // Trail: Line with dynamic geometry + vertex color falloff.

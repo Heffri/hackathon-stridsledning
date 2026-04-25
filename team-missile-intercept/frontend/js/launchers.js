@@ -75,11 +75,12 @@ class LauncherMesh {
     // Build per-kind vehicle. Sets this.box (hull mesh = raycast target).
     this._buildVehicle(kind);
 
-    // Invisible hit volume for drag_launchers.js (makes small weapons like RBS-70 easy to grab)
-    const hitGeo = new THREE.CylinderGeometry(1.5, 1.5, 3.0, 12);
+    // Invisible hit volume for drag_launchers.js (makes small weapons like RBS-70 easy to grab).
+    // Generous radius so launchers are easy to click even from a pulled-back camera.
+    const hitGeo = new THREE.CylinderGeometry(2.5, 2.5, 4.0, 12);
     const hitMat = new THREE.MeshBasicMaterial({ visible: false });
     this.hitMesh = new THREE.Mesh(hitGeo, hitMat);
-    this.hitMesh.position.set(0, 1.5, 0);
+    this.hitMesh.position.set(0, 2.0, 0);
     this.group.add(this.hitMesh);
 
     // Full-circle range ring in local coords centred on group origin.
