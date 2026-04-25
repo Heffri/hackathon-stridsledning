@@ -1390,6 +1390,9 @@ html, body {
 .pms-roster-id {
   color: #8295ad; font-size: 10px;
 }
+.pms-lch-fired {
+  color: #ffab00; font-weight: 700;
+}
 .pms-roster-bar-cell { width: 50px; }
 .pms-roster-bar-outer {
   width: 100%; height: 5px;

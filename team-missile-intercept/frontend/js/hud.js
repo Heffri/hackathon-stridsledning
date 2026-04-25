@@ -201,6 +201,9 @@ export function updateHud(snap) {
   renderLog('log-blue', _blueLogHistory);
   renderLog('log-red', _redLogHistory);
 
+  // Track per-launcher ammo consumption across ticks (for dashboard).
+  trackLauncherAmmo(snap.launchers || []);
+
   // Per-site HP bars (Milestone I — replaces the old leak counters).
   renderSiteHp(snap.sites || []);
 
@@ -408,6 +411,13 @@ const OVERLAY_TEXT = {
 let _dashboardRendered = false;
 let _originalMoInnerHtml = null;
 
+// Track cumulative ammo fired per launcher across ticks. Launchers
+// reload, so `capacity - current` at match end can be 0 even if the
+// launcher fired dozens of rounds. We compare each tick's `current`
+// with the previous value and accumulate decreases.
+const _prevLauncherAmmo = {};   // id → previous current value
+const _launcherAmmoFired = {};  // id → total rounds fired
+
 const PHASE_LABEL = {
   setup:    'SETUP',
   running:  'RUNNING',
@@ -496,6 +506,25 @@ function renderSetupRibbon(phase) {
   el.classList.toggle('hidden', phase !== 'setup');
 }
 
+// ── Per-launcher ammo tracking ────────────────────────────────────────
+// Called every tick from updateHud. Detects ammo decreases (= shots
+// fired) and accumulates them. Reloads increase `current`, but we only
+// count decreases so the total is monotonically increasing.
+function trackLauncherAmmo(launchers) {
+  for (const lch of launchers) {
+    const id = lch.id;
+    const cur = lch.current ?? 0;
+    if (id in _prevLauncherAmmo) {
+      const prev = _prevLauncherAmmo[id];
+      if (cur < prev) {
+        // Ammo decreased — launcher fired (prev - cur) rounds
+        _launcherAmmoFired[id] = (_launcherAmmoFired[id] ?? 0) + (prev - cur);
+      }
+    }
+    _prevLauncherAmmo[id] = cur;
+  }
+}
+
 // ── Post-Match Summary — metrics computation ─────────────────────────
 function computeDashboardMetrics(snap) {
   const stats = snap.stats || {};
@@ -541,9 +570,12 @@ function computeDashboardMetrics(snap) {
     kindMap[k].totalBaseCost += lch.base_cost_usd ?? 0;
     kindMap[k].launchers.push(lch);
   }
-  // ammo used = capacity - current
+  // ammo fired = cumulative tracked consumption (survives reloads)
   for (const v of Object.values(kindMap)) {
-    v.ammoUsed = v.totalCapacity - v.totalCurrent;
+    v.totalFired = 0;
+    for (const lch of v.launchers) {
+      v.totalFired += _launcherAmmoFired[lch.id] ?? 0;
+    }
   }
 
   return {
@@ -613,14 +645,16 @@ function updateDashboardValues(snap) {
     }
   }
 
-  // Per-launcher ammo bars + status
+  // Per-launcher ammo bars + status + fired count
   for (const lch of m.launchers) {
     const cap = lch.capacity ?? 0;
     const cur = lch.current ?? 0;
+    const fired = _launcherAmmoFired[lch.id] ?? 0;
     const ammoPct = cap > 0 ? Math.min(100, (cur / cap) * 100) : 0;
     const ammoBar = $(`pms-lch-bar-${lch.id}`);
     if (ammoBar) ammoBar.style.width = ammoPct + '%';
     _patchText(`pms-lch-ammo-${lch.id}`, `${cur}/${cap}`);
+    _patchText(`pms-lch-fired-${lch.id}`, String(fired));
     const statusEl = $(`pms-lch-status-${lch.id}`);
     if (statusEl) {
       let label, cls;
@@ -689,14 +723,15 @@ function buildDashboardHtml(snap, m) {
     const v = m.kindMap[k];
     const color = WEAPON_COLORS[k] || '#888';
     const name = INTERCEPTOR_NAMES[k] || k;
-    // Kind header row
+    // Kind header row with total fired
     let html = `<tr class="pms-roster-kind-header">` +
-      `<td colspan="5"><span class="pms-roster-dot" style="background:${color}"></span>${escapeHtml(name)} (${v.count})</td>` +
+      `<td colspan="6"><span class="pms-roster-dot" style="background:${color}"></span>${escapeHtml(name)} (${v.count}) — ${v.totalFired} fired</td>` +
       `</tr>`;
     // Individual launcher rows
     for (const lch of v.launchers) {
       const cap = lch.capacity ?? 0;
       const cur = lch.current ?? 0;
+      const fired = _launcherAmmoFired[lch.id] ?? 0;
       const ammoPct = cap > 0 ? Math.min(100, (cur / cap) * 100) : 0;
       let statusLabel, statusCls;
       if (lch.reloading) {
@@ -712,6 +747,7 @@ function buildDashboardHtml(snap, m) {
       html +=
         `<tr>` +
           `<td class="pms-roster-id">${escapeHtml(lch.id.slice(-4))}</td>` +
+          `<td class="pms-lch-fired" id="pms-lch-fired-${lch.id}">${fired}</td>` +
           `<td id="pms-lch-ammo-${lch.id}">${cur}/${cap}</td>` +
           `<td class="pms-roster-bar-cell">` +
             `<div class="pms-roster-bar-outer">` +
@@ -802,7 +838,7 @@ function buildDashboardHtml(snap, m) {
     `<div class="pms-section">` +
       `<div class="pms-section-title">Roster Efficiency</div>` +
       `<table class="pms-roster-table">` +
-        `<tr><th>ID</th><th>Ammo</th><th>Magazine</th><th>Status</th><th>Cost</th></tr>` +
+        `<tr><th>ID</th><th>Fired</th><th>Mag</th><th>Level</th><th>Status</th><th>Cost</th></tr>` +
         rosterRows +
       `</table>` +
     `</div>` +
@@ -918,6 +954,9 @@ export function resetHudEventTracking() {
     _originalMoInnerHtml = null;
   }
   _dashboardRendered = false;
+  // Clear per-launcher ammo tracking for the next game
+  for (const k of Object.keys(_prevLauncherAmmo)) delete _prevLauncherAmmo[k];
+  for (const k of Object.keys(_launcherAmmoFired)) delete _launcherAmmoFired[k];
   // Ribbon re-shows on the next SETUP snapshot; hiding it here avoids a
   // stale-visible flash between Reset click and the first snapshot.
   document.getElementById('setup-ribbon')?.classList.add('hidden');
