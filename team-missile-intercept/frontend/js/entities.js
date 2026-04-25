@@ -8,6 +8,21 @@ import { worldToScene, SCALE } from './scene.js';
 
 const TRAIL_LEN = 60;
 
+// Per-kind entity scale: bigger = scarier threat. Interceptors stay
+// compact so the visual hierarchy reads "threats are the big things".
+const KIND_SCALE = {
+  drone: 1.5,
+  cruise_sub: 2.0,
+  ballistic: 2.8,
+  hgv: 3.0,
+  ciws: 0.8,
+  rbs_70: 1.2,
+  iris_t_sls: 1.6,
+  iris_t_slm: 2.0,
+  pac_2: 2.2,
+  pac_3: 2.0,
+};
+
 // Seeker scanning cone: forward-pointing translucent cone attached to
 // every interceptor except CIWS. Half-angle 8°, length 10 scene units
 // (= 10 km at SCALE=0.001). Default cyan, opacity 0.12; shifts to
@@ -591,9 +606,8 @@ class EntityMesh {
     this.kind = kind;
 
     this.mesh = buildModel(kind, team, color);
-    // Scale up all entity models so they're clearly visible across the
-    // 150×250 km arena. Factor 3.0 keeps them readable without dominating.
-    this.mesh.scale.setScalar(2.0);
+    // Per-kind scale: threats bigger = scarier, interceptors stay compact.
+    this.mesh.scale.setScalar(KIND_SCALE[kind] ?? 2.0);
     // Tag the root Group so Raycaster intersections can resolve back to
     // this entity id by walking up .parent from the child Mesh hit.
     this.mesh.userData.entityId = id;
@@ -601,21 +615,26 @@ class EntityMesh {
     this.mesh.userData.entityTeam = team;
     scene.add(this.mesh);
 
-    // Trail: Line with dynamic geometry
+    // Trail: Line with dynamic geometry + vertex color falloff.
+    // Recent points are full opacity (bright), older points fade.
     this.trailPoints = [];
     const trailGeom = new THREE.BufferGeometry();
     trailGeom.setAttribute(
       'position',
       new THREE.BufferAttribute(new Float32Array(TRAIL_LEN * 3), 3),
     );
+    trailGeom.setAttribute(
+      'color',
+      new THREE.BufferAttribute(new Float32Array(TRAIL_LEN * 3), 3),
+    );
     trailGeom.setDrawRange(0, 0);
-    const trailColor = new THREE.Color(
+    this._trailBaseColor = new THREE.Color(
       color || (team === 'red' ? '#ff5570' : '#ffcc33'),
     );
     const trailMat = new THREE.LineBasicMaterial({
-      color: trailColor,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.85,
     });
     this.trail = new THREE.Line(trailGeom, trailMat);
     scene.add(this.trail);
@@ -683,18 +702,27 @@ class EntityMesh {
       }
     }
 
-    // Trail
+    // Trail with vertex-color opacity falloff
     this.trailPoints.push([x, y, z]);
     if (this.trailPoints.length > TRAIL_LEN) this.trailPoints.shift();
-    const arr = this.trail.geometry.attributes.position.array;
-    for (let i = 0; i < this.trailPoints.length; i++) {
+    const posArr = this.trail.geometry.attributes.position.array;
+    const colArr = this.trail.geometry.attributes.color.array;
+    const n = this.trailPoints.length;
+    const bc = this._trailBaseColor;
+    for (let i = 0; i < n; i++) {
       const [tx, ty, tz] = this.trailPoints[i];
-      arr[i * 3] = tx;
-      arr[i * 3 + 1] = ty;
-      arr[i * 3 + 2] = tz;
+      posArr[i * 3] = tx;
+      posArr[i * 3 + 1] = ty;
+      posArr[i * 3 + 2] = tz;
+      // Fade: oldest point → 0.1 brightness, newest → 1.0
+      const fade = n > 1 ? 0.1 + 0.9 * (i / (n - 1)) : 1.0;
+      colArr[i * 3] = bc.r * fade;
+      colArr[i * 3 + 1] = bc.g * fade;
+      colArr[i * 3 + 2] = bc.b * fade;
     }
     this.trail.geometry.attributes.position.needsUpdate = true;
-    this.trail.geometry.setDrawRange(0, this.trailPoints.length);
+    this.trail.geometry.attributes.color.needsUpdate = true;
+    this.trail.geometry.setDrawRange(0, n);
   }
 
   dispose(scene) {
@@ -721,6 +749,14 @@ export class EntityRegistry {
     this.scene = scene;
     this.byId = new Map();
     this.explosions = [];
+    // Engagement lines: blue interceptor → assigned red target
+    this.engagementLines = new Map();
+    this._engLineMat = new THREE.LineBasicMaterial({
+      color: 0x44ff88,
+      transparent: true,
+      opacity: 0.2,
+      depthWrite: false,
+    });
   }
 
   updateFromSnapshot(snap) {
@@ -755,6 +791,39 @@ export class EntityRegistry {
       }
     }
 
+    // Engagement lines: draw from each alive blue interceptor to its target.
+    const activeEngagements = new Set();
+    for (const e of snap.entities) {
+      if (!e.alive || e.team !== 'blue') continue;
+      if (e.target_id == null) continue;
+      const tgt = aliveById.get(e.target_id);
+      if (!tgt) continue;
+      const key = e.id;
+      activeEngagements.add(key);
+      let line = this.engagementLines.get(key);
+      if (!line) {
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+        line = new THREE.Line(geom, this._engLineMat);
+        this.scene.add(line);
+        this.engagementLines.set(key, line);
+      }
+      const [sx, sy, sz] = worldToScene(e.pos[0], e.pos[1], e.pos[2]);
+      const [tx, ty, tz] = worldToScene(tgt.pos[0], tgt.pos[1], tgt.pos[2]);
+      const arr = line.geometry.attributes.position.array;
+      arr[0] = sx; arr[1] = sy; arr[2] = sz;
+      arr[3] = tx; arr[4] = ty; arr[5] = tz;
+      line.geometry.attributes.position.needsUpdate = true;
+    }
+    // Remove stale engagement lines
+    for (const [key, line] of this.engagementLines) {
+      if (!activeEngagements.has(key)) {
+        this.scene.remove(line);
+        line.geometry.dispose();
+        this.engagementLines.delete(key);
+      }
+    }
+
     // Explosions
     for (const ex of snap.explosions) {
       // Only spawn a visual once per explosion — use position+t as key
@@ -774,9 +843,20 @@ export class EntityRegistry {
     for (const ex of this.explosions) {
       const age = now - ex.born;
       const t = Math.min(1, age / ex.lifetime);
-      const scale = 1 + t * 18;
-      ex.mesh.scale.setScalar(scale * SCALE * 1000); // convert world→scene scale
-      ex.mesh.material.opacity = Math.max(0, 0.9 - t);
+      if (ex.isDebris) {
+        // Debris: move outward, fade and shrink
+        const dt = 1 / 60; // approx per-frame
+        ex.mesh.position.x += ex.vel[0] * SCALE * dt;
+        ex.mesh.position.y += ex.vel[1] * SCALE * dt;
+        ex.mesh.position.z += ex.vel[2] * SCALE * dt;
+        ex.mesh.material.opacity = Math.max(0, 0.9 * (1 - t));
+        ex.mesh.scale.setScalar(Math.max(0.01, 1 - t));
+      } else {
+        const rate = ex.scaleRate ?? 18;
+        const scale = 1 + t * rate;
+        ex.mesh.scale.setScalar(scale * SCALE * 1000);
+        ex.mesh.material.opacity = Math.max(0, 0.9 - t);
+      }
     }
     this.explosions = this.explosions.filter((ex) => {
       const age = now - ex.born;
@@ -792,24 +872,71 @@ export class EntityRegistry {
 
   _spawnExplosion(pos) {
     const [x, y, z] = worldToScene(pos[0], pos[1], pos[2]);
-    // Hot-white core; depthWrite false so it reads as an additive flash
-    // rather than a solid sphere. Slightly larger geometry + brighter
-    // initial opacity approximates a bloom halo without needing an
-    // EffectComposer (which the importmap-only setup can't easily load).
-    const mat = new THREE.MeshBasicMaterial({
+    const now = performance.now() / 1000;
+
+    // 1. Hot-white core flash (original)
+    const coreMat = new THREE.MeshBasicMaterial({
       color: 0xffffee,
       transparent: true,
       opacity: 1.0,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.8, 14, 12), mat);
-    mesh.position.set(x, y, z);
-    this.scene.add(mesh);
-    this.explosions.push({
-      mesh,
-      born: performance.now() / 1000,
-      lifetime: 1.0,
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.8, 14, 12), coreMat);
+    core.position.set(x, y, z);
+    this.scene.add(core);
+    this.explosions.push({ mesh: core, born: now, lifetime: 1.0 });
+
+    // 2. Orange-red fireball: slower expansion, longer duration
+    const fbMat = new THREE.MeshBasicMaterial({
+      color: 0xff6620,
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
     });
+    const fireball = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 10), fbMat);
+    fireball.position.set(x, y, z);
+    this.scene.add(fireball);
+    this.explosions.push({ mesh: fireball, born: now, lifetime: 1.3, scaleRate: 10 });
+
+    // 3. Shockwave ring: expanding horizontal ring
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xffaa44,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.5, 24), ringMat);
+    ring.position.set(x, y, z);
+    ring.rotation.x = -Math.PI / 2;
+    this.scene.add(ring);
+    this.explosions.push({ mesh: ring, born: now, lifetime: 0.8, scaleRate: 25, isRing: true });
+
+    // 4. Debris particles: small spheres flung outward
+    for (let i = 0; i < 10; i++) {
+      const dMat = new THREE.MeshBasicMaterial({
+        color: Math.random() > 0.5 ? 0xffcc44 : 0xff6633,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const debris = new THREE.Mesh(new THREE.SphereGeometry(0.15, 4, 3), dMat);
+      debris.position.set(x, y, z);
+      const vx = (Math.random() - 0.5) * 40;
+      const vy = (Math.random() - 0.3) * 30;
+      const vz = (Math.random() - 0.5) * 40;
+      this.scene.add(debris);
+      this.explosions.push({
+        mesh: debris,
+        born: now,
+        lifetime: 0.6 + Math.random() * 0.4,
+        vel: [vx, vy, vz],
+        isDebris: true,
+      });
+    }
   }
 }

@@ -139,6 +139,16 @@ export function wireHud(sendCmd) {
     sendCmd({ cmd: 'start' });
     resetHudEventTracking();
   });
+  // Delegated click handler on #match-overlay so the dashboard's
+  // dynamically-injected #pms-restart button works after innerHTML
+  // replacement wipes the original btn-restart listener.
+  document.getElementById('match-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'pms-restart') {
+      sendCmd({ cmd: 'reset' });
+      sendCmd({ cmd: 'start' });
+      resetHudEventTracking();
+    }
+  });
 
   const speed = document.getElementById('speed');
   const speedVal = document.getElementById('speed-val');
@@ -163,8 +173,33 @@ export function updateHud(snap) {
   setText('stat-intercepts', snap.stats?.intercepts ?? 0);
   setText('stat-leaked', snap.stats?.leaked ?? 0);
 
-  renderLog('log-red', snap.red_log || []);
-  renderLog('log-blue', snap.blue_log || []);
+  // Wave warning banner
+  const currentWave = snap.wave ?? 0;
+  if (currentWave > _lastWave && currentWave > 0) {
+    showWaveBanner(currentWave);
+  }
+  _lastWave = currentWave;
+
+  // Kill-feed: detect intercept count increase
+  const intercepts = snap.stats?.intercepts ?? 0;
+  if (intercepts > _lastIntercepts && _lastIntercepts > 0) {
+    const delta = intercepts - _lastIntercepts;
+    for (let i = 0; i < Math.min(delta, 3); i++) {
+      pushKillFeed(`Threat intercepted (#${_lastIntercepts + i + 1})`);
+    }
+  }
+  _lastIntercepts = intercepts;
+
+  // Sim clock progress bar
+  updateSimClock(snap.t, snap.max_sim_time);
+
+  // Accumulated logs (keep full history across snapshots)
+  const blueRes = accumulateLog(_blueLogHistory, snap.blue_log || [], _lastBlueLogTail);
+  _lastBlueLogTail = blueRes.lastTail;
+  const redRes = accumulateLog(_redLogHistory, snap.red_log || [], _lastRedLogTail);
+  _lastRedLogTail = redRes.lastTail;
+  renderLog('log-blue', _blueLogHistory);
+  renderLog('log-red', _redLogHistory);
 
   // Per-site HP bars (Milestone I — replaces the old leak counters).
   renderSiteHp(snap.sites || []);
@@ -175,7 +210,7 @@ export function updateHud(snap) {
   // Phase chip + phase-gated overlay (M-TIER2-PHASE).
   renderPhaseChip(snap.phase || 'setup');
   renderSetupRibbon(snap.phase || 'setup');
-  renderPhaseOverlay(snap.phase || 'setup', snap.winner || null);
+  renderPhaseOverlay(snap.phase || 'setup', snap.winner || null, snap);
   renderPauseResumeButton(snap.phase || 'setup');
 
   // M-TIER2-J Part 2: if the currently selected launcher id is no
@@ -369,6 +404,10 @@ const OVERLAY_TEXT = {
   draw: { title: 'DRAW',      sub: 'Safety time cap reached.' },
 };
 
+// ── Post-Match Summary Dashboard state ───────────────────────────────
+let _dashboardRendered = false;
+let _originalMoInnerHtml = null;
+
 const PHASE_LABEL = {
   setup:    'SETUP',
   running:  'RUNNING',
@@ -457,10 +496,237 @@ function renderSetupRibbon(phase) {
   el.classList.toggle('hidden', phase !== 'setup');
 }
 
+// ── Post-Match Summary — metrics computation ─────────────────────────
+function computeDashboardMetrics(snap) {
+  const stats = snap.stats || {};
+  const spawned = stats.spawned ?? 0;
+  const intercepts = stats.intercepts ?? 0;
+  const leaked = stats.leaked ?? 0;
+  const activeThreats = stats.active_threats ?? 0;
+
+  const interceptRate = spawned > 0 ? (intercepts / spawned) * 100 : 0;
+  const leakRate = spawned > 0 ? (leaked / spawned) * 100 : 0;
+  const activeRate = spawned > 0 ? (activeThreats / spawned) * 100 : 0;
+
+  const blueBudgetMax = stats.blue_budget_max ?? 0;
+  const blueBudget = stats.blue_budget ?? 0;
+  const redBudgetMax = stats.red_budget_max ?? 0;
+  const redBudget = stats.red_budget ?? 0;
+  const blueSpent = blueBudgetMax - blueBudget;
+  const redSpent = redBudgetMax - redBudget;
+  const costPerIntercept = intercepts > 0 ? blueSpent / intercepts : 0;
+  const exchangeRatio = blueSpent > 0 ? redSpent / blueSpent : 0;
+
+  const sites = snap.sites || [];
+  const sitesIntact = sites.filter((s) => (s.hp ?? 0) > 0).length;
+  const totalHp = sites.reduce((a, s) => a + Math.max(0, s.hp ?? 0), 0);
+  const totalHpMax = sites.reduce((a, s) => a + Math.max(1, s.hp_max ?? 100), 0);
+  const totalSiteHpPct = totalHpMax > 0 ? (totalHp / totalHpMax) * 100 : 0;
+
+  const t = snap.t ?? 0;
+  const matchMinutes = Math.floor(t / 60);
+  const matchSeconds = Math.floor(t % 60);
+
+  // Per-launcher-kind aggregation
+  const launchers = snap.launchers || [];
+  const kindMap = {};
+  for (const lch of launchers) {
+    const k = lch.kind;
+    if (!kindMap[k]) {
+      kindMap[k] = { count: 0, totalCapacity: 0, totalCurrent: 0, totalBaseCost: 0 };
+    }
+    kindMap[k].count += 1;
+    kindMap[k].totalCapacity += lch.capacity ?? 0;
+    kindMap[k].totalCurrent += lch.current ?? 0;
+    kindMap[k].totalBaseCost += lch.base_cost_usd ?? 0;
+  }
+  // ammo used = capacity - current
+  for (const v of Object.values(kindMap)) {
+    v.ammoUsed = v.totalCapacity - v.totalCurrent;
+  }
+
+  return {
+    spawned, intercepts, leaked, activeThreats,
+    interceptRate, leakRate, activeRate,
+    blueBudget, blueBudgetMax, blueSpent,
+    redBudget, redBudgetMax, redSpent,
+    costPerIntercept, exchangeRatio,
+    sites, sitesIntact, totalSiteHpPct,
+    matchMinutes, matchSeconds,
+    kindMap,
+    wave: snap.wave ?? 0,
+    totalWaves: snap.total_waves ?? 0,
+  };
+}
+
+// ── Post-Match Summary — HTML builder ─────────────────────────────────
+function buildDashboardHtml(snap, m) {
+  const winner = snap.winner || 'draw';
+  const text = OVERLAY_TEXT[winner] || { title: 'FINISHED', sub: '' };
+
+  // Donut percentages (conic-gradient stops)
+  const interceptPct = m.interceptRate.toFixed(1);
+  const leakEnd = (m.interceptRate + m.leakRate).toFixed(1);
+
+  // Site rows
+  const siteRows = m.sites.map((s) => {
+    const color = SITE_SUBTYPE_COLORS[s.subtype] || '#888';
+    const hp = Math.max(0, s.hp ?? 0);
+    const hpMax = Math.max(1, s.hp_max ?? 100);
+    const pct = Math.min(100, (hp / hpMax) * 100);
+    const dead = hp <= 0;
+    return (
+      `<div class="pms-site-row">` +
+        `<span class="pms-site-dot" style="background:${color};color:${color}"></span>` +
+        `<span class="pms-site-name">${escapeHtml(s.name)}</span>` +
+        `<div class="pms-site-bar-outer">` +
+          `<div class="pms-site-bar-inner${dead ? ' dead' : ''}" style="width:${pct}%"></div>` +
+        `</div>` +
+        `<span class="pms-site-pct${dead ? ' pms-site-dead' : ''}">${dead ? 'DEAD' : pct.toFixed(0) + '%'}</span>` +
+      `</div>`
+    );
+  }).join('');
+
+  // Budget bars
+  const blueSpentPct = m.blueBudgetMax > 0 ? Math.min(100, (m.blueSpent / m.blueBudgetMax) * 100) : 0;
+  const redSpentPct = m.redBudgetMax > 0 ? Math.min(100, (m.redSpent / m.redBudgetMax) * 100) : 0;
+
+  // Roster rows
+  const kindKeys = Object.keys(m.kindMap).sort();
+  const rosterRows = kindKeys.map((k) => {
+    const v = m.kindMap[k];
+    const color = WEAPON_COLORS[k] || '#888';
+    const name = INTERCEPTOR_NAMES[k] || k;
+    return (
+      `<tr>` +
+        `<td><span class="pms-roster-dot" style="background:${color}"></span>${escapeHtml(name)}</td>` +
+        `<td>${v.count}</td>` +
+        `<td>${v.ammoUsed}/${v.totalCapacity}</td>` +
+        `<td>${formatMoney(v.totalBaseCost)}</td>` +
+      `</tr>`
+    );
+  }).join('');
+
+  return (
+    `<div class="pms-dashboard">` +
+
+    // Header
+    `<div class="pms-header">` +
+      `<div class="pms-title mo-${winner}">${escapeHtml(text.title)}</div>` +
+      `<div class="pms-subtitle">${escapeHtml(text.sub)}</div>` +
+      `<div class="pms-chips">` +
+        `<span class="pms-chip">T: ${m.matchMinutes}m ${String(m.matchSeconds).padStart(2, '0')}s</span>` +
+        `<span class="pms-chip">Waves: ${m.wave}/${m.totalWaves}</span>` +
+        `<span class="pms-chip">Threats: ${m.spawned}</span>` +
+      `</div>` +
+    `</div>` +
+
+    `<div class="pms-body">` +
+
+    // 1. Intercept Performance (full width)
+    `<div class="pms-section pms-full">` +
+      `<div class="pms-section-title">Intercept Performance</div>` +
+      `<div class="pms-intercept-row">` +
+        `<div class="pms-ring-wrap">` +
+          `<div class="pms-ring" style="--pms-intercept-pct:${interceptPct}%;--pms-leak-end:${leakEnd}%">` +
+            `<div class="pms-ring-inner">` +
+              `<span class="pms-ring-val">${m.interceptRate.toFixed(0)}%</span>` +
+              `<span class="pms-ring-label">INTERCEPT</span>` +
+            `</div>` +
+          `</div>` +
+        `</div>` +
+        `<div class="pms-stat-rows">` +
+          `<div class="pms-stat-row">` +
+            `<span class="pms-stat-label">Intercepted</span>` +
+            `<span><span class="pms-stat-val">${m.intercepts}/${m.spawned}</span>` +
+            `<span class="pms-stat-pct">${m.interceptRate.toFixed(1)}%</span></span>` +
+          `</div>` +
+          `<div class="pms-stat-row">` +
+            `<span class="pms-stat-label">Leaked</span>` +
+            `<span><span class="pms-stat-val">${m.leaked}/${m.spawned}</span>` +
+            `<span class="pms-stat-pct">${m.leakRate.toFixed(1)}%</span></span>` +
+          `</div>` +
+          `<div class="pms-stat-row">` +
+            `<span class="pms-stat-label">In-flight</span>` +
+            `<span><span class="pms-stat-val">${m.activeThreats}/${m.spawned}</span>` +
+            `<span class="pms-stat-pct">${m.activeRate.toFixed(1)}%</span></span>` +
+          `</div>` +
+        `</div>` +
+      `</div>` +
+    `</div>` +
+
+    // 2. Site Damage Report (left)
+    `<div class="pms-section">` +
+      `<div class="pms-section-title">Site Damage Report</div>` +
+      siteRows +
+    `</div>` +
+
+    // 3. Budget Analysis (right)
+    `<div class="pms-section">` +
+      `<div class="pms-section-title">Budget Analysis</div>` +
+      `<div class="pms-budget-row">` +
+        `<span class="pms-budget-label blue">BLUE</span>` +
+        `<div class="pms-budget-bar-outer">` +
+          `<div class="pms-budget-bar-inner blue" style="width:${blueSpentPct}%"></div>` +
+        `</div>` +
+        `<span class="pms-budget-vals">${formatMoney(m.blueSpent)} / ${formatMoney(m.blueBudgetMax)}</span>` +
+      `</div>` +
+      `<div class="pms-budget-row">` +
+        `<span class="pms-budget-label red">RED</span>` +
+        `<div class="pms-budget-bar-outer">` +
+          `<div class="pms-budget-bar-inner red" style="width:${redSpentPct}%"></div>` +
+        `</div>` +
+        `<span class="pms-budget-vals">${formatMoney(m.redSpent)} / ${formatMoney(m.redBudgetMax)}</span>` +
+      `</div>` +
+    `</div>` +
+
+    // 4. Roster Efficiency (left)
+    `<div class="pms-section">` +
+      `<div class="pms-section-title">Roster Efficiency</div>` +
+      `<table class="pms-roster-table">` +
+        `<tr><th>System</th><th>Qty</th><th>Fired</th><th>Cost</th></tr>` +
+        rosterRows +
+      `</table>` +
+    `</div>` +
+
+    // 5. Key Metrics (right)
+    `<div class="pms-section">` +
+      `<div class="pms-section-title">Key Metrics</div>` +
+      `<div class="pms-kpi-grid">` +
+        `<div class="pms-kpi-card">` +
+          `<div class="pms-kpi-val">${m.interceptRate.toFixed(1)}%</div>` +
+          `<div class="pms-kpi-label">Defense Rate</div>` +
+        `</div>` +
+        `<div class="pms-kpi-card">` +
+          `<div class="pms-kpi-val">${m.costPerIntercept > 0 ? formatMoney(m.costPerIntercept) : '—'}</div>` +
+          `<div class="pms-kpi-label">Cost / Intercept</div>` +
+        `</div>` +
+        `<div class="pms-kpi-card">` +
+          `<div class="pms-kpi-val">${m.sitesIntact}/${m.sites.length}</div>` +
+          `<div class="pms-kpi-label">Sites Intact</div>` +
+        `</div>` +
+        `<div class="pms-kpi-card">` +
+          `<div class="pms-kpi-val">${m.exchangeRatio > 0 ? m.exchangeRatio.toFixed(1) + ':1' : '—'}</div>` +
+          `<div class="pms-kpi-label">Exchange Ratio</div>` +
+        `</div>` +
+      `</div>` +
+    `</div>` +
+
+    `</div>` + // end .pms-body
+
+    // Footer
+    `<div class="pms-footer">` +
+      `<button id="pms-restart" class="pms-restart">Restart</button>` +
+    `</div>` +
+
+    `</div>` // end .pms-dashboard
+  );
+}
+
 // Centre-screen match overlay — reused for FINISHED only (SETUP → ribbon
 // now, PAUSED → no overlay, see Subtasks C+D). RUNNING hides the overlay
 // entirely. Only Restart is surfaced in FINISHED.
-function renderPhaseOverlay(phase, winner) {
+function renderPhaseOverlay(phase, winner, snap) {
   const el = document.getElementById('match-overlay');
   if (!el) return;
   const titleEl = document.getElementById('mo-title');
@@ -493,14 +759,24 @@ function renderPhaseOverlay(phase, winner) {
     return;
   }
   if (phase === 'finished') {
-    const text = OVERLAY_TEXT[winner] || { title: 'FINISHED', sub: '' };
-    if (titleEl) {
-      titleEl.textContent = text.title;
-      titleEl.className = `mo-title mo-${winner || 'draw'}`;
+    if (_dashboardRendered) {
+      el.classList.remove('hidden');
+      return;
     }
-    if (subEl) subEl.textContent = text.sub;
-    btnRestart?.classList.remove('hidden');
+    // Save original .mo-inner content for restoration on reset
+    const moInner = el.querySelector('.mo-inner');
+    if (moInner && _originalMoInnerHtml === null) {
+      _originalMoInnerHtml = moInner.innerHTML;
+    }
+    // Compute metrics + render dashboard into .mo-inner
+    if (moInner && snap) {
+      const metrics = computeDashboardMetrics(snap);
+      moInner.innerHTML = buildDashboardHtml(snap, metrics);
+      // Override .mo-inner padding for the dashboard
+      moInner.style.padding = '0';
+    }
     el.classList.remove('hidden');
+    _dashboardRendered = true;
     return;
   }
   // Unknown phase — hide overlay so the HUD isn't locked.
@@ -511,9 +787,30 @@ function renderPhaseOverlay(phase, winner) {
 // state and re-triggers for next game.
 export function resetHudEventTracking() {
   document.getElementById('match-overlay')?.classList.add('hidden');
+  // Restore original .mo-inner content after dashboard replacement
+  if (_originalMoInnerHtml !== null) {
+    const moInner = document.querySelector('.mo-inner');
+    if (moInner) {
+      moInner.innerHTML = _originalMoInnerHtml;
+      moInner.style.padding = '';
+    }
+    _originalMoInnerHtml = null;
+  }
+  _dashboardRendered = false;
   // Ribbon re-shows on the next SETUP snapshot; hiding it here avoids a
   // stale-visible flash between Reset click and the first snapshot.
   document.getElementById('setup-ribbon')?.classList.add('hidden');
+  // Reset accumulated state for next game
+  _lastWave = 0;
+  _lastIntercepts = 0;
+  _blueLogHistory.length = 0;
+  _redLogHistory.length = 0;
+  _lastBlueLogTail = '';
+  _lastRedLogTail = '';
+  // Clear kill-feed
+  const kf = document.getElementById('kill-feed');
+  if (kf) kf.innerHTML = '';
+  _killFeedQueue.length = 0;
 }
 
 export function setWsStatus(connected) {
@@ -588,4 +885,90 @@ function escapeHtml(s) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+// ── Wave Warning Banner ──────────────────────────────────────────────
+// Full-width banner sliding in from the top when wave number increases.
+let _lastWave = 0;
+let _waveBannerTimer = null;
+
+function showWaveBanner(waveNum) {
+  const el = document.getElementById('wave-banner');
+  if (!el) return;
+  el.textContent = `INCOMING — Wave ${waveNum}`;
+  el.classList.remove('wave-banner-fade');
+  el.classList.add('wave-banner-show');
+  if (_waveBannerTimer) clearTimeout(_waveBannerTimer);
+  _waveBannerTimer = setTimeout(() => {
+    el.classList.add('wave-banner-fade');
+    setTimeout(() => el.classList.remove('wave-banner-show', 'wave-banner-fade'), 600);
+  }, 3000);
+}
+
+// ── Kill-Feed Overlay ────────────────────────────────────────────────
+// Shows recent intercept events as stacked cards at the top center.
+let _lastIntercepts = 0;
+const _killFeedQueue = [];
+const MAX_KILL_FEED = 4;
+
+function pushKillFeed(text) {
+  const el = document.getElementById('kill-feed');
+  if (!el) return;
+  const card = document.createElement('div');
+  card.className = 'kill-feed-entry';
+  card.textContent = text;
+  el.prepend(card);
+  _killFeedQueue.push(card);
+  // Trim to max
+  while (_killFeedQueue.length > MAX_KILL_FEED) {
+    const old = _killFeedQueue.shift();
+    old.remove();
+  }
+  // Auto-remove after 3s
+  setTimeout(() => {
+    card.classList.add('kill-feed-fade');
+    setTimeout(() => {
+      card.remove();
+      const idx = _killFeedQueue.indexOf(card);
+      if (idx >= 0) _killFeedQueue.splice(idx, 1);
+    }, 500);
+  }, 3000);
+}
+
+// ── AI Log Accumulation ──────────────────────────────────────────────
+// Backend sends only the last 6 entries per snapshot. We accumulate
+// locally so the demo has full scrollback history.
+const _blueLogHistory = [];
+const _redLogHistory = [];
+let _lastBlueLogTail = '';
+let _lastRedLogTail = '';
+const MAX_LOG_HISTORY = 120;
+
+function accumulateLog(history, entries, lastTailRef) {
+  if (!entries.length) return { changed: false, lastTail: lastTailRef };
+  // Use the last entry as a fingerprint to detect new data
+  const tail = entries[entries.length - 1];
+  if (tail === lastTailRef) return { changed: false, lastTail: lastTailRef };
+  // Find which entries are new (not already in history)
+  const histSet = new Set(history.slice(-20));
+  for (const e of entries) {
+    if (!histSet.has(e)) {
+      history.push(e);
+    }
+  }
+  // Cap
+  while (history.length > MAX_LOG_HISTORY) history.shift();
+  return { changed: true, lastTail: tail };
+}
+
+// ── Sim Clock Progress Bar ───────────────────────────────────────────
+function updateSimClock(t, maxSimTime) {
+  const fill = document.getElementById('sim-clock-fill');
+  if (!fill) return;
+  if (!maxSimTime || maxSimTime <= 0) {
+    fill.style.width = '0%';
+    return;
+  }
+  const pct = Math.min(100, Math.max(0, (t / maxSimTime) * 100));
+  fill.style.width = `${pct}%`;
 }

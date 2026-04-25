@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Smart Stridsledning — Missile Intercept Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
   <script type="importmap">
   {
@@ -16,6 +19,15 @@
 </head>
 <body>
   <canvas id="view"></canvas>
+
+  <!-- Wave warning banner — shown on wave transitions -->
+  <div id="wave-banner"></div>
+
+  <!-- Kill-feed overlay — shows recent intercepts -->
+  <div id="kill-feed"></div>
+
+  <!-- Sim clock progress bar -->
+  <div id="sim-clock-bar"><div id="sim-clock-fill"></div></div>
 
   <!-- SETUP ribbon: thin top bar visible only in SETUP phase.
        Sibling combinator pushes #hud down while visible. -->
@@ -83,8 +95,10 @@
     <!-- ═══ LEFT COLUMN: title + Blue AI log ═══ -->
     <div id="hud-left">
       <div class="hud-block hud-brand">
+        <div class="hud-sys-id">STRIDSLEDNING</div>
         <div class="hud-title">Smart Stridsledning</div>
-        <div class="hud-sub">AI vs AI Missile Intercept</div>
+        <hr class="hud-rule" />
+        <div class="hud-sub">AI vs AI Missile Intercept <span class="hud-build">v2.6.0</span></div>
       </div>
       <div class="log-col log-col-blue">
         <div class="log-title">Blue AI — fire decisions</div>
@@ -109,6 +123,7 @@
         <button id="btn-pause" class="hidden">Pause</button>
         <button id="btn-reset">Reset</button>
         <button id="btn-reset-camera" title="Recenter the 3D camera (keyboard: R)">Reset Camera</button>
+        <button id="btn-auto-cam" title="Toggle auto-cycling camera (keyboard: C)">Auto Cam: OFF</button>
         <label class="speed">
           Speed
           <input id="speed" type="range" min="0.5" max="50" step="0.5" value="1" />

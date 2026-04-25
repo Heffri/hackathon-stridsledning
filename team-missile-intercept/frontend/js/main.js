@@ -10,7 +10,11 @@ import { onSelectionChange } from './launcher_selection.js';
 import { showIntro, showSetupTip } from './tutorial.js';
 
 const canvas = document.getElementById('view');
-const { scene, camera, renderer, controls, resetCameraView, animateRadar } = createScene(canvas);
+const {
+  scene, camera, renderer, controls, resetCameraView, animateRadar,
+  composer, waterUpdate, toggleAutoCam, stepAutoCam, setAutoCamPreset,
+  isAutoCam, CAMERA_PRESETS,
+} = createScene(canvas);
 const registry = new EntityRegistry(scene);
 const launchers = new LauncherRegistry(scene);
 const redLaunchers = new RedLauncherRegistry(scene);
@@ -89,19 +93,56 @@ showIntro().then(() => openWs());
 // Track last phase to detect SETUP entry for the one-shot tips card.
 let _lastPhase = null;
 
-// W13 Phase 7: demo-recovery camera reset. `R` keydown (window-level)
-// + the bottom-bar "Reset Camera" button both call resetCameraView.
-// Keydown ignores the event when a form control has focus so operator
-// typing into the roster dropdown doesn't snap the camera mid-edit.
+// Keyboard shortcuts — demo-friendly hotkeys for the 4-minute presentation.
+// All ignore modifier keys + form-focused states so roster editing is safe.
 window.addEventListener('keydown', (ev) => {
-  if (ev.key !== 'r' && ev.key !== 'R') return;
   if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
   const t = ev.target;
   if (t && t.matches?.('input, select, textarea')) return;
-  resetCameraView();
+
+  switch (ev.key) {
+    case 'r': case 'R':
+      resetCameraView();
+      break;
+    case 'c': case 'C': {
+      const on = toggleAutoCam();
+      const btn = document.getElementById('btn-auto-cam');
+      if (btn) btn.textContent = on ? 'Auto Cam: ON' : 'Auto Cam: OFF';
+      break;
+    }
+    case ' ':
+      ev.preventDefault();
+      sendCmd({ cmd: latestSnap?.phase === 'paused' ? 'resume' : 'pause' });
+      break;
+    case '+': case '=': {
+      const slider = document.getElementById('speed');
+      if (slider) {
+        slider.value = Math.min(50, parseFloat(slider.value) + 0.5);
+        slider.dispatchEvent(new Event('input'));
+      }
+      break;
+    }
+    case '-': case '_': {
+      const slider = document.getElementById('speed');
+      if (slider) {
+        slider.value = Math.max(0.5, parseFloat(slider.value) - 0.5);
+        slider.dispatchEvent(new Event('input'));
+      }
+      break;
+    }
+    case '1': case '2': case '3': case '4': case '5':
+      setAutoCamPreset(parseInt(ev.key) - 1);
+      break;
+  }
 });
 document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
   resetCameraView();
+});
+// Auto Camera button in #hud-bottom
+document.getElementById('btn-auto-cam')?.addEventListener('click', () => {
+  const on = toggleAutoCam();
+  const btn = document.getElementById('btn-auto-cam');
+  if (btn) btn.textContent = on ? 'Auto Cam: ON' : 'Auto Cam: OFF';
 });
 
 // --- Render loop ---
@@ -120,10 +161,18 @@ let _lastSnapProcessed = null;
 // the gated HUD/launcher render with the current snapshot.
 onSelectionChange(() => { _lastSnapProcessed = null; });
 const _startTime = performance.now() / 1000;
+let _prevTime = _startTime;
 function animate() {
   requestAnimationFrame(animate);
+  const now = performance.now() / 1000;
+  const elapsed = now - _startTime;
+  const dt = now - _prevTime;
+  _prevTime = now;
+
+  stepAutoCam(dt);
   controls.update();
-  animateRadar(performance.now() / 1000 - _startTime);
+  animateRadar(elapsed);
+  waterUpdate(elapsed);
   if (latestSnap) {
     registry.updateFromSnapshot(latestSnap);
     sites.updateFromSnapshot(latestSnap);
@@ -135,6 +184,6 @@ function animate() {
       _lastSnapProcessed = latestSnap;
     }
   }
-  renderer.render(scene, camera);
+  composer.render();
 }
 animate();

@@ -1,6 +1,10 @@
 // Three.js scene setup: camera, lighting, ground grid, base marker.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { BOREAL_TERRAIN, BOREAL_LOCATIONS } from './terrain_data.js';
 import { enhanceTerrainGeometry, scatterTrees, createRoads, createCoastlines, createRadarScanDome } from './scene_visuals.js';
 
@@ -69,6 +73,8 @@ export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
 
   const camera = new THREE.PerspectiveCamera(
     72,
@@ -86,6 +92,21 @@ export function createScene(canvas) {
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
   controls.target.set(...DEFAULT_CONTROLS_TARGET);
+
+  // Post-processing: bloom gives explosions, thrust flames, city lights a
+  // cinematic glow — free visual upgrade for the demo presentation.
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.4,   // strength
+    0.3,   // radius
+    0.6,   // threshold
+  );
+  composer.addPass(bloomPass);
+  // OutputPass applies tone mapping + sRGB conversion so the final image
+  // isn't washed-out/black from the linear intermediate render target.
+  composer.addPass(new OutputPass());
 
   // W13 Phase 7: demo-recovery helper. `R` keybinding + HUD button both
   // call this to snap the camera + OrbitControls target back to the
@@ -133,29 +154,19 @@ export function createScene(canvas) {
   // 1 unit = 1 km; sub-lines every 1 km let the operator eyeball weapon
   // ranges (CIWS 4 km = 4 cells, RBS 70 9, SLS 12, SLM 40, PAC-3 60,
   // PAC-2 70), with brighter main lines every 10 km for coarser reads.
-  const grid = makeRectGrid(
-    widthUnits,
-    depthUnits,
-    1,
-    arenaCentreZ,
-    0x224466,
-    0x152842,
-  );
-  scene.add(grid);
-
-  // "Sea" plane — slightly deeper blue so the landmasses read as
-  // "land above water". Sits a hair below y=0 so extruded terrain
-  // (from y=0 up to y=+0.3) doesn't z-fight.
+  // Sea plane — brighter ocean blue, no grid overlay.
   const groundGeom = new THREE.PlaneGeometry(widthUnits, depthUnits);
   const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x1a3050,   // brighter steel-blue sea
-    roughness: 0.85,
-    metalness: 0.05,
+    color: 0x1e4870,
+    roughness: 0.7,
+    metalness: 0.15,
   });
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, -0.01, arenaCentreZ);
   scene.add(ground);
+  // No-op water update — kept so main.js call site doesn't break.
+  const waterUpdate = () => {};
 
   // Boreal Passage terrain — Saab's hand-authored scenario geometry.
   // Saab coords: X east (0..1667 km), Y SOUTH-positive (0..1300 km).
@@ -565,14 +576,72 @@ export function createScene(canvas) {
     }
   }
 
+  // Camera auto-pilot: cycles through preset viewpoints for hands-free demo.
+  // Toggle with C key or the HUD button. Smooth lerp between presets.
+  const CAMERA_PRESETS = [
+    { pos: [0, 42, 95],     target: [0, 0, -90],   label: 'Overview' },
+    { pos: [0, 55, -30],    target: [0, 0, -180],   label: 'North Threats' },
+    { pos: [30, 18, 20],    target: [0, 0, -40],    label: 'Engagement Zone' },
+    { pos: [-40, 25, 60],   target: [0, 0, -20],    label: 'Southern Defense' },
+    { pos: [60, 8, 30],     target: [0, 4, -60],    label: 'Cinematic Low' },
+  ];
+  let _autoCam = false;
+  let _autoCamIdx = 0;
+  let _autoCamT = 0;
+  const _autoCamLerpSpeed = 0.015;   // per-frame lerp factor
+  const _autoCamDwell = 15;          // seconds per viewpoint
+  let _autoCamDwellTimer = 0;
+  const _tmpPos = new THREE.Vector3();
+  const _tmpTgt = new THREE.Vector3();
+
+  function toggleAutoCam() {
+    _autoCam = !_autoCam;
+    if (_autoCam) {
+      _autoCamIdx = 0;
+      _autoCamT = 0;
+      _autoCamDwellTimer = 0;
+    }
+    return _autoCam;
+  }
+
+  function setAutoCamPreset(idx) {
+    if (idx >= 0 && idx < CAMERA_PRESETS.length) {
+      _autoCamIdx = idx;
+      _autoCamT = 0;
+      _autoCamDwellTimer = 0;
+    }
+  }
+
+  function stepAutoCam(dt) {
+    if (!_autoCam) return;
+    const preset = CAMERA_PRESETS[_autoCamIdx];
+    _tmpPos.set(...preset.pos);
+    _tmpTgt.set(...preset.target);
+
+    camera.position.lerp(_tmpPos, _autoCamLerpSpeed);
+    controls.target.lerp(_tmpTgt, _autoCamLerpSpeed);
+
+    _autoCamDwellTimer += dt;
+    if (_autoCamDwellTimer >= _autoCamDwell) {
+      _autoCamDwellTimer = 0;
+      _autoCamIdx = (_autoCamIdx + 1) % CAMERA_PRESETS.length;
+    }
+  }
+
   // Resize
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  return { scene, camera, renderer, controls, resetCameraView, animateRadar };
+  return {
+    scene, camera, renderer, controls, resetCameraView, animateRadar,
+    composer, waterUpdate, toggleAutoCam, stepAutoCam, setAutoCamPreset,
+    isAutoCam: () => _autoCam,
+    CAMERA_PRESETS,
+  };
 }
 
 // Backend coords: X=east, Y=north, Z=up (meters).
