@@ -1,0 +1,221 @@
+{
+  "meta": {
+    "blue_model": "rl/runs/blue_local/blue_aoe_aggressive/model.zip",
+    "matches_per_cell": 3,
+    "layouts": [
+      "C",
+      "D"
+    ],
+    "reds": [
+      "scripted"
+    ],
+    "blue_budget": 200000000,
+    "red_budget": 110000000,
+    "episode_time_limit": 3000.0,
+    "wall_seconds": 1422.8
+  },
+  "cells": {
+    "C_vs_scripted": {
+      "red": "scripted",
+      "layout": "C",
+      "summary": {
+        "n": 3,
+        "blue_wins": 0,
+        "red_wins": 0,
+        "truncated": 3,
+        "blue_winrate": 0.0,
+        "mean_site_hp_frac": 0.19999999999999998,
+        "mean_sites_alive": 1,
+        "mean_leaked": 7.333333333333333,
+        "mean_intercepts": 109.66666666666667,
+        "mean_blue_budget_remaining": 140781000,
+        "mean_sim_t": 3000.000000002148,
+        "per_kind_fires_total": {
+          "iris_t_slm": 0,
+          "pac_3": 0,
+          "rbs_70": 225,
+          "ciws": 141,
+          "pac_2": 0,
+          "iris_t_sls": 276
+        },
+        "per_kind_fires_mean": {
+          "iris_t_slm": 0.0,
+          "pac_3": 0.0,
+          "rbs_70": 75.0,
+          "ciws": 47.0,
+          "pac_2": 0.0,
+          "iris_t_sls": 92.0
+        }
+      },
+      "per_match": [
+        {
+          "winner": "truncated",
+          "sim_t": 3000.000000002148,
+          "site_hp_frac": 0.13333333333333333,
+          "sites_alive": 1,
+          "sites_total": 3,
+          "leaked": 8,
+          "intercepts": 103,
+          "blue_budget_remaining": 134229000,
+          "red_budget_remaining": 1800000,
+          "steps": 6000,
+          "total_reward": -1690.798550000001,
+          "per_kind_fires": {
+            "ciws": 73,
+            "rbs_70": 55,
+            "iris_t_sls": 112,
+            "iris_t_slm": 0,
+            "pac_2": 0,
+            "pac_3": 0
+          },
+          "seed": 1000
+        },
+        {
+          "winner": "truncated",
+          "sim_t": 3000.000000002148,
+          "site_hp_frac": 0.13333333333333333,
+          "sites_alive": 1,
+          "sites_total": 3,
+          "leaked": 8,
+          "intercepts": 110,
+          "blue_budget_remaining": 145264000,
+          "red_budget_remaining": 1800000,
+          "steps": 6000,
+          "total_reward": -1690.0367999999996,
+          "per_kind_fires": {
+            "ciws": 43,
+            "rbs_70": 78,
+            "iris_t_sls": 82,
+            "iris_t_slm": 0,
+            "pac_2": 0,
+            "pac_3": 0
+          },
+          "seed": 1001
+        },
+        {
+          "winner": "truncated",
+          "sim_t": 3000.000000002148,
+          "site_hp_frac": 0.3333333333333333,
+          "sites_alive": 1,
+          "sites_total": 3,
+          "leaked": 6,
+          "intercepts": 116,
+          "blue_budget_remaining": 142850000,
+          "red_budget_remaining": 300000,
+          "steps": 6000,
+          "total_reward": -1318.2175000000009,
+          "per_kind_fires": {
+            "ciws": 25,
+            "rbs_70": 92,
+            "iris_t_sls": 82,
+            "iris_t_slm": 0,
+            "pac_2": 0,
+            "pac_3": 0
+          },
+          "seed": 1002
+        }
+      ]
+    },
+    "D_vs_scripted": {
+      "red": "scripted",
+      "layout": "D",
+      "summary": {
+        "n": 3,
+        "blue_wins": 0,
+        "red_wins": 0,
+        "truncated": 3,
+        "blue_winrate": 0.0,
+        "mean_site_hp_frac": 0.5333333333333333,
+        "mean_sites_alive": 2,
+        "mean_leaked": 15.333333333333334,
+        "mean_intercepts": 110,
+        "mean_blue_budget_remaining": 38749000,
+        "mean_sim_t": 3000.000000002148,
+        "per_kind_fires_total": {
+          "iris_t_slm": 445,
+          "pac_3": 0,
+          "rbs_70": 29,
+          "ciws": 89,
+          "pac_2": 0,
+          "iris_t_sls": 67
+        },
+        "per_kind_fires_mean": {
+          "iris_t_slm": 148.33333333333334,
+          "pac_3": 0.0,
+          "rbs_70": 9.666666666666666,
+          "ciws": 29.666666666666668,
+          "pac_2": 0.0,
+          "iris_t_sls": 22.333333333333332
+        }
+      },
+      "per_match": [
+        {
+          "winner": "truncated",
+          "sim_t": 3000.000000002148,
+          "site_hp_frac": 0.6666666666666666,
+          "sites_alive": 2,
+          "sites_total": 3,
+          "leaked": 7,
+          "intercepts": 119,
+          "blue_budget_remaining": 27118000,
+          "red_budget_remaining": 300000,
+          "steps": 6000,
+          "total_reward": -1330.9740999999974,
+          "per_kind_fires": {
+            "ciws": 41,
+            "rbs_70": 16,
+            "iris_t_sls": 26,
+            "iris_t_slm": 157,
+            "pac_2": 0,
+            "pac_3": 0
+          },
+          "seed": 1000
+        },
+        {
+          "winner": "truncated",
+          "sim_t": 3000.000000002148,
+          "site_hp_frac": 0.4666666666666667,
+          "sites_alive": 2,
+          "sites_total": 3,
+          "leaked": 23,
+          "intercepts": 103,
+          "blue_budget_remaining": 46922000,
+          "red_budget_remaining": 300000,
+          "steps": 6000,
+          "total_reward": -1264.9038999999977,
+          "per_kind_fires": {
+            "ciws": 14,
+            "rbs_70": 6,
+            "iris_t_sls": 16,
+            "iris_t_slm": 144,
+            "pac_2": 0,
+            "pac_3": 0
+          },
+          "seed": 1001
+        },
+        {
+          "winner": "truncated",
+          "sim_t": 3000.000000002148,
+          "site_hp_frac": 0.4666666666666667,
+          "sites_alive": 2,
+          "sites_total": 3,
+          "leaked": 16,
+          "intercepts": 108,
+          "blue_budget_remaining": 42207000,
+          "red_budget_remaining": 300000,
+          "steps": 6000,
+          "total_reward": -1802.899649999999,
+          "per_kind_fires": {
+            "ciws": 34,
+            "rbs_70": 7,
+            "iris_t_sls": 25,
+            "iris_t_slm": 144,
+            "pac_2": 0,
+            "pac_3": 0
+          },
+          "seed": 1002
+        }
+      ]
+    }
+  }
+}
