@@ -1,0 +1,56 @@
+# Megamodel launch commands (for reproducibility on Chen's Windows box)
+# Written by run_megamodel.py during the EPYC training run.
+#
+# All stages share these env vars (set by tmux launcher):
+#   OMP_NUM_THREADS=1
+#   MKL_NUM_THREADS=1
+#   OPENBLAS_NUM_THREADS=1
+#
+# Common flags:
+#   --n-envs 48
+#   --n-steps 1024
+#   --batch-size 256
+#   --n-epochs 4
+#   --lr 3e-4
+#   --gamma 0.995
+#   --gae-lambda 0.95
+#   --ent-coef 0.01
+#   --clip-range 0.2
+#   --episode-time-limit 5000.0
+#   --blue-budget 200000000
+#   --red-budget 150000000
+#   --device cpu
+#   --save-every 200000
+#
+# INCREMENT pattern: --total-steps 200000 per call, then convergence check;
+# advance to next stage when last 3 ep_rew_mean values span < 5.0 AND
+# the latest is not a new global max. HARD_CAP advances regardless.
+#
+# Stage S1 (Layout C, scripted Red, cold start):
+#   python -m rl.train [common flags] --run-name blue_megamodel_S1_inc_<N> \
+#     --layouts-pool rl/top3_layouts_CD.json --layouts-pool-slots C \
+#     --red-mode-pool scripted [--warmstart prev_inc.zip]
+#
+# Stage S2 (Layouts C+D, scripted Red, warmstart from S1):
+#   python -m rl.train [common flags] --run-name blue_megamodel_S2_inc_<N> \
+#     --layouts-pool rl/top3_layouts_CD.json --layouts-pool-slots C D \
+#     --red-mode-pool scripted --warmstart .../stages/S1_final.zip
+#
+# Stage S3 (Layouts C+D, scripted+scripted+rule, warmstart from S2):
+#   python -m rl.train [common flags] --run-name blue_megamodel_S3_inc_<N> \
+#     --layouts-pool rl/top3_layouts_CD.json --layouts-pool-slots C D \
+#     --red-mode-pool scripted scripted rule --warmstart .../stages/S2_final.zip
+#
+# Stage S4 (Layouts C+C+D+D+E, scripted+scripted+rule, warmstart from S3):
+#   python -m rl.train [common flags] --run-name blue_megamodel_S4_inc_<N> \
+#     --layouts-pool rl/top3_layouts_CD.json --layouts-pool-slots C C D D E \
+#     --red-mode-pool scripted scripted rule --warmstart .../stages/S3_final.zip
+#
+# Note on learned-Red opponent in S3:
+#   train.py's --red-mode-pool argparse choices = {scripted, rule, default}.
+#   No 'learned' option exists in train.py and the megamodel work scope
+#   (CLAUDE prompt) forbids editing train.py. The two pre-existing Red
+#   models in rl/runs/red_20260421_*/ are at cap 30/15/40 — incompatible
+#   with the cap-72 train env's obs/action shapes (the live_ai adapter
+#   handles this for inference but not training). S3 falls back to
+#   ('scripted', 'scripted', 'rule') per the documented fallback rule.

@@ -1,9 +1,18 @@
 """Blue megamodel curriculum driver (cap 72/32/128).
 
-Sequential stages S1 → S2 → S3 → S4. Each stage trains in 200k-step
-increments, checking convergence between increments. Stage advances on
-convergence or HARD_CAP. After every stage, model copied to
-``stages/<STAGE>_final.zip`` and pushed to GitHub.
+Sequential stages S1 → S2 → S3 → S4. ONE train.py invocation per stage,
+sized to HARD_CAP. A watchdog thread polls the training log; when
+convergence is detected, it sends SIGINT to train.py — train.py catches
+KeyboardInterrupt, saves model.zip, and exits cleanly. After the stage,
+model copied to ``stages/<STAGE>_final.zip`` and pushed to GitHub.
+
+Why single-train-per-stage rather than 200k increments:
+  Each train.py call spawns fresh SubprocVecEnv workers. With
+  episode_time_limit=5000s + n_envs=48, episodes run ~10000 decisions
+  while each fresh increment of 200k transitions only gives 4166
+  decisions per env. Episodes never finish within an increment and the
+  Monitor never logs ep_rew_mean. By running ONE process for the entire
+  stage, env state persists across rollouts and episodes do finish.
 
 Run from backend/ root:
 
@@ -12,15 +21,18 @@ Run from backend/ root:
     python -m scripts.run_megamodel --resume    # skip stages whose final.zip exists
     python -m scripts.run_megamodel --no-push   # don't push between stages
 
-Wall budget: 8 h. Phase-2 (Red trainee) is launched separately by run_red_trainee.py.
+Wall budget: 8 h total. Phase-2 (Red trainee) is launched separately by
+``run_red_trainee.py``.
 """
 from __future__ import annotations
 
 import argparse
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Optional, Sequence
@@ -32,7 +44,7 @@ SCRIPTS_DIR = REPO_BACKEND / "scripts"
 CHECK_CONV = SCRIPTS_DIR / "check_convergence.py"
 PYTHON = sys.executable
 
-# Common training flags shared across stages (per spec).
+# Common training flags (per spec).
 COMMON_FLAGS = dict(
     n_envs=48,
     n_steps=1024,
@@ -50,14 +62,17 @@ COMMON_FLAGS = dict(
     save_every=200_000,
 )
 
-INCREMENT = 200_000  # train this many steps per chunk
 LAYOUTS_POOL_PATH = REPO_BACKEND / "rl" / "top3_layouts_CD.json"
+
+# Convergence watchdog config.
+WATCHDOG_POLL_S = 60      # how often to check the log for convergence
+WATCHDOG_MIN_WALL_S = 300  # wait at least 5 min before allowing convergence
+                           # (long enough that the first ep_rew_mean entries
+                           # are in the log; check_convergence requires 3
+                           # entries before considering)
 
 # Stage definitions.
 # `red_pool` values must be subset of {scripted, rule, default} — train.py rejects 'learned'.
-# Note: we deliberately fall back to scripted+rule for S3 (no learned-Red opp)
-# because train.py's --red-mode-pool argparse choices don't include 'learned'
-# and the prompt forbids editing train.py.
 STAGE_PLANS = [
     dict(
         stage="S1",
@@ -77,7 +92,7 @@ STAGE_PLANS = [
         stage="S3",
         hard_cap=2_000_000,
         layouts_pool_slots=("C", "D"),
-        # Fallback per prompt: scripted scripted rule (drop learned).
+        # Fallback per prompt: scripted scripted rule (no learned-Red wired).
         red_mode_pool=("scripted", "scripted", "rule"),
         warmstart_from="S2",
     ),
@@ -100,7 +115,7 @@ def _build_train_cli(
     red_mode_pool: Sequence[str],
 ) -> list:
     cli = [
-        PYTHON, "-m", "rl.train",
+        PYTHON, "-u", "-m", "rl.train",
         "--total-steps", str(total_steps),
         "--n-envs", str(COMMON_FLAGS["n_envs"]),
         "--n-steps", str(COMMON_FLAGS["n_steps"]),
@@ -136,8 +151,6 @@ def _check_convergence(log_path: Path) -> str:
         capture_output=True,
         text=True,
     )
-    sys.stdout.write(res.stdout)
-    sys.stderr.write(res.stderr)
     if res.returncode == 0:
         return "converged"
     if res.returncode == 1:
@@ -145,88 +158,62 @@ def _check_convergence(log_path: Path) -> str:
     return "no_data"
 
 
-def _run_increment(
-    *,
+def _convergence_watchdog(
+    proc: subprocess.Popen,
+    log_path: Path,
     stage: str,
-    inc_idx: int,
-    accumulated_steps_before: int,
-    warmstart: Optional[Path],
-    layouts_pool_slots: Sequence[str],
-    red_mode_pool: Sequence[str],
-    consolidated_log: Path,
-) -> Path:
-    """Train a single 200k increment. Returns path to its model.zip."""
-    run_name = f"blue_megamodel_{stage}_inc_{accumulated_steps_before}"
-    run_dir = REPO_BACKEND / "rl" / "runs" / run_name
-    cli = _build_train_cli(
-        run_name=run_name,
-        total_steps=INCREMENT,
-        warmstart=warmstart,
-        layouts_pool_slots=layouts_pool_slots,
-        red_mode_pool=red_mode_pool,
-    )
-    print(f"\n[{stage}/inc{inc_idx}] launching: {' '.join(cli)}", flush=True)
-    print(f"[{stage}/inc{inc_idx}] log -> {consolidated_log}", flush=True)
+    *,
+    poll_s: int = WATCHDOG_POLL_S,
+    min_wall_s: int = WATCHDOG_MIN_WALL_S,
+    stop_evt: threading.Event,
+) -> None:
+    """Watchdog thread: poll log, SIGINT train.py on convergence.
 
-    consolidated_log.parent.mkdir(parents=True, exist_ok=True)
-    with open(consolidated_log, "ab", buffering=0) as logf:
-        sep = (
-            f"\n{'='*78}\n"
-            f"=== STAGE {stage} INCREMENT {inc_idx} "
-            f"(accumulated_before={accumulated_steps_before}) ===\n"
-            f"=== run_name={run_name} warmstart={warmstart} ===\n"
-            f"{'='*78}\n"
-        ).encode()
-        logf.write(sep)
-        proc = subprocess.Popen(
-            cli, cwd=str(REPO_BACKEND), stdout=logf, stderr=subprocess.STDOUT
-        )
-        rc = proc.wait()
-    if rc != 0:
-        raise RuntimeError(f"train.py exited with code {rc}; see {consolidated_log}")
-
-    model = run_dir / "model.zip"
-    if not model.exists():
-        raise RuntimeError(f"expected {model} after train.py; not found")
-    return model
-
-
-def _git_push(message: str, push: bool) -> None:
-    print(f"\n[git] commit + push: {message[:60]}...", flush=True)
-    subprocess.run(
-        ["git", "add",
-         "team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/",
-         "team-missile-intercept/backend/rl/env.py",
-         "team-missile-intercept/backend/scripts/check_convergence.py",
-         "team-missile-intercept/backend/scripts/run_megamodel.py",
-         ],
-        cwd=str(REPO_BACKEND.parent.parent), check=False,
-    )
-    rc = subprocess.run(
-        ["git", "commit", "-m", message],
-        cwd=str(REPO_BACKEND.parent.parent), check=False,
-    ).returncode
-    if rc != 0:
-        print("[git] commit returned non-zero (likely 'nothing to commit')")
-        return
-    if push:
-        subprocess.run(
-            ["git", "push", "origin", "train-megamodel-cap72"],
-            cwd=str(REPO_BACKEND.parent.parent), check=False,
-        )
+    Holds off for `min_wall_s` to avoid premature triggering before any
+    ep_rew_mean entries have appeared.
+    """
+    started = time.time()
+    last_count = 0
+    while not stop_evt.is_set():
+        if proc.poll() is not None:
+            return
+        time.sleep(poll_s)
+        if proc.poll() is not None:
+            return
+        elapsed = time.time() - started
+        if elapsed < min_wall_s:
+            continue
+        # Status report
+        try:
+            with log_path.open("rb") as f:
+                count = f.read().count(b"ep_rew_mean")
+        except FileNotFoundError:
+            count = 0
+        if count > last_count:
+            print(f"[watchdog/{stage}] ep_rew_mean count={count} (wall={elapsed/60:.1f} min)",
+                  flush=True)
+            last_count = count
+        verdict = _check_convergence(log_path)
+        if verdict == "converged":
+            print(f"[watchdog/{stage}] CONVERGED at wall={elapsed/60:.1f} min, "
+                  f"sending SIGINT to train.py (pid={proc.pid})", flush=True)
+            try:
+                proc.send_signal(signal.SIGINT)
+            except ProcessLookupError:
+                pass
+            return
 
 
 def run_stage(plan: dict, *, push: bool, resume: bool) -> dict:
     stage = plan["stage"]
     final_path = STAGES_DIR / f"{stage}_final.zip"
-    consolidated_log = STAGES_DIR / f"{stage}_training.log"
-    consolidated_log.parent.mkdir(parents=True, exist_ok=True)
+    log_path = STAGES_DIR / f"{stage}_training.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
     if resume and final_path.exists():
         print(f"[{stage}] final exists → skipping (resume mode)")
         return dict(stage=stage, accumulated=None, converged="skip")
 
-    # Resolve warmstart path
     if plan["warmstart_from"] is None:
         warmstart = None
     else:
@@ -234,68 +221,125 @@ def run_stage(plan: dict, *, push: bool, resume: bool) -> dict:
         if not warmstart.exists():
             raise RuntimeError(f"missing warmstart {warmstart} for stage {stage}")
 
-    accumulated = 0
-    inc_idx = 0
-    converged = False
-    last_model = warmstart
+    run_name = f"blue_megamodel_{stage}"
+    run_dir = REPO_BACKEND / "rl" / "runs" / run_name
+    cli = _build_train_cli(
+        run_name=run_name,
+        total_steps=plan["hard_cap"],
+        warmstart=warmstart,
+        layouts_pool_slots=plan["layouts_pool_slots"],
+        red_mode_pool=plan["red_mode_pool"],
+    )
+
+    print(f"\n[{stage}] launching: {' '.join(cli)}", flush=True)
+    print(f"[{stage}] log -> {log_path}", flush=True)
+    print(f"[{stage}] hard_cap={plan['hard_cap']:,} steps", flush=True)
+
     t_stage_start = time.time()
-
-    while accumulated < plan["hard_cap"]:
-        last_model = _run_increment(
-            stage=stage,
-            inc_idx=inc_idx,
-            accumulated_steps_before=accumulated,
-            warmstart=last_model,
-            layouts_pool_slots=plan["layouts_pool_slots"],
-            red_mode_pool=plan["red_mode_pool"],
-            consolidated_log=consolidated_log,
+    stop_evt = threading.Event()
+    with open(log_path, "ab", buffering=0) as logf:
+        sep = (
+            f"\n{'='*78}\n"
+            f"=== STAGE {stage}\n"
+            f"=== run_name={run_name} warmstart={warmstart}\n"
+            f"=== hard_cap={plan['hard_cap']}\n"
+            f"=== started at {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n"
+            f"{'='*78}\n"
+        ).encode()
+        logf.write(sep)
+        proc = subprocess.Popen(
+            cli, cwd=str(REPO_BACKEND), stdout=logf, stderr=subprocess.STDOUT
         )
-        accumulated += INCREMENT
-        inc_idx += 1
-        elapsed = (time.time() - t_stage_start) / 60.0
-        print(f"[{stage}] +{INCREMENT} steps → accumulated={accumulated}; "
-              f"stage wall {elapsed:.1f} min", flush=True)
 
-        verdict = _check_convergence(consolidated_log)
-        if verdict == "converged":
-            converged = True
-            print(f"[{stage}] CONVERGED at {accumulated} steps", flush=True)
-            break
-        elif verdict == "no_data":
-            print(f"[{stage}] convergence checker had no parsable data — continuing")
+        # Start watchdog thread
+        watchdog = threading.Thread(
+            target=_convergence_watchdog,
+            args=(proc, log_path, stage),
+            kwargs=dict(stop_evt=stop_evt),
+            daemon=True,
+        )
+        watchdog.start()
 
-    if not converged:
-        print(f"[{stage}] HARD_CAP reached ({accumulated} steps) without convergence")
-
-    shutil.copy(last_model, final_path)
-    print(f"[{stage}] final model → {final_path}", flush=True)
-    if last_model != final_path:
-        # Save a small fingerprint so we know which increment was last
         try:
-            (STAGES_DIR / f"{stage}_final.source.txt").write_text(
-                f"last_increment_model: {last_model}\n"
-                f"accumulated_steps: {accumulated}\n"
-                f"converged: {converged}\n"
-            )
-        except Exception:
-            pass
+            rc = proc.wait()
+        except KeyboardInterrupt:
+            print(f"[{stage}] driver received KeyboardInterrupt — propagating",
+                  flush=True)
+            proc.send_signal(signal.SIGINT)
+            try:
+                rc = proc.wait(timeout=300)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                rc = -9
+            stop_evt.set()
+            raise
+
+        stop_evt.set()
+        watchdog.join(timeout=10)
+
+    if rc not in (0, -2, 130):
+        # 0 = clean exit; -2/130 = SIGINT (graceful shutdown via train.py)
+        raise RuntimeError(f"train.py exited with code {rc}; see {log_path}")
+
+    elapsed_min = (time.time() - t_stage_start) / 60.0
+    src_model = run_dir / "model.zip"
+    if not src_model.exists():
+        raise RuntimeError(f"expected {src_model} after train.py; not found")
+    shutil.copy(src_model, final_path)
+    print(f"[{stage}] final → {final_path} (wall {elapsed_min:.1f} min)", flush=True)
+
+    # Detect convergence vs hard-cap
+    verdict = _check_convergence(log_path)
+    converged = (verdict == "converged")
 
     msg = (
         f"feat(rl): megamodel {stage} "
-        f"{'converged' if converged else 'hardcap'} at {accumulated} steps"
+        f"{'converged' if converged else 'hardcap'} "
+        f"(wall={elapsed_min:.0f} min)"
     )
     _git_push(msg, push)
-    return dict(stage=stage, accumulated=accumulated, converged=converged)
+
+    return dict(
+        stage=stage,
+        wall_min=elapsed_min,
+        converged=converged,
+        final=str(final_path),
+    )
+
+
+def _git_push(message: str, push: bool) -> None:
+    print(f"\n[git] commit + push: {message}", flush=True)
+    repo_root = REPO_BACKEND.parent.parent
+    subprocess.run(
+        ["git", "add",
+         "team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/",
+         "team-missile-intercept/backend/rl/env.py",
+         "team-missile-intercept/backend/scripts/check_convergence.py",
+         "team-missile-intercept/backend/scripts/run_megamodel.py",
+         "team-missile-intercept/backend/scripts/run_red_trainee.py",
+         "team-missile-intercept/progress/TRAIN_MEGAMODEL_REPORT.md",
+         ],
+        cwd=str(repo_root), check=False,
+    )
+    rc = subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=str(repo_root), check=False,
+    ).returncode
+    if rc != 0:
+        print("[git] commit returned non-zero (likely 'nothing to commit')")
+        return
+    if push:
+        subprocess.run(
+            ["git", "push", "origin", "train-megamodel-cap72"],
+            cwd=str(repo_root), check=False,
+        )
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stages", nargs="*", default=None,
-                    help="Subset of stages to run (e.g. --stages S1 S2). Default = all.")
-    ap.add_argument("--resume", action="store_true",
-                    help="Skip stages whose final.zip already exists")
-    ap.add_argument("--no-push", action="store_true",
-                    help="Don't git push between stages (still commits locally)")
+    ap.add_argument("--stages", nargs="*", default=None)
+    ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--no-push", action="store_true")
     args = ap.parse_args()
 
     STAGES_DIR.mkdir(parents=True, exist_ok=True)
@@ -305,31 +349,28 @@ def main() -> int:
         wanted = {s.upper() for s in args.stages}
         selected = [p for p in STAGE_PLANS if p["stage"] in wanted]
         if not selected:
-            print(f"no stages matched {args.stages}; valid: {[p['stage'] for p in STAGE_PLANS]}")
+            valid = [p["stage"] for p in STAGE_PLANS]
+            print(f"no stages matched {args.stages}; valid: {valid}")
             return 2
 
     t0 = time.time()
     results = []
     for plan in selected:
-        # 8h budget gate
         elapsed = time.time() - t0
         budget_remaining = 8 * 3600 - elapsed
-        # S4 has special skip rule per spec: skip if < 1.5h remaining
         if plan["stage"] == "S4" and budget_remaining < 5400:
             print(f"[S4] skipped — only {budget_remaining/60:.1f} min remaining; want ≥ 90")
-            # Promote S3 final to be the megamodel final.
             s3_final = STAGES_DIR / "S3_final.zip"
             mega_final = RUN_BASE / "model.zip"
             if s3_final.exists():
                 shutil.copy(s3_final, mega_final)
-                print(f"[finalize] copied S3 to {mega_final}")
+                print(f"[finalize] copied S3 → {mega_final}")
             results.append(dict(stage="S4", skipped="time"))
             break
 
         res = run_stage(plan, push=not args.no_push, resume=args.resume)
         results.append(res)
 
-    # Promote last stage's final to model.zip
     final_stage_zip = None
     for plan in reversed(selected):
         candidate = STAGES_DIR / f"{plan['stage']}_final.zip"
