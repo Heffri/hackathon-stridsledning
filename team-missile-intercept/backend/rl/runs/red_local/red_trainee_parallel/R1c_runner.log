@@ -1,0 +1,24 @@
+[R1c] watcher started; PID=83488 log=rl/runs/red_local/red_trainee_parallel/R1c_training.log
+[R1c] elapsed=240s ep_rew_count=1 last=27.5
+[R1c] elapsed=300s ep_rew_count=2 last=26.3
+[R1c] elapsed=360s ep_rew_count=3 last=33.1
+[R1c] elapsed=420s ep_rew_count=4 last=40.3
+[R1c] elapsed=540s ep_rew_count=5 last=44.3
+[R1c] elapsed=600s ep_rew_count=6 last=52.8
+n=6 last3=[40.3, 44.3, 52.8] span=12.50 new_max=True converged=False
+n=6 last3=[40.3, 44.3, 52.8] span=12.50 new_max=True converged=False
+[R1c] elapsed=720s ep_rew_count=7 last=54.1
+n=7 last3=[44.3, 52.8, 54.1] span=9.80 new_max=True converged=False
+[R1c] elapsed=780s ep_rew_count=8 last=61.1
+n=8 last3=[52.8, 54.1, 61.1] span=8.30 new_max=True converged=False
+[R1c] elapsed=840s ep_rew_count=9 last=66.3
+n=9 last3=[54.1, 61.1, 66.3] span=12.20 new_max=True converged=False
+n=9 last3=[54.1, 61.1, 66.3] span=12.20 new_max=True converged=False
+[R1c] elapsed=960s ep_rew_count=10 last=71.7
+n=10 last3=[61.1, 66.3, 71.7] span=10.60 new_max=True converged=False
+[R1c] elapsed=1020s ep_rew_count=11 last=73.4
+n=11 last3=[66.3, 71.7, 73.4] span=7.10 new_max=True converged=False
+[R1c] elapsed=1080s ep_rew_count=12 last=70.8
+n=12 last3=[71.7, 73.4, 70.8] span=2.60 new_max=False converged=True
+[R1c] convergence detected; sending SIGINT to PID 83488
+[R1c] saved final ckpt: rl/runs/red_local/red_trainee_parallel/stages/R1c_final.zip (from rl/runs/red_local/red_trainee_parallel/R1c/model.zip, converged=1)
