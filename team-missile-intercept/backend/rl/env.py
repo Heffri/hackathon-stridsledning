@@ -49,9 +49,9 @@ from sim.world import World
 # discretisation grow. live_ai.py contains a backward-compat adapter
 # that slices obs + remaps actions for smaller-cap pretrained models
 # (B_shaped at 30/15/40, Boyu V2/V2a at 96/24/128).
-MAX_THREATS = 120
-MAX_LAUNCHERS = 60
-MAX_INTERCEPTORS = 160
+MAX_THREATS = 72
+MAX_LAUNCHERS = 32
+MAX_INTERCEPTORS = 128
 MAX_SITES = 10
 
 # Agent decides every N sim ticks. 10 ticks = 0.5s sim per decision.

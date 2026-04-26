@@ -59,7 +59,7 @@ magnitudes are comparable across reward components:
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import gymnasium as gym
@@ -207,11 +207,42 @@ class RedEnv(gym.Env):
             _patch_numpy_core_for_legacy_pickle()
             from sb3_contrib import MaskablePPO
             self.blue_policy = MaskablePPO.load(blue_policy_path, device="cpu")
+            # Cap-bridging adapter (Red v2, 2026-04-26). Env now runs at
+            # 72/32/128 but B_shaped is at 30/15/40, V4 at 30/15/40, Boyu
+            # V2a at 96/24/128. Capture model-expected dims so the obs
+            # encoder can slice down and the action applier can pad up
+            # (mirrors the live_ai LearnedBlueAI adapter).
+            obs_space = self.blue_policy.observation_space
+            self._blue_model_max_threats = int(obs_space["threats"].shape[0])
+            self._blue_model_max_launchers = int(obs_space["launchers"].shape[0])
+            self._blue_model_max_interceptors = int(
+                obs_space["interceptors"].shape[0]
+            )
+            self._blue_needs_adapter = (
+                self._blue_model_max_threats != MAX_THREATS
+                or self._blue_model_max_launchers != MAX_LAUNCHERS
+                or self._blue_model_max_interceptors != MAX_INTERCEPTORS
+            )
+            if self._blue_needs_adapter:
+                print(
+                    f"[RedEnv] Blue adapter: model expects "
+                    f"T={self._blue_model_max_threats}/"
+                    f"L={self._blue_model_max_launchers}/"
+                    f"I={self._blue_model_max_interceptors} "
+                    f"(env at {MAX_THREATS}/{MAX_LAUNCHERS}/{MAX_INTERCEPTORS})",
+                    flush=True,
+                )
         else:
             self.blue_policy = None
+            self._blue_model_max_threats = MAX_THREATS
+            self._blue_model_max_launchers = MAX_LAUNCHERS
+            self._blue_model_max_interceptors = MAX_INTERCEPTORS
+            self._blue_needs_adapter = False
 
     def _build_spaces(self):
-        mask_len = N_RED_KINDS + self._n_sites
+        # +2 for the evasion-bit slots (always-legal pair) — see
+        # `_build_action_mask`.
+        mask_len = N_RED_KINDS + self._n_sites + 2
         self.observation_space = spaces.Dict({
             "threats": spaces.Box(-10.0, 10.0, (MAX_THREATS, THREAT_FEATURES), dtype=np.float32),
             "threats_mask": spaces.Box(0, 1, (MAX_THREATS,), dtype=np.int8),
@@ -227,7 +258,10 @@ class RedEnv(gym.Env):
             # gate the site choice. MaskablePPO expects sum(nvec).
             "action_mask": spaces.Box(0, 1, (mask_len,), dtype=np.int8),
         })
-        self.action_space = spaces.MultiDiscrete([N_RED_KINDS, self._n_sites])
+        # Third dim is the HGV-evasion bit (0 = no maneuver this decision,
+        # 1 = trigger override_maneuver perpendicular to the nearest PAC LOS
+        # for every alive HGV under PAC threat). See `_apply_hgv_evasion`.
+        self.action_space = spaces.MultiDiscrete([N_RED_KINDS, self._n_sites, 2])
 
     # ------------------------------------------------------------------
     def reset(self, seed: Optional[int] = None, options=None):
@@ -260,11 +294,25 @@ class RedEnv(gym.Env):
         self._total_site_hp = max(
             1, sum(s.hp_max for s in sites_module.SOUTH_SITES)
         )
+        # HGV-evasion bookkeeping (v2):
+        # `_hgv_recently_maneuvered` maps hgv_id → decision-step at which
+        # `override_maneuver` was last commanded. The reward function
+        # treats a PAC ground_crash whose target is an HGV maneuvered
+        # within the last 10 decision steps as a real dodge.
+        # `_hgv_dodge_count` is reported in info each step so training
+        # logs can confirm the bonus is firing.
+        self._hgv_recently_maneuvered: Dict[int, int] = {}
+        self._tick_counter: int = 0
+        self._hgv_dodge_count: int = 0
         return self._encode_obs(), {}
 
     # ------------------------------------------------------------------
     def step(self, action):
         action = np.asarray(action, dtype=np.int64).reshape(-1)
+        # Decision-step counter (v2). Incremented before _apply_action
+        # so any maneuver recorded by `_apply_hgv_evasion` is timestamped
+        # with the current step's index.
+        self._tick_counter += 1
         # Snapshot Blue's budget pre-decision so we can reward Red for
         # making Blue burn interceptor money. Red's own budget is
         # snapshotted inside _apply_action via the returned cost.
@@ -277,12 +325,16 @@ class RedEnv(gym.Env):
         # only became visible next decision. Applying Blue before Red
         # here keeps that input distribution consistent.
         if self.blue_policy is not None:
-            blue_obs = self._encode_obs_blue()
+            blue_obs_full = self._encode_obs_blue()
+            blue_obs = self._adapt_obs_for_blue_model(blue_obs_full)
             blue_mask_flat = blue_obs["action_mask"].reshape(-1).astype(np.int8)
             blue_action, _ = self.blue_policy.predict(
                 blue_obs, deterministic=False, action_masks=blue_mask_flat
             )
-            self._apply_blue_action(np.asarray(blue_action).reshape(-1))
+            env_blue_action = self._adapt_blue_action_for_env(
+                np.asarray(blue_action).reshape(-1)
+            )
+            self._apply_blue_action(env_blue_action)
 
         # Apply Red action (spawn or hold). Deducts red_budget
         # inside on success; returns the raw USD spawn cost.
@@ -353,10 +405,17 @@ class RedEnv(gym.Env):
 
     # ------------------------------------------------------------------
     def _winner(self) -> Optional[str]:
-        # Red wins when any military site's HP is depleted.
-        for site in sites_module.SOUTH_SITES:
-            if site.hp <= 0:
-                return "red"
+        # M-TIER3-RED-WINNER (2026-04-26): Red wins ONLY when ALL military
+        # bases are dead. Old code returned "red" on any single base at
+        # hp=0, so the trained Red learned "kill one base then stop" and
+        # never learned full-takedown strategy. Mirrors Blue env's win
+        # condition (env.py:_winner).
+        military_bases = [
+            s for s in sites_module.SOUTH_SITES
+            if s.subtype in ('base', 'air_base')
+        ]
+        if military_bases and all(s.hp <= 0 for s in military_bases):
+            return "red"
         # Blue wins when Red is priced out of spawning anything AND
         # there are no live Red threats left on the board. Mirrors the
         # future-ready win path that Scenario.winner gates on (see
@@ -384,51 +443,134 @@ class RedEnv(gym.Env):
         * `spawn_cost_usd` is the spec's `usd_cost` (0 on hold or failed
           spawn). Caller normalizes by RED_BUDGET_START to produce the
           decision-level spawn penalty.
+
+        Action shape (v2): (3,) — [kind_idx, site_idx, evasion_bit].
+        Evasion bit (third dim):
+          0 = no maneuver this decision
+          1 = trigger HGV evasion: for every alive HGV with a Blue PAC
+              interceptor in flight targeting it, compute perpendicular
+              evasion direction (perpendicular to LOS to nearest such
+              interceptor) and call override_maneuver(direction,
+              0.7 * max_g). Records the tick in `_hgv_recently_maneuvered`
+              so the reward function can detect actual dodge events.
         """
         kind_idx = int(action[0])
         site_idx = int(action[1]) if action.shape[0] > 1 else 0
+        evasion = bool(int(action[2])) if action.shape[0] > 2 else False
+        spawned = False
+        cost_usd = 0.0
         if kind_idx == 0:
-            return False, 0.0
-        if kind_idx < 0 or kind_idx >= N_RED_KINDS:
-            return False, 0.0
-        kind = RED_ACTION_KINDS[kind_idx]
-        spec = THREAT_SPECS[kind]
-        if self.world.red_budget < spec.usd_cost:
-            return False, 0.0
+            pass
+        elif kind_idx < 0 or kind_idx >= N_RED_KINDS:
+            pass
+        else:
+            kind = RED_ACTION_KINDS[kind_idx]
+            spec = THREAT_SPECS[kind]
+            if self.world.red_budget >= spec.usd_cost:
+                sites_list = sites_module.SOUTH_SITES
+                if sites_list:
+                    target_site = sites_list[site_idx % len(sites_list)]
+                    target_xy = target_site.pos
+                    target_site_id = target_site.id
+                    spawn_pos = self._pick_spawn(kind)
+                    if spawn_pos is not None:
+                        try:
+                            if kind == ThreatType.CRUISE_SUB:
+                                wps = self._build_cruise_waypoints(spawn_pos, target_xy)
+                                self.world.spawn_threat(
+                                    kind, spawn_pos, target_xy,
+                                    intermediate_waypoints=wps,
+                                    target_site_id=target_site_id,
+                                )
+                            else:
+                                self.world.spawn_threat(
+                                    kind, spawn_pos, target_xy,
+                                    target_site_id=target_site_id,
+                                )
+                            self.world.red_budget = max(
+                                0, self.world.red_budget - spec.usd_cost,
+                            )
+                            spawned = True
+                            cost_usd = float(spec.usd_cost)
+                        except ValueError:
+                            # W14 spawn-location contract rejected the
+                            # coord. No-op; budget not deducted.
+                            pass
 
-        sites_list = sites_module.SOUTH_SITES
-        if not sites_list:
-            return False, 0.0
-        target_site = sites_list[site_idx % len(sites_list)]
-        target_xy = target_site.pos
-        target_site_id = target_site.id
+        if evasion:
+            self._apply_hgv_evasion()
 
-        spawn_pos = self._pick_spawn(kind)
-        if spawn_pos is None:
-            # No launcher of this kind available — agent shouldn't be
-            # able to pick it (action mask gates), but defensive.
-            return False, 0.0
-        try:
-            if kind == ThreatType.CRUISE_SUB:
-                wps = self._build_cruise_waypoints(spawn_pos, target_xy)
-                self.world.spawn_threat(
-                    kind, spawn_pos, target_xy,
-                    intermediate_waypoints=wps,
-                    target_site_id=target_site_id,
-                )
-            else:
-                self.world.spawn_threat(
-                    kind, spawn_pos, target_xy,
-                    target_site_id=target_site_id,
-                )
-        except ValueError:
-            # W14 spawn-location contract rejected the coord. Treat as
-            # a no-op so a mis-configured sampler doesn't crash the
-            # episode. Budget is not deducted.
-            return False, 0.0
+        return spawned, cost_usd
 
-        self.world.red_budget = max(0, self.world.red_budget - spec.usd_cost)
-        return True, float(spec.usd_cost)
+    def _apply_hgv_evasion(self) -> None:
+        """For each alive HGV, find the nearest in-flight Blue PAC-2/PAC-3
+        interceptor targeting it. If one exists, apply override_maneuver
+        perpendicular to LOS at 0.7 * max_g and record the tick.
+
+        HGVs without a PAC threatening them get NO maneuver — this
+        prevents the policy from using evasion=1 to spin HGVs in safe
+        airspace (the speed-bleed mechanic in entities._HGV_BLEED_RATE
+        would be free money since no one's chasing).
+
+        The reward function pairs this with the ground_crash detector:
+        a PAC dies targeting a maneuvered HGV → +1.0 dodge bonus. Just
+        triggering this method without an active PAC threat → no reward.
+        """
+        PAC_KINDS = (InterceptorType.LONG_SAM, InterceptorType.HIT_TO_KILL)
+
+        for hgv_id, threat in list(self.world.threats.items()):
+            if not threat.state.alive:
+                continue
+            try:
+                if ThreatType(threat.state.kind) != ThreatType.HGV:
+                    continue
+            except ValueError:
+                continue
+
+            nearest_inter = None
+            nearest_dist_sq = float("inf")
+            for iid, inter in self.world.interceptors.items():
+                if not inter.state.alive:
+                    continue
+                if inter.target_id != hgv_id:
+                    continue
+                try:
+                    inter_kind = InterceptorType(inter.state.kind)
+                except ValueError:
+                    continue
+                if inter_kind not in PAC_KINDS:
+                    continue
+                dx = float(inter.state.pos[0] - threat.state.pos[0])
+                dy = float(inter.state.pos[1] - threat.state.pos[1])
+                dz = float(inter.state.pos[2] - threat.state.pos[2])
+                d_sq = dx * dx + dy * dy + dz * dz
+                if d_sq < nearest_dist_sq:
+                    nearest_dist_sq = d_sq
+                    nearest_inter = inter
+
+            if nearest_inter is None:
+                continue  # No PAC threat — skip (no spinning bonus).
+
+            # Perpendicular direction in horizontal plane:
+            # perp = LOS x z_up gives a horizontal vector orthogonal to LOS.
+            los = np.array([
+                float(nearest_inter.state.pos[0] - threat.state.pos[0]),
+                float(nearest_inter.state.pos[1] - threat.state.pos[1]),
+                float(nearest_inter.state.pos[2] - threat.state.pos[2]),
+            ])
+            z_up = np.array([0.0, 0.0, 1.0])
+            perp = np.cross(los, z_up)
+            perp_norm = float(np.linalg.norm(perp))
+            if perp_norm < 1e-6:
+                continue
+            direction = perp / perp_norm
+
+            # 0.7 * max_g — keeps the speed bleed manageable
+            # (full max_g would stall HGV in ~30 sustained seconds).
+            threat.override_maneuver(direction, threat.spec.max_g * 0.7)
+
+            # Record for dodge detection in the reward function.
+            self._hgv_recently_maneuvered[threat.state.id] = self._tick_counter
 
     def _pick_spawn(self, kind: ThreatType) -> Optional[tuple]:
         """Pick (x, y, z) for a Red threat of this kind.
@@ -485,34 +627,116 @@ class RedEnv(gym.Env):
 
     # ------------------------------------------------------------------
     def _reward_from_events(self, events: List[dict]) -> float:
-        """Per-tick dense shaping driven by world events.
+        """Per-tick dense shaping (Red trainee v2, 2026-04-26).
 
-        Single-charge cost model: the threat lifecycle is paid for
-        ONCE — at spawn time in step() via `spawn_penalty`. An
-        `intercept` event is therefore NOT a second deduction here
-        (doing so would punish risk-taking: agent paid $X to put the
-        threat on the board, if Blue kills it the threat just produces
-        zero additional return rather than costing $X again). The
-        earlier V1 reward had a dual-penalty bug; this version
-        removes the intercept branch.
+        Single-charge cost model preserved: spawn cost is still applied
+        at action time in step() via `spawn_penalty`. The intercept
+        branches below are ADDITIONAL signals on top, not replacements.
 
-        Leak rewards are normalized against total starting site HP
-        so magnitudes are comparable across game states: wiping out
-        the entire defended side (= summing to full site HP damage)
-        is worth +10.0 total.
+        Layered signal:
+          1. Leak event:
+             - Military base/air_base: 10 * (dmg / total_hp) * base_weight
+               where base_weight = n_initial / n_alive (3 alive: 1.0,
+               1 alive: 3.0). Killing the LAST base gives 3x the reward
+               of killing the first. V4 mirror.
+             - Civilian / unknown site: 2 * (dmg / total_hp), no scaling.
 
-        Ground_crash keeps a small literal penalty as a mild shaping
-        term — discourages blatantly wasted trajectories without
-        dominating the main leak signal.
+          2. Intercept event (Red threat killed by Blue interceptor):
+             - inter_cost > 5x threat_cost: drain bonus
+               (Blue paid > 5x to kill Red's cheap threat).
+             - threat_cost >= $1M AND inter_cost < 0.1x threat_cost:
+               penalty -1.5 (Red wasted high-value kit on cheap counter).
+             - else: 0 (single-charge cost model already taxed Red at
+               spawn).
+
+          3. Ground crash of a Blue PAC-2/PAC-3 interceptor whose target
+             was an alive HGV that was maneuvered within the last
+             10 ticks: +1.0 (real PAC dodge, not just spinning in air).
+
+          4. Ground crash of a Red threat: -0.2 (wasted spawn).
+
+        Caller invokes BEFORE world.prune_dead so events resolve to
+        live interceptor / threat objects.
         """
         r = 0.0
+
+        # Base-weight scaling (V4 mirror).
+        military_subtypes = ('base', 'air_base')
+        n_alive = max(1, sum(
+            1 for s in sites_module.SOUTH_SITES
+            if s.subtype in military_subtypes and s.hp > 0
+        ))
+        n_initial = max(1, sum(
+            1 for s in sites_module.SOUTH_SITES
+            if s.subtype in military_subtypes
+        ))
+        base_weight = n_initial / n_alive  # 3 alive: 1.0, 2: 1.5, 1: 3.0
+
         for ev in events:
             et = ev.get("type")
+
             if et == "leak":
                 dmg = ev.get("damage", 0)
-                r += 10.0 * (float(dmg) / self._total_site_hp)
+                site_name = ev.get("site", "")
+                site = next(
+                    (s for s in sites_module.SOUTH_SITES if s.name == site_name),
+                    None,
+                )
+                if site is not None and site.subtype in military_subtypes:
+                    r += 10.0 * (float(dmg) / self._total_site_hp) * base_weight
+                else:
+                    r += 2.0 * (float(dmg) / self._total_site_hp)
+
+            elif et == "intercept":
+                iid = ev.get("interceptor")
+                tid = ev.get("threat")
+                inter = self.world.interceptors.get(iid) if iid is not None else None
+                threat = self.world.threats.get(tid) if tid is not None else None
+                if inter is not None and threat is not None:
+                    try:
+                        inter_kind = InterceptorType(inter.state.kind)
+                        threat_kind = ThreatType(threat.state.kind)
+                        inter_cost = INTERCEPTOR_SPECS[inter_kind].usd_cost
+                        threat_cost = THREAT_SPECS[threat_kind].usd_cost
+                        if inter_cost > threat_cost * 5.0:
+                            # Drain: Blue paid > 5x for Red's cheap threat.
+                            r += min(inter_cost / threat_cost / 20.0, 1.0)
+                        elif threat_cost >= 1_000_000 and inter_cost < threat_cost * 0.1:
+                            # Red invested >$1M, killed by <10% the cost.
+                            r -= 1.5
+                    except (KeyError, ValueError):
+                        pass
+
+            elif et == "ground_crash" and ev.get("interceptor") is not None:
+                # HGV evasion bonus — only when target was an alive
+                # maneuvered HGV and the dead interceptor is PAC-2/PAC-3.
+                iid = ev["interceptor"]
+                inter = self.world.interceptors.get(iid)
+                if inter is None:
+                    continue
+                target = self.world.threats.get(inter.target_id)
+                if target is None or not target.state.alive:
+                    continue  # target already dead — not a dodge
+                try:
+                    if ThreatType(target.state.kind) != ThreatType.HGV:
+                        continue
+                    inter_kind = InterceptorType(inter.state.kind)
+                    if inter_kind not in (
+                        InterceptorType.LONG_SAM, InterceptorType.HIT_TO_KILL,
+                    ):
+                        continue
+                    last_maneuver = self._hgv_recently_maneuvered.get(
+                        target.state.id, -999_999,
+                    )
+                    if self._tick_counter - last_maneuver < 10:
+                        r += 1.0  # Real PAC dodge by maneuvered HGV.
+                        self._hgv_dodge_count += 1
+                except (KeyError, ValueError):
+                    pass
+
             elif et == "ground_crash" and ev.get("threat") is not None:
                 r -= 0.2
+
         return r
 
     # ------------------------------------------------------------------
@@ -522,20 +746,25 @@ class RedEnv(gym.Env):
         return self._build_action_mask()
 
     def _build_action_mask(self) -> np.ndarray:
-        """Component-wise marginal mask for MultiDiscrete([5, n_sites]).
+        """Component-wise marginal mask for
+        MultiDiscrete([N_RED_KINDS, n_sites, 2]).
 
         Layout:
-          mask[0:N_RED_KINDS]              = kind mask
-          mask[N_RED_KINDS:N_RED_KINDS+n]  = site mask (always all-ones)
+          mask[0:N_RED_KINDS]                          = kind mask
+          mask[N_RED_KINDS:N_RED_KINDS+n_sites]        = site mask (all 1)
+          mask[N_RED_KINDS+n_sites:
+               N_RED_KINDS+n_sites+2]                  = evasion mask (all 1)
 
-        Total length = sum(action_space.nvec) = N_RED_KINDS + n_sites.
-        Hold (kind=0) is always legal. Non-hold kinds are legal iff
-        Red can afford the spec cost AND a spawn path exists
-        (drone/cruise need a launcher for that kind; strategic kinds
-        always have the far-north strip).
+        Total length = sum(action_space.nvec) = N_RED_KINDS + n_sites + 2.
+        Hold (kind=0) is always legal. Non-hold kinds are legal iff Red
+        can afford the spec cost AND a spawn path exists (drone/cruise
+        need a launcher for that kind; strategic kinds always have the
+        far-north strip). Evasion bit is always legal: 0 = no maneuver,
+        1 = trigger HGV evasion (which is a no-op when no HGV is under
+        active PAC threat, see `_apply_hgv_evasion`).
         """
         n_sites = self._n_sites
-        mask = np.zeros(N_RED_KINDS + n_sites, dtype=np.int8)
+        mask = np.zeros(N_RED_KINDS + n_sites + 2, dtype=np.int8)
         mask[0] = 1  # hold
         budget = self.world.red_budget if self.world is not None else 0
         for k_idx in range(1, N_RED_KINDS):
@@ -549,6 +778,9 @@ class RedEnv(gym.Env):
             mask[k_idx] = 1
         # Site dim: every site is a valid aim point regardless of kind.
         mask[N_RED_KINDS:N_RED_KINDS + n_sites] = 1
+        # Evasion dim: both 0 and 1 always legal.
+        mask[N_RED_KINDS + n_sites] = 1      # evasion = 0
+        mask[N_RED_KINDS + n_sites + 1] = 1  # evasion = 1
         return mask
 
     # ------------------------------------------------------------------
@@ -601,6 +833,96 @@ class RedEnv(gym.Env):
         obs = self._encode_obs()
         obs["action_mask"] = self._build_blue_action_mask_2d()
         return obs
+
+    def _adapt_obs_for_blue_model(self, env_obs: dict) -> dict:
+        """Slice env_obs to Blue model's native cap. Mirrors
+        live_ai.LearnedBlueAI._adapt_obs_for_model.
+
+        Required because Red v2 runs at MAX_THREATS=72 / MAX_LAUNCHERS=32 /
+        MAX_INTERCEPTORS=128 but loaded Blue policies are at smaller caps
+        (B_shaped/V4: 30/15/40; Boyu V2a: 96/24/128 — Boyu's threats=96
+        is bigger, but launchers=24 and interceptors=128 are smaller and
+        equal respectively). For the bigger-than-env case (Boyu's
+        threats), the env tensor is naturally smaller; we pad by sticking
+        with the original env_obs tensor sliced to model's expected size
+        — which means filling the first 72 slots with real data and
+        leaving the remaining 24 unused. We do this by allocating a
+        zero array of the model size and copying min(env, model) entries.
+        """
+        if not self._blue_needs_adapter:
+            return env_obs
+        n_t = self._blue_model_max_threats
+        n_l = self._blue_model_max_launchers
+        n_i = self._blue_model_max_interceptors
+
+        def _resize(arr: np.ndarray, target: int) -> np.ndarray:
+            if arr.shape[0] == target:
+                return arr
+            if arr.shape[0] > target:
+                return arr[:target]
+            # Model expects more rows than env produces (e.g. Boyu's 96
+            # threats vs env's 72). Pad with zeros and matching mask=0.
+            shape = (target,) + arr.shape[1:]
+            out = np.zeros(shape, dtype=arr.dtype)
+            out[: arr.shape[0]] = arr
+            return out
+
+        out_threats = _resize(env_obs["threats"], n_t)
+        out_threats_mask = _resize(env_obs["threats_mask"], n_t)
+        out_launchers = _resize(env_obs["launchers"], n_l)
+        out_launchers_mask = _resize(env_obs["launchers_mask"], n_l)
+        out_inter = _resize(env_obs["interceptors"], n_i)
+        out_inter_mask = _resize(env_obs["interceptors_mask"], n_i)
+
+        # 2D action_mask resize: (MAX_LAUNCHERS, MAX_THREATS+1) →
+        # (n_l, n_t+1). Both dims need handling.
+        env_mask = env_obs["action_mask"]
+        out_mask = np.zeros((n_l, n_t + 1), dtype=env_mask.dtype)
+        copy_l = min(env_mask.shape[0], n_l)
+        copy_t = min(env_mask.shape[1] - 1, n_t)
+        out_mask[:copy_l, :copy_t] = env_mask[:copy_l, :copy_t]
+        # Hold column for model = column index n_t. Each launcher row's
+        # hold is always legal — copy or set explicitly.
+        out_mask[:, n_t] = 1
+        return {
+            "threats":           out_threats,
+            "threats_mask":      out_threats_mask,
+            "launchers":         out_launchers,
+            "launchers_mask":    out_launchers_mask,
+            "interceptors":      out_inter,
+            "interceptors_mask": out_inter_mask,
+            "sites":             env_obs["sites"],
+            "sites_mask":        env_obs["sites_mask"],
+            "global":            env_obs["global"],
+            "action_mask":       out_mask,
+        }
+
+    def _adapt_blue_action_for_env(self, model_action: np.ndarray) -> np.ndarray:
+        """Pad / hold-remap model's action vector to env shape. Mirrors
+        live_ai.LearnedBlueAI._adapt_action_for_env.
+
+        Model action shape: (n_l,), values in [0, n_t]. Value n_t = hold.
+        Env action shape: (MAX_LAUNCHERS,), values in [0, MAX_THREATS].
+        Value MAX_THREATS = hold.
+
+        Slots beyond model's launcher count are filled with env's hold
+        sentinel so `_apply_blue_action` skips them.
+        """
+        if not self._blue_needs_adapter:
+            return model_action
+        env_action = np.full(MAX_LAUNCHERS, MAX_THREATS, dtype=np.int64)
+        model_hold = self._blue_model_max_threats
+        for i, a in enumerate(model_action):
+            if i >= MAX_LAUNCHERS:
+                break
+            a_int = int(a)
+            if a_int == model_hold:
+                env_action[i] = MAX_THREATS
+            elif a_int < MAX_THREATS:
+                env_action[i] = a_int
+            else:
+                env_action[i] = MAX_THREATS
+        return env_action
 
     def _apply_blue_action(self, action: np.ndarray) -> int:
         """Execute Blue's learned-policy action against the world.

@@ -36,7 +36,7 @@ import gymnasium as gym
 # numpy-1.26 env so MaskablePPO.load unpickles cleanly. Importing red_env
 # defines the helper; we call it here (idempotent) so live_ai.py is safe
 # whether or not red_env has been imported elsewhere first.
-from rl.red_env import RedEnv, _patch_numpy_core_for_legacy_pickle
+from rl.red_env import N_RED_KINDS, RedEnv, _patch_numpy_core_for_legacy_pickle
 _patch_numpy_core_for_legacy_pickle()
 
 from rl.env import (
@@ -188,10 +188,21 @@ class LearnedRedAI:
         self._model_max_threats = int(obs_space["threats"].shape[0])
         self._model_max_launchers = int(obs_space["launchers"].shape[0])
         self._model_max_interceptors = int(obs_space["interceptors"].shape[0])
+        # Red v2 (2026-04-26) extends the action_mask by 2 slots for the
+        # HGV-evasion bit. Older Red models trained without that extension
+        # have a shorter action_mask Box; capture the model's expected
+        # length so `_adapt_obs_for_model` can slice it down. _LiveEnv
+        # bypasses RedEnv.__init__ so it has no `observation_space`
+        # attribute — compute the env's mask length from `_n_sites`
+        # using the same formula as `RedEnv._build_action_mask` (v2:
+        # N_RED_KINDS + n_sites + 2).
+        self._model_action_mask_len = int(obs_space["action_mask"].shape[0])
+        self._env_action_mask_len = N_RED_KINDS + self._env._n_sites + 2
         self._needs_adapter = (
             self._model_max_threats != MAX_THREATS
             or self._model_max_launchers != MAX_LAUNCHERS
             or self._model_max_interceptors != MAX_INTERCEPTORS
+            or self._model_action_mask_len != self._env_action_mask_len
         )
         if self._needs_adapter:
             print(
@@ -250,14 +261,16 @@ class LearnedRedAI:
 
     def _adapt_obs_for_model(self, env_obs: dict) -> dict:
         """Slice env obs tensors to model's native size. No-op when
-        `_needs_adapter` is False. Red action_mask shape is independent
-        of MAX_THREATS/LAUNCHERS/INTERCEPTORS (depends only on
-        `N_RED_KINDS + n_sites`), so it passes through unchanged."""
+        `_needs_adapter` is False. Red action_mask depends on
+        `N_RED_KINDS + n_sites + (2 if v2 evasion bit else 0)` — pre-v2
+        models lack the evasion-bit extension, so the env mask is sliced
+        to the model's expected length."""
         if not self._needs_adapter:
             return env_obs
         n_t = self._model_max_threats
         n_l = self._model_max_launchers
         n_i = self._model_max_interceptors
+        m_len = self._model_action_mask_len
         return {
             "threats":           env_obs["threats"][:n_t],
             "threats_mask":      env_obs["threats_mask"][:n_t],
@@ -268,7 +281,7 @@ class LearnedRedAI:
             "sites":             env_obs["sites"],
             "sites_mask":        env_obs["sites_mask"],
             "global":            env_obs["global"],
-            "action_mask":       env_obs["action_mask"],
+            "action_mask":       env_obs["action_mask"][:m_len],
         }
 
     def step(self, t_now: float, world) -> None:
