@@ -148,6 +148,15 @@ export function wireHud(sendCmd) {
       sendCmd({ cmd: 'reset' });
       sendCmd({ cmd: 'start' });
       resetHudEventTracking();
+    } else if (e.target.id === 'pms-close') {
+      // Operator wants to inspect the post-match map (red impact bubbles,
+      // destroyed sites, debris). Hide the dashboard but keep the match
+      // in FINISHED so the battlefield stays frozen. The floating
+      // "Show Summary" button in the bottom-right brings it back.
+      _dashboardDismissed = true;
+      document.getElementById('match-overlay')?.classList.add('hidden');
+      const showBtn = _ensureShowSummaryBtn();
+      showBtn.style.display = 'block';
     }
   });
 
@@ -401,6 +410,45 @@ const OVERLAY_TEXT = {
 // ── Post-Match Summary Dashboard state ───────────────────────────────
 let _dashboardRendered = false;
 let _originalMoInnerHtml = null;
+// Operator-dismissed flag: when true, renderPhaseOverlay keeps the
+// FINISHED overlay hidden so the battle-scarred map (red impact bubbles,
+// destroyed sites, debris) stays visible. A floating "Show Summary"
+// button in the bottom-right re-opens the dashboard. Reset on
+// resetHudEventTracking so the next match's FINISHED screen still
+// auto-pops.
+let _dashboardDismissed = false;
+
+function _ensureShowSummaryBtn() {
+  let btn = document.getElementById('btn-show-summary');
+  if (btn) return btn;
+  btn = document.createElement('button');
+  btn.id = 'btn-show-summary';
+  btn.textContent = 'Show Summary';
+  // Inline styles so we don't need a style.css change for a one-purpose
+  // re-open affordance.
+  Object.assign(btn.style, {
+    position: 'fixed',
+    bottom: '64px',
+    right: '16px',
+    zIndex: '25',
+    padding: '8px 14px',
+    background: 'rgba(20, 30, 48, 0.85)',
+    color: '#cfe2ff',
+    border: '1px solid rgba(120, 160, 220, 0.5)',
+    borderRadius: '6px',
+    font: '12px/1.2 system-ui, sans-serif',
+    cursor: 'pointer',
+    display: 'none',
+  });
+  btn.addEventListener('click', () => {
+    _dashboardDismissed = false;
+    btn.style.display = 'none';
+    const el = document.getElementById('match-overlay');
+    if (el) el.classList.remove('hidden');
+  });
+  document.body.appendChild(btn);
+  return btn;
+}
 
 // (Ammo fired tracking now uses backend total_fired field.)
 
@@ -1003,6 +1051,7 @@ function buildDashboardHtml(snap, m) {
 
     // Footer
     `<div class="pms-footer">` +
+      `<button id="pms-close" class="pms-restart" style="background:rgba(80,90,110,0.8);margin-right:8px">Close (view battlefield)</button>` +
       `<button id="pms-restart" class="pms-restart">Restart</button>` +
     `</div>` +
 
@@ -1046,6 +1095,14 @@ function renderPhaseOverlay(phase, winner, snap) {
     return;
   }
   if (phase === 'finished') {
+    if (_dashboardDismissed) {
+      // Operator clicked Close — keep overlay hidden so the battle-
+      // scarred map is visible. Still patch live values silently in
+      // case the dashboard is re-opened mid-frame via Show Summary.
+      el.classList.add('hidden');
+      if (_dashboardRendered && snap) updateDashboardValues(snap);
+      return;
+    }
     if (_dashboardRendered) {
       // Dashboard already built — patch only the live values so ammo,
       // intercepts, and site HP stay current without a full rebuild.
@@ -1087,6 +1144,11 @@ export function resetHudEventTracking() {
     _originalMoInnerHtml = null;
   }
   _dashboardRendered = false;
+  // Clear operator-dismissed flag + hide the floating Show Summary
+  // button so the next match's FINISHED screen still auto-pops.
+  _dashboardDismissed = false;
+  const showBtn = document.getElementById('btn-show-summary');
+  if (showBtn) showBtn.style.display = 'none';
   // Ribbon re-shows on the next SETUP snapshot; hiding it here avoids a
   // stale-visible flash between Reset click and the first snapshot.
   document.getElementById('setup-ribbon')?.classList.add('hidden');
