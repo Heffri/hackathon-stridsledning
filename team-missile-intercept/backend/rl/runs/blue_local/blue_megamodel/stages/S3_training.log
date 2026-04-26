@@ -1,0 +1,195 @@
+
+==============================================================================
+=== STAGE S3
+=== run_name=blue_megamodel_S3 warmstart=/home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S2_final.zip
+=== hard_cap=2000000
+=== started at 2026-04-26 18:42:31 UTC
+==============================================================================
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[layouts-pool] loaded 2 layout(s): ['C', 'D']
+[red-mode-pool] ['scripted', 'scripted', 'rule'] — per-episode uniform sample
+/home/chen/hackathon-stridsledning/team-missile-intercept/backend/.venv/lib/python3.12/site-packages/stable_baselines3/common/vec_env/vec_monitor.py:43: UserWarning: The environment is already wrapped with a `Monitor` wrapperbut you are wrapping it with a `VecMonitor` wrapper, the `Monitor` statistics will beoverwritten by the `VecMonitor` ones.
+  warnings.warn(
+[warmstart] loading /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S2_final.zip
+[warmstart] loaded OK
+=== Training run blue_megamodel_S3 ===
+total-steps=2,000,000 n-envs=48 device=cpu
+episode-time-limit=5000.0s
+writing to rl/runs/blue_megamodel_S3
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=C red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=C red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=rule
+[env] episode 1 starting with layout slot=D red_mode=rule
+[env] episode 1 starting with layout slot=C red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[env] episode 1 starting with layout slot=D red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[env] episode 1 starting with layout slot=C red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=C red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=C red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[env] episode 1 starting with layout slot=C red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=rule
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=C red_mode=rule
+[env] episode 1 starting with layout slot=C red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[env] episode 1 starting with layout slot=C red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[env] episode 1 starting with layout slot=D red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[env] episode 1 starting with layout slot=C red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[env] episode 1 starting with layout slot=D red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[env] episode 1 starting with layout slot=C red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[env] episode 1 starting with layout slot=D red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=C red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[env] episode 1 starting with layout slot=C red_mode=rule
+[env] episode 1 starting with layout slot=C red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=rule
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=C red_mode=rule
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=D red_mode=scripted
+[sites] dropped 4 out-of-arena Saab site(s): Meridia (Capital Y) (saab=(1225.0,1208.3) world=(110228,-40094)); Southern Redoubt (saab=(321.7,1238.3) world=(28947,-49469)); Callhaven (saab=(96.7,1150.0) world=(8701,-21875)); Solano (saab=(576.7,1236.7) world=(51893,-48969))
+[env] budgets: blue=200,000,000 red=150,000,000 red_mode=scripted
+[env] episode 1 starting with layout slot=C red_mode=scripted
+Logging to rl/runs/blue_megamodel_S3/tb/ppo_1
+------------------------------
+| time/              |       |
+|    fps             | 884   |
+|    iterations      | 1     |
+|    time_elapsed    | 55    |
+|    total_timesteps | 49152 |
+------------------------------
+-------------------------------------------
+| rollout/                |               |
+|    ep_len_mean          | 1.23e+03      |
+|    ep_rew_mean          | -895          |
+| time/                   |               |
+|    fps                  | 36            |
+|    iterations           | 2             |
+|    time_elapsed         | 2718          |
+|    total_timesteps      | 98304         |
+| train/                  |               |
+|    approx_kl            | 0.00046042135 |
+|    clip_fraction        | 0.00259       |
+|    clip_range           | 0.2           |
+|    entropy_loss         | -0.0993       |
+|    explained_variance   | 0.867         |
+|    learning_rate        | 0.0003        |
+|    loss                 | 317           |
+|    n_updates            | 104           |
+|    policy_gradient_loss | -0.00116      |
+|    value_loss           | 231           |
+-------------------------------------------
+Interrupted, saving model...
+Done. Trained 2,000,000 steps in 3089.6s
+Model: rl/runs/blue_megamodel_S3/model.zip
+   5% ━━━                                                               98,304/2,000,000  [ 0:51:32 < -:--:-- , ? it/s ]

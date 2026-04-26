@@ -45,3 +45,14 @@ To https://github.com/Heffri/hackathon-stridsledning.git
 [S2] final → /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S2_final.zip (wall 38.2 min)
 
 [git] commit + push: feat(rl): megamodel S2 converged (wall=38 min)
+[train-megamodel-cap72 70256c5] feat(rl): megamodel S2 converged (wall=38 min)
+ 4 files changed, 606 insertions(+), 20 deletions(-)
+ create mode 100644 team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S2_final.zip
+ create mode 100644 team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S2_training.log
+To https://github.com/Heffri/hackathon-stridsledning.git
+   3900315..70256c5  train-megamodel-cap72 -> train-megamodel-cap72
+
+[S3] launching: /home/chen/hackathon-stridsledning/team-missile-intercept/backend/.venv/bin/python -u -m rl.train --total-steps 2000000 --n-envs 48 --n-steps 1024 --batch-size 256 --n-epochs 4 --lr 0.0003 --gamma 0.995 --gae-lambda 0.95 --ent-coef 0.01 --clip-range 0.2 --episode-time-limit 5000.0 --blue-budget 200000000 --red-budget 150000000 --device cpu --save-every 200000 --run-name blue_megamodel_S3 --layouts-pool /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/top3_layouts_CD.json --layouts-pool-slots C D --red-mode-pool scripted scripted rule --warmstart /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S2_final.zip
+[S3] log -> /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S3_training.log
+[S3] hard_cap=2,000,000 steps
+[watchdog/S3] ep_rew_mean count=1 (wall=45.8 min)
