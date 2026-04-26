@@ -34,6 +34,7 @@ BLUE_AI_MODELS = [
     ("v4", "RL CIWS Active (v4)", "rl/runs/blue_reward_v4_finetune/model.zip"),
     ("boyu_v2", "RL Boyu V2", "rl/runs/boyu_model_v2/model.zip"),
     ("boyu_v2a", "RL Boyu V2a", "rl/runs/boyu_modedlV2a/model.zip"),
+    ("cap120", "RL 120-cap (scratch, 2.5M)", "rl/runs/blue_local/blue_120_v4_path2_scratch/model.zip"),
 ]
 
 # Available Red AI models — order matches the frontend dropdown.
