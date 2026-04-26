@@ -1,0 +1,15 @@
+[R1a] watcher started; PID=69808 log=rl/runs/red_local/red_trainee_parallel/R1a_training.log
+[R1a] elapsed=60s ep_rew_count=0
+0 last=?
+./scripts/stage_runner.sh: line 44: [: 0
+0: integer expression expected
+./scripts/stage_runner.sh: line 44: [: 0
+0: integer expression expected
+[R1a] elapsed=180s ep_rew_count=1 last=-12.8
+[R1a] elapsed=240s ep_rew_count=2 last=-12.8
+[R1a] elapsed=360s ep_rew_count=3 last=-12.8
+last3=[-12.8, -12.8, -12.8] span=0.00 new_max=True converged=False
+[R1a] elapsed=420s ep_rew_count=4 last=-13.2
+last3=[-12.8, -12.8, -13.2] span=0.40 new_max=False converged=True
+[R1a] convergence detected; sending SIGINT to PID 69808
+[R1a] saved final ckpt: rl/runs/red_local/red_trainee_parallel/stages/R1a_final.zip (from rl/runs/red_local/red_trainee_parallel/R1a/model.zip, converged=1)
