@@ -71,8 +71,19 @@ export function createScene(canvas) {
   sky.renderOrder = -1;
   scene.add(sky);
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    // Hint to hybrid-graphics laptops to route this context to the dGPU
+    // instead of the integrated GPU. No functional effect; lets us keep
+    // a steady 60 Hz on machines that would otherwise default to iGPU.
+    powerPreference: 'high-performance',
+  });
+  // Cap at 1.5 — high-DPI laptops report 2.0+, which makes the bloom +
+  // SMAA + render passes do 4× the pixel work for no perceptible quality
+  // gain at demo viewing distance. SMAAPass below handles edge AA so
+  // supersampling via pixelRatio is redundant.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
@@ -101,8 +112,13 @@ export function createScene(canvas) {
   composer.setPixelRatio(pixelRatio);
   composer.setSize(window.innerWidth, window.innerHeight);
   composer.addPass(new RenderPass(scene, camera));
+  // Bloom does multi-pass gaussian blur — the heaviest GPU pass. Run its
+  // internal mip chain at half-resolution: 4× cheaper, no visible quality
+  // loss at demo viewing distance because the bloom is a glow effect, not
+  // a sharp-edge effect. SMAAPass below still runs at full res for crisp
+  // anti-aliasing on geometry edges.
   const bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2),
     0.4,   // strength
     0.3,   // radius
     0.6,   // threshold

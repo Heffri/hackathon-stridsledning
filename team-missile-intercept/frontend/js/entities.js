@@ -801,6 +801,11 @@ export class EntityRegistry {
       opacity: 0.2,
       depthWrite: false,
     });
+    // Reused per-snapshot scratch — was being reallocated each call
+    // (15 Hz) which adds GC churn at high speed multipliers.
+    this._aliveById = new Map();
+    this._seenIds = new Set();
+    this._activeEngagements = new Set();
   }
 
   updateFromSnapshot(snap) {
@@ -815,12 +820,14 @@ export class EntityRegistry {
     // Build an id→state map so interceptors can look up their target
     // (for seeker-cone colour / opacity). Only include alive entities —
     // dead targets should make the seeker snap off.
-    const aliveById = new Map();
+    const aliveById = this._aliveById;
+    aliveById.clear();
     for (const e of snap.entities) {
       if (e.alive) aliveById.set(e.id, e);
     }
     // Reconcile entities
-    const seen = new Set();
+    const seen = this._seenIds;
+    seen.clear();
     for (const e of snap.entities) {
       seen.add(e.id);
       let em = this.byId.get(e.id);
@@ -844,7 +851,8 @@ export class EntityRegistry {
     }
 
     // Engagement lines: draw from each alive blue interceptor to its target.
-    const activeEngagements = new Set();
+    const activeEngagements = this._activeEngagements;
+    activeEngagements.clear();
     for (const e of snap.entities) {
       if (!e.alive || e.team !== 'blue') continue;
       if (e.target_id == null) continue;
@@ -902,11 +910,13 @@ export class EntityRegistry {
     const realDt = realNow - this._lastSnapRealTime;
     // Convert real-time delta to sim-time delta
     const simDt = realDt * this._simSpeed;
-    // Clamp extrapolation distance. Cap at one snapshot period of sim
-    // time (~33ms) so straight-line extrapolation can't drift far ahead
-    // of the actual curving trajectory — kills snap-back stutter when
-    // a new snapshot arrives, especially at high speeds.
-    const clampedDt = Math.min(simDt, 1 / 30);
+    // Clamp extrapolation distance. Cap at TWO snapshot periods of sim
+    // time (~67ms at 30 Hz STREAM_HZ) so a late snapshot doesn't freeze
+    // entities for a 60 Hz RAF frame. The cap is rarely hit in steady
+    // state (snapshots arrive within one period), but bumping it from
+    // 1/30 to 1/15 lets the frontend ride through network/CPU jitter
+    // smoothly — visible as fewer one-frame freezes at high speeds.
+    const clampedDt = Math.min(simDt, 1 / 15);
     for (const em of this.byId.values()) {
       em.interpolate(clampedDt);
     }
