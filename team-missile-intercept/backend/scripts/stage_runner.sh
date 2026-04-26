@@ -32,7 +32,11 @@ while kill -0 "$PID" 2>/dev/null; do
   sleep "$CHECK_INTERVAL"
 
   # Brief progress signal: count of ep_rew_mean lines so far.
-  n_ep=$(grep -c "ep_rew_mean" "$LOG" 2>/dev/null || echo 0)
+  # `grep -c` exits 1 when there are no matches but still prints "0" —
+  # use the printed value if non-empty, else default to 0. The bare
+  # `|| echo 0` form would tack on an extra "0" line on no-match.
+  n_ep=$(grep -c "ep_rew_mean" "$LOG" 2>/dev/null)
+  n_ep=${n_ep:-0}
   if [ "$n_ep" != "$LAST_REW_COUNT" ]; then
     last_val=$(grep "ep_rew_mean" "$LOG" | tail -1 | sed -E 's/.*ep_rew_mean *\| *([-0-9.eE+]+).*/\1/' || echo "?")
     elapsed=$(( $(date +%s) - START_TS ))
