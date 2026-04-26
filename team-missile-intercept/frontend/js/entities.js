@@ -42,10 +42,20 @@ const _BASE_DEBRIS_MAT = new THREE.MeshBasicMaterial({
 // ocean. Additive of (255,32,48) onto (42,122,184) lands at a washed-out
 // purple ~(255,154,232) that reads as "haze" rather than "red dome".
 // DoubleSide so the dome's interior face is also drawn — when the camera
-// dips low, the back wall still shows.
+// dips low, the back wall still shows. depthTest:false + a high
+// renderOrder forces the dome to draw ON TOP of everything else: at
+// certain camera angles (top-down preset, or rotating into a low pitch)
+// the ocean plane was occluding the dome via the depth buffer because
+// transparent objects with depthWrite:false still respect depthTest by
+// default. Forcing depthTest off makes the dome visible from every
+// angle. Cost: trails / interceptors near the impact site can render
+// through the dome, which is acceptable for a "battle scar" indicator
+// — the dome is meant to be a non-physical UI marker, not part of the
+// 3D scene's depth hierarchy.
 const _BASE_BUBBLE_MAT = new THREE.MeshBasicMaterial({
   color: 0xff2030, transparent: true, opacity: 0.0,
-  depthWrite: false, blending: THREE.NormalBlending,
+  depthWrite: false, depthTest: false,
+  blending: THREE.NormalBlending,
   side: THREE.DoubleSide,
 });
 
@@ -981,11 +991,13 @@ export class EntityRegistry {
         // clock then hold steady. No fade — operator's "this area was
         // hit" record stays for the whole battle (and beyond match
         // end). Lifetime cleanup below skips this branch so the mesh
-        // never gets reaped.
+        // never gets reaped. Opacity 0.7 (up from 0.55) so the dome
+        // reads strongly red against the ocean instead of looking like
+        // faint haze that the operator can't spot during the demo.
         const popIn = Math.min(1, age / 1.2);
         const pulse = 0.92 + 0.08 * Math.sin(age * 3.5);
         ex.mesh.scale.setScalar(ex.targetRadius * popIn * pulse);
-        ex.mesh.material.opacity = 0.55 * popIn;
+        ex.mesh.material.opacity = 0.7 * popIn;
       } else {
         const rate = ex.scaleRate ?? 18;
         const env = 1 + t * rate;
@@ -1087,6 +1099,10 @@ export class EntityRegistry {
       // ocean/terrain plane, leaving a hemispherical mark.
       bubble.position.set(x, 0, z);
       bubble.scale.setScalar(bubbleR);
+      // High renderOrder so the dome draws AFTER trails / engagement
+      // lines / explosions and stays visible. Pairs with depthTest:false
+      // on the bubble material.
+      bubble.renderOrder = 5;
       this.scene.add(bubble);
       this.explosions.push({
         mesh: bubble,

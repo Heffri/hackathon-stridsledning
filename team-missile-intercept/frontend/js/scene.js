@@ -146,16 +146,29 @@ export function createScene(canvas) {
   }
 
   // Demo camera presets — let the operator snap to common framings
-  // mid-match without orbiting the OrbitControls manually. Coords in
-  // scene units (1 unit = 1 km). All targets at y=0 since the action
-  // happens at ground level. Same lifecycle contract as
-  // resetCameraView: safe to invoke any time, controls picks up the
-  // new state on the next update().
+  // mid-match without orbiting OrbitControls manually. Coords in scene
+  // units (1 unit = 1 km). Arena spans x∈[-75,75], z∈[-245,5]; Blue
+  // base sits at scene origin, threats spawn at large -Z. All targets
+  // aim at the contested zone (z ≈ -100) rather than the base, so the
+  // strait + Red/Blue territories read symmetrically. Same lifecycle
+  // contract as resetCameraView — safe to invoke any time.
   const CAMERA_PRESETS = {
-    south:    { pos: [0,    30, 55],   target: [0, 0, -60] },   // default
-    topdown:  { pos: [0,   220, -60],  target: [0, 0, -60] },   // bird's-eye
-    north:    { pos: [0,    50, -240], target: [0, 0, -60] },   // facing south
-    wide:     { pos: [120,  90, 120],  target: [0, 0, -60] },   // SE corner, zoomed out
+    // 3/4 cinematic overview from the SE — frames the whole arena
+    // including the strait, both mainlands, and the blue base.
+    overview:  { pos: [110, 130,  100], target: [0, 0, -100] },
+    // Pure top-down tactical map. Centred on arena mid-Z so north
+    // and south land bands take equal screen space. Tiny -Z offset
+    // breaks OrbitControls' degenerate "look straight down through
+    // target" pose so the camera up vector stays stable.
+    tactical:  { pos: [0,   270, -109], target: [0, 0, -110] },
+    // Low-mid altitude angled across the strait — the "front line"
+    // shot. Threats fly toward camera from the upper-left, blue
+    // interceptors launch from the right.
+    frontline: { pos: [95,   45,  -10], target: [-30, 5, -130] },
+    // Defender's POV: standing south of the blue base, looking north
+    // toward incoming waves. Low horizon → reads as a war-room
+    // operator angle rather than a god-view.
+    defender:  { pos: [0,    35,   50], target: [0, 5, -180] },
   };
   function setCameraPreset(name) {
     const p = CAMERA_PRESETS[name];

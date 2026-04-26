@@ -158,10 +158,10 @@ window.addEventListener('keydown', (ev) => {
       if (latestSnap?.phase === 'setup') toggleSetupPanel();
       break;
     // Camera presets — number keys snap to predefined views.
-    case '1': setCameraPreset('south'); break;
-    case '2': setCameraPreset('topdown'); break;
-    case '3': setCameraPreset('north'); break;
-    case '4': setCameraPreset('wide'); break;
+    case '1': setCameraPreset('overview'); break;
+    case '2': setCameraPreset('tactical'); break;
+    case '3': setCameraPreset('frontline'); break;
+    case '4': setCameraPreset('defender'); break;
   }
 });
 document.getElementById('btn-toggle-setup')?.addEventListener('click', () => {
@@ -171,44 +171,35 @@ document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
   resetCameraView();
 });
 
-// Camera-preset panel — small floating button stack near the existing
-// Reset Camera button. Buttons trigger the same setCameraPreset path
-// as the 1-4 number keys, so operators who don't know the shortcuts
-// still have a discoverable affordance during the live demo.
+// Camera-preset panel — sits inside #hud-right directly below the Red
+// budget so the operator sees both budgets and view-switch controls in
+// the same column. Buttons trigger the same setCameraPreset path as
+// the 1-4 number keys, so the keyboard shortcuts and the discoverable
+// click affordance stay in sync.
 function _injectCameraPresetButtons() {
-  const wrap = document.createElement('div');
-  Object.assign(wrap.style, {
-    position: 'fixed',
-    bottom: '64px',
-    left: '16px',
-    zIndex: '15',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
-    font: '11px/1.2 system-ui, sans-serif',
-  });
+  const anchor = document.getElementById('red-budget-panel');
+  if (!anchor || !anchor.parentElement) return;
+  const block = document.createElement('div');
+  block.className = 'hud-block camera-presets';
+  block.id = 'camera-preset-panel';
+  const title = document.createElement('div');
+  title.className = 'ammo-title';
+  title.textContent = 'Camera';
+  block.appendChild(title);
   const presets = [
-    { name: 'south',   label: '1 · South (default)' },
-    { name: 'topdown', label: '2 · Top-Down' },
-    { name: 'north',   label: '3 · North View' },
-    { name: 'wide',    label: '4 · Wide' },
+    { key: '1', name: 'overview',  label: 'Overview' },
+    { key: '2', name: 'tactical',  label: 'Tactical' },
+    { key: '3', name: 'frontline', label: 'Frontline' },
+    { key: '4', name: 'defender',  label: 'Defender' },
   ];
   for (const p of presets) {
     const btn = document.createElement('button');
-    btn.textContent = p.label;
-    Object.assign(btn.style, {
-      padding: '4px 10px',
-      background: 'rgba(20, 30, 48, 0.85)',
-      color: '#cfe2ff',
-      border: '1px solid rgba(120, 160, 220, 0.4)',
-      borderRadius: '4px',
-      cursor: 'pointer',
-      textAlign: 'left',
-    });
+    btn.className = 'camera-preset-btn';
+    btn.innerHTML = `<span class="cam-key">${p.key}</span>${p.label}`;
     btn.addEventListener('click', () => setCameraPreset(p.name));
-    wrap.appendChild(btn);
+    block.appendChild(btn);
   }
-  document.body.appendChild(wrap);
+  anchor.insertAdjacentElement('afterend', block);
 }
 _injectCameraPresetButtons();
 // --- Render loop ---

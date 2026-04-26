@@ -610,6 +610,46 @@ html, body {
 .budget-bar-inner.red-bar.empty    { background: #00e676; }
 
 /* ─────────────────────────────────────────
+   CAMERA PRESET PANEL — sits in #hud-right under the budgets so the
+   operator's eye flow is budgets → view switch in one column. Visual
+   styling matches sibling .hud-block panels.
+   ───────────────────────────────────────── */
+.hud-block.camera-presets {
+  font-size: 12px; padding: 8px 12px;
+  flex-shrink: 0;
+  border-color: rgba(120, 160, 220, 0.30);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.hud-block.camera-presets .ammo-title {
+  margin-bottom: 4px;
+}
+.camera-preset-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px;
+  background: rgba(20, 30, 48, 0.55);
+  color: #cfe2ff;
+  border: 1px solid rgba(120, 160, 220, 0.28);
+  border-radius: 3px;
+  font: 12px/1.2 'Share Tech Mono', 'Consolas', monospace;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.camera-preset-btn:hover {
+  background: rgba(40, 60, 90, 0.85);
+  border-color: rgba(160, 200, 255, 0.55);
+}
+.camera-preset-btn .cam-key {
+  display: inline-block;
+  width: 16px; height: 16px;
+  text-align: center; line-height: 16px;
+  background: rgba(120, 160, 220, 0.18);
+  border: 1px solid rgba(120, 160, 220, 0.35);
+  border-radius: 2px;
+  font-size: 10px; color: #a8c8f0;
+}
+
+/* ─────────────────────────────────────────
    SETUP RIBBON (M-TIER2-J Part 1)
    Fixed top bar, SETUP phase only.
    ───────────────────────────────────────── */
