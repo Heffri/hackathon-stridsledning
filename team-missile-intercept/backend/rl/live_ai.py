@@ -68,6 +68,20 @@ SATURATION_CAP_BY_KIND: Dict[ThreatType, int] = {
 }
 DEFAULT_SATURATION_CAP = 3
 
+# Path D (2026-04-26): low-altitude interceptor tier, in priority order
+# for ``_force_low_alt_shield``. Cheapest first (CIWS) so the shield
+# spends minimum budget per drone; SLM is the last resort for fast /
+# high cruise_sub the cheaper kit can't catch. Used both as the dispatch
+# priority list AND as the "already-engaged" allow-set so Path D won't
+# pile a second low-alt shot on a drone Path C accidentally tagged with
+# a strategic kind.
+LOW_ALT_TIER = (
+    InterceptorType.CIWS,
+    InterceptorType.SHORT_SAM,
+    InterceptorType.IRIS_T_SLS,
+    InterceptorType.MED_SAM,
+)
+
 
 def _load_policy(path: str):
     """Load a MaskablePPO policy from disk for CPU inference. Same pattern as
@@ -450,6 +464,13 @@ class LearnedBlueAI:
             self.log.append(
                 f"[{t_now:6.1f}s] strategic_fallback={n_forced}"
             )
+        # Path D (2026-04-26): low-altitude shield for drone / cruise_sub.
+        # Sibling of Path C — see ``_force_low_alt_shield`` docstring.
+        n_low_alt = self._force_low_alt_shield(t_now)
+        if n_low_alt:
+            self.log.append(
+                f"[{t_now:6.1f}s] low_alt_shield={n_low_alt}"
+            )
         self._tick_counter += 1
 
     def _adapt_obs_for_model(self, env_obs: dict) -> dict:
@@ -724,6 +745,115 @@ class LearnedBlueAI:
                     break  # one launcher per threat per tick
                 if fired:
                     break  # don't also fire backup if primary fired
+        return forced
+
+    def _force_low_alt_shield(self, t_now: float) -> int:
+        """Force-dispatch CIWS / SHORT_SAM / IRIS_T_SLS / MED_SAM at any
+        drone or cruise_sub the policy left unengaged.
+
+        Path D (2026-04-26): mirror of Path C's strategic_fallback but for
+        low-altitude saturation. Demo goal: zero drone/cruise leak on
+        Layout C vs ScriptedRed. V4 model at 30/15-cap can only directly
+        command 15 launchers; Layout C has 23, and the CIWS-active
+        behaviour the policy was supposed to learn never solidified. This
+        rule-layer net guarantees CIWS visibly engages every incoming
+        drone (the demo's most legible signal).
+
+        Activation: only fires at drone / cruise_sub with no existing
+        LOW_ALT_TIER interceptor in flight. Tries CIWS -> SHORT_SAM ->
+        IRIS_T_SLS -> MED_SAM, first launcher in range wins. Predictive
+        dispatch (same math as Path C) gives launchers ~3 s lead time on
+        closing geometry.
+        """
+        world = self._env.world
+        forced = 0
+        for tid, threat in world.threats.items():
+            if not threat.state.alive:
+                continue
+            threat_kind = ThreatType(threat.state.kind)
+            if threat_kind not in (ThreatType.DRONE, ThreatType.CRUISE_SUB):
+                continue
+            # Only skip if a LOW_ALT_TIER interceptor (CIWS / RBS-70 /
+            # SLS / SLM) is already in flight at this threat. PAC-2 /
+            # PAC-3 from Path C don't count — wrong tier for a drone, so
+            # Path D should still engage with proper kit.
+            existing = self._assignments.get(tid, [])
+            engaged = False
+            for iid in existing:
+                inter = world.interceptors.get(iid)
+                if inter is None or not inter.state.alive:
+                    continue
+                if inter.spec.kind in LOW_ALT_TIER:
+                    engaged = True
+                    break
+            if engaged:
+                continue
+            for kind in LOW_ALT_TIER:
+                spec = INTERCEPTOR_SPECS[kind]
+                if world.blue_budget < spec.usd_cost:
+                    continue
+                # CIWS exempt from saturation cap (cannon class — same
+                # carve-out as Gate 2 in _apply_action_gated).
+                if kind != InterceptorType.CIWS:
+                    cap = SATURATION_CAP_BY_KIND.get(
+                        threat_kind, DEFAULT_SATURATION_CAP,
+                    )
+                    if len(existing) >= cap:
+                        continue
+                fired = False
+                for lch in self.launchers.launchers:
+                    if lch.kind != kind:
+                        continue
+                    if lch.reloading or not lch.can_fire(t_now):
+                        continue
+                    t_pos = threat.state.pos
+                    t_vel = threat.state.vel
+                    dx = float(t_pos[0] - lch.pos[0])
+                    dy = float(t_pos[1] - lch.pos[1])
+                    dz = float(t_pos[2])
+                    R = spec.max_range * LAUNCH_RANGE_MARGIN
+                    dist_now_sq = dx * dx + dy * dy + dz * dz
+                    in_range_now = dist_now_sq <= R * R
+                    if not in_range_now:
+                        # Predictive dispatch (verbatim copy of Path C
+                        # math). Drones / cruise are slow enough that
+                        # current-range usually works, but the predictive
+                        # branch is cheap and harmless.
+                        a0 = float(t_pos[0] - lch.pos[0])
+                        a1 = float(t_pos[1] - lch.pos[1])
+                        a2 = float(t_pos[2])
+                        b0 = float(t_vel[0])
+                        b1 = float(t_vel[1])
+                        b2 = float(t_vel[2])
+                        A = b0 * b0 + b1 * b1 + b2 * b2
+                        if A < 1.0:
+                            continue
+                        B = 2.0 * (a0 * b0 + a1 * b1 + a2 * b2)
+                        C = (a0 * a0 + a1 * a1 + a2 * a2) - R * R
+                        disc = B * B - 4.0 * A * C
+                        if disc < 0:
+                            continue
+                        sqrt_disc = float(np.sqrt(disc))
+                        t_enter = (-B - sqrt_disc) / (2.0 * A)
+                        if t_enter <= 0.0:
+                            continue
+                        if t_enter > spec.fuel_s - 3.0:
+                            continue
+                    mode = lch.fire(t_now)
+                    iid = world.spawn_interceptor(
+                        lch.kind,
+                        (lch.pos[0], lch.pos[1], 0.0),
+                        (dx, dy, dz),
+                        tid,
+                        mode,
+                    )
+                    world.blue_budget -= spec.usd_cost
+                    self._assignments.setdefault(tid, []).append(iid)
+                    forced += 1
+                    fired = True
+                    break  # one launcher per threat per tick
+                if fired:
+                    break  # cheapest-tier fired — don't also fire backup
         return forced
 
 
