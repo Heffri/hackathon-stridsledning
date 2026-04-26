@@ -153,8 +153,20 @@ export function wireHud(sendCmd) {
       // destroyed sites, debris). Hide the dashboard but keep the match
       // in FINISHED so the battlefield stays frozen. The floating
       // "Show Summary" button in the bottom-right brings it back.
+      //
+      // CRITICAL: use display:none, not just .hidden. The overlay parent
+      // has pointer-events:none but child .mo-inner / .pms-dashboard have
+      // pointer-events:auto, and per CSS spec descendants with explicit
+      // 'auto' remain hit-testable even when the parent is 'none' — so
+      // the invisible overlay would still steal every canvas click and
+      // OrbitControls wouldn't rotate. display:none removes the whole
+      // subtree from hit testing.
       _dashboardDismissed = true;
-      document.getElementById('match-overlay')?.classList.add('hidden');
+      const overlayEl = document.getElementById('match-overlay');
+      if (overlayEl) {
+        overlayEl.classList.add('hidden');
+        overlayEl.style.display = 'none';
+      }
       const showBtn = _ensureShowSummaryBtn();
       showBtn.style.display = 'block';
     }
@@ -444,7 +456,10 @@ function _ensureShowSummaryBtn() {
     _dashboardDismissed = false;
     btn.style.display = 'none';
     const el = document.getElementById('match-overlay');
-    if (el) el.classList.remove('hidden');
+    if (el) {
+      el.style.display = '';     // clear the display:none we set on Close
+      el.classList.remove('hidden');
+    }
   });
   document.body.appendChild(btn);
   return btn;
@@ -1133,7 +1148,11 @@ function renderPhaseOverlay(phase, winner, snap) {
 // Called by main.js on websocket reset so Reset button clears banner
 // state and re-triggers for next game.
 export function resetHudEventTracking() {
-  document.getElementById('match-overlay')?.classList.add('hidden');
+  const _moEl = document.getElementById('match-overlay');
+  if (_moEl) {
+    _moEl.classList.add('hidden');
+    _moEl.style.display = '';   // undo any Close-button display:none
+  }
   // Restore original .mo-inner content after dashboard replacement
   if (_originalMoInnerHtml !== null) {
     const moInner = document.querySelector('.mo-inner');
