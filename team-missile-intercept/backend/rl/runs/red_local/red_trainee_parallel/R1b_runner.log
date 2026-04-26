@@ -1,0 +1,22 @@
+[R1b] watcher started; PID=75107 log=rl/runs/red_local/red_trainee_parallel/R1b_training.log
+[R1b] elapsed=60s ep_rew_count=0
+0 last=?
+/home/chen/hackathon-stridsledning-red/team-missile-intercept/backend/scripts/stage_runner.sh: line 44: [: 0
+0: integer expression expected
+/home/chen/hackathon-stridsledning-red/team-missile-intercept/backend/scripts/stage_runner.sh: line 44: [: 0
+0: integer expression expected
+[R1b] elapsed=180s ep_rew_count=1 last=13.3
+[R1b] elapsed=240s ep_rew_count=2 last=11.4
+[R1b] elapsed=360s ep_rew_count=3 last=17.8
+[R1b] elapsed=420s ep_rew_count=4 last=21.6
+[R1b] elapsed=480s ep_rew_count=5 last=23.6
+[R1b] elapsed=540s ep_rew_count=6 last=26.2
+n=6 last3=[21.6, 23.6, 26.2] span=4.60 new_max=True converged=False
+[R1b] elapsed=600s ep_rew_count=7 last=30
+n=7 last3=[23.6, 26.2, 30.0] span=6.40 new_max=True converged=False
+[R1b] elapsed=660s ep_rew_count=8 last=32
+n=8 last3=[26.2, 30.0, 32.0] span=5.80 new_max=True converged=False
+[R1b] elapsed=720s ep_rew_count=9 last=31.4
+n=9 last3=[30.0, 32.0, 31.4] span=2.00 new_max=False converged=True
+[R1b] convergence detected; sending SIGINT to PID 75107
+[R1b] saved final ckpt: rl/runs/red_local/red_trainee_parallel/stages/R1b_final.zip (from rl/runs/red_local/red_trainee_parallel/R1b/model.zip, converged=1)
