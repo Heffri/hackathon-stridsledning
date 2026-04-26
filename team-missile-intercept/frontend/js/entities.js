@@ -38,9 +38,15 @@ const _BASE_DEBRIS_MAT = new THREE.MeshBasicMaterial({
   color: 0xffcc44, transparent: true, opacity: 0.9,
   depthWrite: false, blending: THREE.AdditiveBlending,
 });
+// NormalBlending (not Additive) so red shows up against the bright blue
+// ocean. Additive of (255,32,48) onto (42,122,184) lands at a washed-out
+// purple ~(255,154,232) that reads as "haze" rather than "red dome".
+// DoubleSide so the dome's interior face is also drawn — when the camera
+// dips low, the back wall still shows.
 const _BASE_BUBBLE_MAT = new THREE.MeshBasicMaterial({
   color: 0xff2030, transparent: true, opacity: 0.0,
-  depthWrite: false, blending: THREE.AdditiveBlending,
+  depthWrite: false, blending: THREE.NormalBlending,
+  side: THREE.DoubleSide,
 });
 
 // Per-kind entity scale: bigger = scarier threat. Interceptors stay
@@ -971,13 +977,15 @@ export class EntityRegistry {
         ex.mesh.material.opacity = Math.max(0, 0.9 * (1 - t));
         ex.mesh.scale.setScalar(Math.max(0.01, ex.baseScale * (1 - t)));
       } else if (ex.isImpactBubble) {
-        // Pop in over first 0.15 (≈1.2s of 8s lifetime), hold near full,
-        // fade out over last 30%. Gentle pulse keeps it readable.
-        const popIn = Math.min(1, t / 0.15);
-        const fadeOut = t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1;
+        // Persistent battle marker. Pop in over the first ~1.2s wall-
+        // clock then hold steady. No fade — operator's "this area was
+        // hit" record stays for the whole battle (and beyond match
+        // end). Lifetime cleanup below skips this branch so the mesh
+        // never gets reaped.
+        const popIn = Math.min(1, age / 1.2);
         const pulse = 0.92 + 0.08 * Math.sin(age * 3.5);
         ex.mesh.scale.setScalar(ex.targetRadius * popIn * pulse);
-        ex.mesh.material.opacity = 0.55 * popIn * fadeOut;
+        ex.mesh.material.opacity = 0.55 * popIn;
       } else {
         const rate = ex.scaleRate ?? 18;
         const env = 1 + t * rate;
@@ -986,6 +994,10 @@ export class EntityRegistry {
       }
     }
     this.explosions = this.explosions.filter((ex) => {
+      // Impact bubbles persist for the full battle (and beyond match
+      // end) — they're the operator's hit-record. Skip them here so
+      // lifetime expiry doesn't reap them.
+      if (ex.isImpactBubble) return true;
       const age = realNow - ex.born;
       if (age >= ex.lifetime) {
         this.scene.remove(ex.mesh);

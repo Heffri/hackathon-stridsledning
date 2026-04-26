@@ -11,7 +11,7 @@ import { onSelectionChange } from './launcher_selection.js';
 const canvas = document.getElementById('view');
 const {
   scene, camera, renderer, controls, resetCameraView, animateRadar,
-  composer, waterUpdate,
+  composer, waterUpdate, setCameraPreset,
 } = createScene(canvas);
 const registry = new EntityRegistry(scene);
 const launchers = new LauncherRegistry(scene);
@@ -157,6 +157,11 @@ window.addEventListener('keydown', (ev) => {
     case 'm': case 'M':
       if (latestSnap?.phase === 'setup') toggleSetupPanel();
       break;
+    // Camera presets — number keys snap to predefined views.
+    case '1': setCameraPreset('south'); break;
+    case '2': setCameraPreset('topdown'); break;
+    case '3': setCameraPreset('north'); break;
+    case '4': setCameraPreset('wide'); break;
   }
 });
 document.getElementById('btn-toggle-setup')?.addEventListener('click', () => {
@@ -165,6 +170,47 @@ document.getElementById('btn-toggle-setup')?.addEventListener('click', () => {
 document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
   resetCameraView();
 });
+
+// Camera-preset panel — small floating button stack near the existing
+// Reset Camera button. Buttons trigger the same setCameraPreset path
+// as the 1-4 number keys, so operators who don't know the shortcuts
+// still have a discoverable affordance during the live demo.
+function _injectCameraPresetButtons() {
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, {
+    position: 'fixed',
+    bottom: '64px',
+    left: '16px',
+    zIndex: '15',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    font: '11px/1.2 system-ui, sans-serif',
+  });
+  const presets = [
+    { name: 'south',   label: '1 · South (default)' },
+    { name: 'topdown', label: '2 · Top-Down' },
+    { name: 'north',   label: '3 · North View' },
+    { name: 'wide',    label: '4 · Wide' },
+  ];
+  for (const p of presets) {
+    const btn = document.createElement('button');
+    btn.textContent = p.label;
+    Object.assign(btn.style, {
+      padding: '4px 10px',
+      background: 'rgba(20, 30, 48, 0.85)',
+      color: '#cfe2ff',
+      border: '1px solid rgba(120, 160, 220, 0.4)',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      textAlign: 'left',
+    });
+    btn.addEventListener('click', () => setCameraPreset(p.name));
+    wrap.appendChild(btn);
+  }
+  document.body.appendChild(wrap);
+}
+_injectCameraPresetButtons();
 // --- Render loop ---
 // W13 perf: only the registries that carry per-frame animations
 // (EntityRegistry — thrust flame, propeller spin, seeker cone, trail,

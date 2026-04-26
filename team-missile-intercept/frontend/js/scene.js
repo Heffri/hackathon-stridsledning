@@ -145,6 +145,26 @@ export function createScene(canvas) {
     controls.update();
   }
 
+  // Demo camera presets — let the operator snap to common framings
+  // mid-match without orbiting the OrbitControls manually. Coords in
+  // scene units (1 unit = 1 km). All targets at y=0 since the action
+  // happens at ground level. Same lifecycle contract as
+  // resetCameraView: safe to invoke any time, controls picks up the
+  // new state on the next update().
+  const CAMERA_PRESETS = {
+    south:    { pos: [0,    30, 55],   target: [0, 0, -60] },   // default
+    topdown:  { pos: [0,   220, -60],  target: [0, 0, -60] },   // bird's-eye
+    north:    { pos: [0,    50, -240], target: [0, 0, -60] },   // facing south
+    wide:     { pos: [120,  90, 120],  target: [0, 0, -60] },   // SE corner, zoomed out
+  };
+  function setCameraPreset(name) {
+    const p = CAMERA_PRESETS[name];
+    if (!p) return;
+    camera.position.set(...p.pos);
+    controls.target.set(...p.target);
+    controls.update();
+  }
+
   // ── Lighting ─────────────────────────────────────────────────────────────
   // Hemisphere light: sky (blue-grey) from above, ground (warm olive) from
   // below. Fills shadows with soft colour variance instead of pure black.
@@ -606,7 +626,7 @@ export function createScene(canvas) {
 
   return {
     scene, camera, renderer, controls, resetCameraView, animateRadar,
-    composer, waterUpdate,
+    composer, waterUpdate, setCameraPreset,
   };
 }
 
