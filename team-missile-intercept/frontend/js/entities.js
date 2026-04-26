@@ -8,6 +8,41 @@ import { worldToScene, SCALE } from './scene.js';
 
 const TRAIL_LEN = 60;
 
+// Explosion VFX shared resources. Each intercept used to allocate a fresh
+// SphereGeometry + RingGeometry + Material per particle (6-13 GPU
+// uploads per kill). At 50× sim speed with multiple sequential
+// intercepts that produced visible frame stalls. We now share unit-sized
+// geometries across every explosion and clone only the (cheap, no-GPU-
+// upload) Material so per-explosion opacity can still animate
+// independently. Per-mesh size is applied via mesh.scale, so a shared
+// unit sphere serves core / fireball / bubble / debris alike.
+//
+// Cleanup must skip geometry.dispose() — these are session-long.
+const _UNIT_SPHERE_LO = new THREE.SphereGeometry(1.0, 8, 6);   // core/fireball/debris
+const _UNIT_SPHERE_HI = new THREE.SphereGeometry(1.0, 14, 10); // landing bubble
+const _UNIT_RING = new THREE.RingGeometry(0.3, 1.0, 16);       // shockwave
+
+const _BASE_CORE_MAT = new THREE.MeshBasicMaterial({
+  color: 0xffffee, transparent: true, opacity: 1.0,
+  depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const _BASE_FIREBALL_MAT = new THREE.MeshBasicMaterial({
+  color: 0xff6620, transparent: true, opacity: 0.7,
+  depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const _BASE_RING_MAT = new THREE.MeshBasicMaterial({
+  color: 0xffaa44, transparent: true, opacity: 0.4,
+  depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+});
+const _BASE_DEBRIS_MAT = new THREE.MeshBasicMaterial({
+  color: 0xffcc44, transparent: true, opacity: 0.9,
+  depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const _BASE_BUBBLE_MAT = new THREE.MeshBasicMaterial({
+  color: 0xff2030, transparent: true, opacity: 0.0,
+  depthWrite: false, blending: THREE.AdditiveBlending,
+});
+
 // Per-kind entity scale: bigger = scarier threat. Interceptors stay
 // compact so the visual hierarchy reads "threats are the big things".
 const KIND_SCALE = {
@@ -921,7 +956,10 @@ export class EntityRegistry {
       em.interpolate(clampedDt);
     }
 
-    // Step explosion animations (runs every frame for smooth visuals)
+    // Step explosion animations (runs every frame for smooth visuals).
+    // All explosion meshes use shared unit-sized geometries — visible
+    // size = ex.baseScale × per-stage envelope. ex.baseScale captures
+    // the kind-specific S multiplier set at spawn.
     for (const ex of this.explosions) {
       const age = realNow - ex.born;
       const t = Math.min(1, age / ex.lifetime);
@@ -931,19 +969,19 @@ export class EntityRegistry {
         ex.mesh.position.y += ex.vel[1] * SCALE * dt;
         ex.mesh.position.z += ex.vel[2] * SCALE * dt;
         ex.mesh.material.opacity = Math.max(0, 0.9 * (1 - t));
-        ex.mesh.scale.setScalar(Math.max(0.01, 1 - t));
+        ex.mesh.scale.setScalar(Math.max(0.01, ex.baseScale * (1 - t)));
       } else if (ex.isImpactBubble) {
         // Pop in over first 0.15 (≈1.2s of 8s lifetime), hold near full,
         // fade out over last 30%. Gentle pulse keeps it readable.
         const popIn = Math.min(1, t / 0.15);
         const fadeOut = t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1;
         const pulse = 0.92 + 0.08 * Math.sin(age * 3.5);
-        ex.mesh.scale.setScalar(popIn * pulse);
+        ex.mesh.scale.setScalar(ex.targetRadius * popIn * pulse);
         ex.mesh.material.opacity = 0.55 * popIn * fadeOut;
       } else {
         const rate = ex.scaleRate ?? 18;
-        const scale = 1 + t * rate;
-        ex.mesh.scale.setScalar(scale * SCALE * 1000);
+        const env = 1 + t * rate;
+        ex.mesh.scale.setScalar(ex.baseScale * env);
         ex.mesh.material.opacity = Math.max(0, 0.9 - t);
       }
     }
@@ -951,7 +989,10 @@ export class EntityRegistry {
       const age = realNow - ex.born;
       if (age >= ex.lifetime) {
         this.scene.remove(ex.mesh);
-        ex.mesh.geometry.dispose();
+        // Geometry is shared across all explosions — do NOT dispose,
+        // or the next intercept would render an empty buffer. Material
+        // is a per-explosion clone of the shared base material; safe
+        // (and necessary) to release.
         ex.mesh.material.dispose();
         return false;
       }
@@ -984,46 +1025,38 @@ export class EntityRegistry {
     const S = cfg.s;
     const R = cfg.r;
 
-    // 1. Hot-white core flash
-    const coreMat = new THREE.MeshBasicMaterial({
-      color: 0xffffee,
-      transparent: true,
-      opacity: 1.0,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    const core = new THREE.Mesh(new THREE.SphereGeometry(0.8 * S, 10, 8), coreMat);
+    // 1. Hot-white core flash. Shared geometry; cloned material so
+    // per-explosion opacity animates independently. mesh.scale carries
+    // the kind-specific size so the shared unit sphere works for all.
+    const core = new THREE.Mesh(_UNIT_SPHERE_LO, _BASE_CORE_MAT.clone());
     core.position.set(x, y, z);
+    core.scale.setScalar(0.8 * S);
     this.scene.add(core);
-    this.explosions.push({ mesh: core, born: now, lifetime: 0.6, scaleRate: R });
+    this.explosions.push({
+      mesh: core, born: now, lifetime: 0.6, scaleRate: R,
+      baseScale: 0.8 * S,
+    });
 
     // 2. Orange-red fireball
-    const fbMat = new THREE.MeshBasicMaterial({
-      color: 0xff6620,
-      transparent: true,
-      opacity: 0.7,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    const fireball = new THREE.Mesh(new THREE.SphereGeometry(1.0 * S, 10, 8), fbMat);
+    const fireball = new THREE.Mesh(_UNIT_SPHERE_LO, _BASE_FIREBALL_MAT.clone());
     fireball.position.set(x, y, z);
+    fireball.scale.setScalar(1.0 * S);
     this.scene.add(fireball);
-    this.explosions.push({ mesh: fireball, born: now, lifetime: 0.8, scaleRate: R * 0.7 });
+    this.explosions.push({
+      mesh: fireball, born: now, lifetime: 0.8, scaleRate: R * 0.7,
+      baseScale: 1.0 * S,
+    });
 
     // 3. Shockwave ring
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xffaa44,
-      transparent: true,
-      opacity: 0.4,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.3 * S, 1.0 * S, 20), ringMat);
+    const ring = new THREE.Mesh(_UNIT_RING, _BASE_RING_MAT.clone());
     ring.position.set(x, y, z);
     ring.rotation.x = -Math.PI / 2;
+    ring.scale.setScalar(S);
     this.scene.add(ring);
-    this.explosions.push({ mesh: ring, born: now, lifetime: 0.5, scaleRate: R * 1.5, isRing: true });
+    this.explosions.push({
+      mesh: ring, born: now, lifetime: 0.5, scaleRate: R * 1.5, isRing: true,
+      baseScale: S,
+    });
 
     // 4b. Red landing bubble — only for enemy threats reaching the ground.
     // Marks "this is where a missile of theirs landed" so the operator can
@@ -1037,20 +1070,11 @@ export class EntityRegistry {
     };
     const bubbleR = THREAT_BUBBLE[kind];
     if (bubbleR !== undefined) {
-      const bubbleMat = new THREE.MeshBasicMaterial({
-        color: 0xff2030,
-        transparent: true,
-        opacity: 0.0,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      const bubble = new THREE.Mesh(
-        new THREE.SphereGeometry(bubbleR, 20, 14),
-        bubbleMat,
-      );
+      const bubble = new THREE.Mesh(_UNIT_SPHERE_HI, _BASE_BUBBLE_MAT.clone());
       // Sit dome on the ground (y=0): the lower half is occluded by the
       // ocean/terrain plane, leaving a hemispherical mark.
       bubble.position.set(x, 0, z);
+      bubble.scale.setScalar(bubbleR);
       this.scene.add(bubble);
       this.explosions.push({
         mesh: bubble,
@@ -1062,16 +1086,13 @@ export class EntityRegistry {
     }
 
     // 5. Debris particles (count scaled by kind)
+    const debrisBaseScale = 0.1 * S;
     for (let i = 0; i < cfg.d; i++) {
-      const dMat = new THREE.MeshBasicMaterial({
-        color: Math.random() > 0.5 ? 0xffcc44 : 0xff6633,
-        transparent: true,
-        opacity: 0.9,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      const debris = new THREE.Mesh(new THREE.SphereGeometry(0.1 * S, 4, 3), dMat);
+      const dMat = _BASE_DEBRIS_MAT.clone();
+      dMat.color.setHex(Math.random() > 0.5 ? 0xffcc44 : 0xff6633);
+      const debris = new THREE.Mesh(_UNIT_SPHERE_LO, dMat);
       debris.position.set(x, y, z);
+      debris.scale.setScalar(debrisBaseScale);
       const speed = 15 * S;
       const vx = (Math.random() - 0.5) * speed * 2;
       const vy = (Math.random() - 0.3) * speed * 1.5;
@@ -1083,6 +1104,7 @@ export class EntityRegistry {
         lifetime: 0.4 + Math.random() * 0.3,
         vel: [vx, vy, vz],
         isDebris: true,
+        baseScale: debrisBaseScale,
       });
     }
   }
