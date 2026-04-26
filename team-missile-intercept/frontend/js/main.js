@@ -185,6 +185,17 @@ function animate() {
   requestAnimationFrame(animate);
   const elapsed = performance.now() / 1000 - _startTime;
 
+  // Drag-handler robustness guard: drag is SETUP-only, so outside SETUP
+  // controls must be enabled. If a SETUP drag terminates off-canvas
+  // (e.g. pointer released on the Start Match button) the usual
+  // pointerup/lostpointercapture restore path doesn't fire and
+  // controls.enabled stays false — operator can't rotate the camera
+  // during the match. Re-enable every RAF tick once we leave SETUP.
+  const _phase = latestSnap?.phase || 'setup';
+  if (_phase !== 'setup' && controls.enabled === false) {
+    controls.enabled = true;
+  }
+
   controls.update();
   animateRadar(elapsed);
   waterUpdate(elapsed);
