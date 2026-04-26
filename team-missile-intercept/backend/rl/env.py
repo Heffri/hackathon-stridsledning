@@ -16,6 +16,7 @@ where index MAX_THREATS means "hold fire". Invalid actions masked via
 """
 from __future__ import annotations
 
+import math
 import random
 from typing import List, Optional
 
@@ -49,9 +50,9 @@ from sim.world import World
 # discretisation grow. live_ai.py contains a backward-compat adapter
 # that slices obs + remaps actions for smaller-cap pretrained models
 # (B_shaped at 30/15/40, Boyu V2/V2a at 96/24/128).
-MAX_THREATS = 120
-MAX_LAUNCHERS = 60
-MAX_INTERCEPTORS = 160
+MAX_THREATS = 72
+MAX_LAUNCHERS = 32
+MAX_INTERCEPTORS = 128
 MAX_SITES = 10
 
 # Agent decides every N sim ticks. 10 ticks = 0.5s sim per decision.
@@ -102,6 +103,32 @@ INTERCEPTOR_FEATURES = 6 + N_INT_KINDS + 2
 SITE_FEATURES = 2 + N_SITE_SUBTYPES + 1
 # global: [sim_t, blue_budget, red_budget, phase_onehot(4)] = 7
 GLOBAL_FEATURES = 3 + N_PHASES
+
+
+# ---- Reward shaping constants (megamodel doctrine reward 2026-04-26) ----
+DOCTRINE_MULTIPLIER = {
+    # Gamble bonuses (cheap interceptor on hard target — paid off)
+    (InterceptorType.CIWS,        ThreatType.BALLISTIC): 2.0,
+    (InterceptorType.CIWS,        ThreatType.HGV):       2.0,
+    (InterceptorType.SHORT_SAM,   ThreatType.BALLISTIC): 1.5,
+    (InterceptorType.IRIS_T_SLS,  ThreatType.BALLISTIC): 1.5,
+    (InterceptorType.MED_SAM,     ThreatType.BALLISTIC): 2.0,
+    (InterceptorType.MED_SAM,     ThreatType.HGV):       1.3,
+    # Force CIWS-only-on-drone — light penalty pulls SAM tier toward cruise
+    (InterceptorType.SHORT_SAM,   ThreatType.DRONE):     0.7,
+    (InterceptorType.IRIS_T_SLS,  ThreatType.DRONE):     0.7,
+}
+# All other (interceptor, threat) pairs use multiplier 1.0:
+# - canonical (CIWS->drone, *->cruise, PAC-2/PAC-3->ballistic/HGV)
+# - wasteful (PAC-3->drone) — handled by spend penalty alone
+
+HEAD_ON_WEIGHT = 0.5            # max head-on bonus = 50% of base intercept reward
+LEAK_TIER_WEIGHTS = {
+    "hgv": 8.0,
+    "ballistic": 6.0,
+    "cruise_sub": 3.0,
+    "drone": 2.0,
+}
 
 
 def _onehot(idx: int, n: int) -> np.ndarray:
@@ -277,7 +304,14 @@ class MissileInterceptEnv(gym.Env):
         # instead of winning). Terminal +100 win bonus is the horizon-
         # shaping signal.
         spent = max(0, prev_blue_budget - self.world.blue_budget)
-        reward = event_reward - spent / 1e6 * 0.05  # weak efficiency penalty per $M spent
+        # Budget-aware spend penalty (megamodel 2026-04-26):
+        # When Blue has more budget than Red, spend penalty drops (Blue can
+        # afford expensive defense to relieve CIWS pressure). When Blue is
+        # poor relative to Red, spend penalty rises (must conserve).
+        # Clamped 0.5x..2.0x.
+        budget_ratio = self.world.blue_budget / max(1.0, float(self.world.red_budget))
+        spend_modifier = max(0.5, min(2.0, 1.0 / max(0.01, budget_ratio)))
+        reward = event_reward - spent / 1e6 * 0.5 * spend_modifier
 
         terminated = self._winner() is not None
         truncated = (not terminated) and self.world.t >= self._episode_time_limit
@@ -382,51 +416,106 @@ class MissileInterceptEnv(gym.Env):
 
     # ------------------------------------------------------------------
     def _reward_from_events(self, events: List[dict]) -> float:
-        """Per-tick dense shaping based on world events list.
+        """Per-tick dense shaping with doctrine reward (megamodel 2026-04-26).
 
-        Caller must invoke this BEFORE `world.prune_dead` so intercept
-        events can still look up the dead threat's kind in
-        `world.threats` for value-scaled credit.
+        Layered signal:
+          1. Intercept event:
+             - Base reward: threat.usd_cost / 1e6
+             - x DOCTRINE_MULTIPLIER for (interceptor, threat) — 1.3-2.0x for
+               gamble pairs, 0.7x for SAM-on-drone, 1.0x default
+             - + HEAD_ON_WEIGHT * base * head_on_factor for PAC-2/PAC-3 vs
+               ballistic/HGV (head_on_factor = max(0, -cos(angle)))
+             - Zeroed entirely if threat targets a dead base (V4 inherit)
+          2. Leak event:
+             - tier_weight * dmg * base_weight (military leaks only)
+             - base_weight = n_initial / n_alive — protect last-alive bases harder
+          3. Ground-crash credit: +0.2 (unchanged)
+
+        Caller must invoke this BEFORE world.prune_dead so events resolve.
         """
         r = 0.0
+
+        # Base-weight scaling (V4 inherit).
+        military_subtypes = ('base', 'air_base')
+        n_alive = max(1, sum(
+            1 for s in sites_module.SOUTH_SITES
+            if s.subtype in military_subtypes and s.hp > 0
+        ))
+        n_initial = max(1, sum(
+            1 for s in sites_module.SOUTH_SITES
+            if s.subtype in military_subtypes
+        ))
+        base_weight = n_initial / n_alive  # 3 alive: 1.0, 2 alive: 1.5, 1 alive: 3.0
+
         for ev in events:
             et = ev.get("type")
+
             if et == "intercept":
-                # Threat killed. Scale by the threat's usd_cost so the
-                # agent prefers killing expensive / dangerous threats.
                 tid = ev.get("threat")
+                iid = ev.get("interceptor")
                 threat = self.world.threats.get(tid) if tid is not None else None
-                if threat is not None:
-                    try:
-                        spec = self._threat_spec_by_str(threat.state.kind)
-                        r += spec.usd_cost / 1e6
-                    except KeyError:
-                        r += 1.0
-                else:
-                    r += 1.0
+                inter = self.world.interceptors.get(iid) if iid is not None else None
+                if threat is None or inter is None:
+                    r += 1.0  # fallback to old behaviour
+                    continue
+
+                # V4 inherit: zero reward if target base already dead.
+                target_site_id = getattr(threat, '_target_site_id', None)
+                if target_site_id is not None:
+                    target_site = sites_module.find_site_by_id(target_site_id)
+                    if target_site is not None and target_site.hp <= 0:
+                        continue
+
+                try:
+                    spec = self._threat_spec_by_str(threat.state.kind)
+                    base_value = spec.usd_cost / 1e6
+                except KeyError:
+                    base_value = 1.0
+
+                try:
+                    interceptor_kind = InterceptorType(inter.state.kind)
+                    threat_kind = ThreatType(threat.state.kind)
+                except (KeyError, ValueError):
+                    r += base_value
+                    continue
+                multiplier = DOCTRINE_MULTIPLIER.get(
+                    (interceptor_kind, threat_kind), 1.0,
+                )
+                r_intercept = base_value * multiplier
+
+                # Head-on bonus for PAC-2/PAC-3 vs ballistic/HGV.
+                if (interceptor_kind in (InterceptorType.LONG_SAM, InterceptorType.HIT_TO_KILL)
+                        and threat_kind in (ThreatType.BALLISTIC, ThreatType.HGV)):
+                    t_vel = threat.state.vel
+                    i_vel = inter.state.vel
+                    t_speed_sq = t_vel[0]**2 + t_vel[1]**2 + t_vel[2]**2
+                    i_speed_sq = i_vel[0]**2 + i_vel[1]**2 + i_vel[2]**2
+                    if t_speed_sq > 1.0 and i_speed_sq > 1.0:
+                        cos_angle = (
+                            t_vel[0]*i_vel[0] + t_vel[1]*i_vel[1] + t_vel[2]*i_vel[2]
+                        ) / (math.sqrt(t_speed_sq) * math.sqrt(i_speed_sq))
+                        head_on_factor = max(0.0, -cos_angle)
+                        r_intercept += base_value * HEAD_ON_WEIGHT * head_on_factor
+
+                r += r_intercept
+
             elif et == "leak":
-                # Site leak. Heavily weighted by leak damage.
-                # Aggressive-retrain B path (2026-04-25): tiered penalty
-                # by threat kind so ballistic/HGV leaks dominate the
-                # gradient — forces policy to try PAC-3 even at the cost
-                # of wasted shots, vs. the prior flat ×2 that let the
-                # policy "accept" ballistic/HGV leaks as cheaper than
-                # PAC-3 launch cost.
                 dmg = ev.get("damage", 0)
                 kind = ev.get("kind", "")
-                if kind == "hgv":
-                    r -= float(dmg) * 8.0
-                elif kind == "ballistic":
-                    r -= float(dmg) * 6.0
-                elif kind == "cruise_sub":
-                    r -= float(dmg) * 3.0
-                else:  # drone or unknown
-                    r -= float(dmg) * 2.0
+                tier = LEAK_TIER_WEIGHTS.get(kind, 2.0)
+                site_name = ev.get("site", "")
+                site = next(
+                    (s for s in sites_module.SOUTH_SITES if s.name == site_name),
+                    None,
+                )
+                if site is not None and site.subtype in military_subtypes:
+                    r -= float(dmg) * tier * base_weight
+                else:
+                    r -= float(dmg) * tier  # civilian: no scaling
+
             elif et == "ground_crash" and ev.get("threat") is not None:
-                # Red threat crashed w/o hitting a site — small credit.
-                # Gate on 'threat' key so interceptor ground crashes
-                # (which share the 'ground_crash' event type) don't count.
                 r += 0.2
+
         return r
 
     @staticmethod
