@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from . import config, sites
+from . import config, physics, sites
 from .launcher import Launcher, LauncherFleet
 from .types import (
     INTERCEPTOR_SPECS,
@@ -122,7 +122,7 @@ def _time_to_impact(threat_pos: np.ndarray, threat_vel: np.ndarray, base: np.nda
     central so urgency estimates via it are close enough for
     wait-vs-escalate decisions."""
     to_base = base - threat_pos
-    dist = float(np.linalg.norm(to_base))
+    dist = physics._norm3(to_base)
     if dist < 1.0:
         return 0.0
     closing = float(np.dot(threat_vel, to_base / dist))
@@ -142,7 +142,7 @@ def _time_to_enter_range(
     closing)."""
     gate = max_range * config.LAUNCH_RANGE_MARGIN
     to_lch = launcher_pos - threat_pos
-    dist = float(np.linalg.norm(to_lch))
+    dist = physics._norm3(to_lch)
     if dist <= gate:
         return 0.0
     closing = float(np.dot(threat_vel, to_lch / max(dist, 1e-6)))
@@ -215,11 +215,8 @@ def _primary_available_in_time(
         for lch in launchers.launchers:
             if lch.kind != kind:
                 continue
-            lch_pos_3d = np.array(
-                [lch.pos[0], lch.pos[1], 0.0], dtype=np.float64
-            )
             t_enter = _time_to_enter_range(
-                threat_pos, threat_vel, lch_pos_3d, spec.max_range
+                threat_pos, threat_vel, lch.pos_3d, spec.max_range
             )
             t_ready = _launcher_ready_wait(lch, t_now)
             t_need = max(t_enter, t_ready)
@@ -338,7 +335,7 @@ class BlueAI:
             threat_kind = ThreatType(threat.state.kind)
             # `dist_to_base` is kept only for the HUD log line — engagement
             # decisions use per-launcher distances now (Milestone H).
-            dist_to_base = float(np.linalg.norm(threat_pos - base))
+            dist_to_base = physics._norm3(threat_pos - base)
 
             # CIWS is counted separately from the main saturation cap —
             # it's the cheap point-defense layer that fires whenever

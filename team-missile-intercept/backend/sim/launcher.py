@@ -17,6 +17,8 @@ dictates.
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
+
 from .types import INTERCEPTOR_SPECS, InterceptorType, ThreatType
 
 
@@ -44,6 +46,14 @@ class Launcher:
     def __post_init__(self):
         if self.current_ammo == 0:
             self.current_ammo = self.magazine_capacity
+        # Pre-compute 3D launcher position (z=0). Read by blue_ai's
+        # per-tick range checks — this avoids re-allocating a fresh
+        # np.array on every (threat × launcher) iteration of
+        # `_primary_available_in_time` (millions of allocations / match).
+        self.pos_3d: np.ndarray = np.array(
+            [float(self.pos[0]), float(self.pos[1]), 0.0], dtype=np.float64
+        )
+        self.pos_3d.flags.writeable = False
 
     @property
     def reloading(self) -> bool:

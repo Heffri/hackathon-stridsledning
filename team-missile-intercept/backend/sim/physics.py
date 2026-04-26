@@ -18,15 +18,26 @@ def _norm3(v: np.ndarray) -> float:
     return math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
 
 
+# Pre-allocated read-only constants returned by the per-tick hot-path
+# helpers below. Allocating fresh np.array / np.zeros each call adds up to
+# ~200k+ array allocations per 600 s match. Read-only flag protects
+# against accidental in-place mutation by callers that always do
+# `accel + gravity_accel()` (creating a new array via add).
+_GRAVITY_VEC = np.array([0.0, 0.0, -config.GRAVITY], dtype=np.float64)
+_GRAVITY_VEC.flags.writeable = False
+_ZERO_VEC3 = np.zeros(3, dtype=np.float64)
+_ZERO_VEC3.flags.writeable = False
+
+
 def gravity_accel() -> np.ndarray:
-    return np.array([0.0, 0.0, -config.GRAVITY], dtype=np.float64)
+    return _GRAVITY_VEC
 
 
 def drag_accel(vel: np.ndarray, drag_k: float) -> np.ndarray:
     """Quadratic drag: a = -k * |v| * v. Returns acceleration (m/s^2)."""
     speed = _norm3(vel)
     if speed < 1e-6:
-        return np.zeros(3, dtype=np.float64)
+        return _ZERO_VEC3
     return -drag_k * speed * vel
 
 
@@ -54,7 +65,7 @@ def drag_accel_at(vel: np.ndarray, drag_k: float, altitude: float) -> np.ndarray
     interceptor glide so high-altitude coasts decelerate slowly."""
     speed = _norm3(vel)
     if speed < 1e-6:
-        return np.zeros(3, dtype=np.float64)
+        return _ZERO_VEC3
     rho = air_density_ratio(altitude)
     return -drag_k * rho * speed * vel
 
@@ -99,7 +110,7 @@ def pn_guidance_accel(
     r = target_pos - shooter_pos
     r_mag = _norm3(r)
     if r_mag < 1e-3:
-        return np.zeros(3, dtype=np.float64)
+        return _ZERO_VEC3
 
     v_rel = target_vel - shooter_vel
     r_hat = r / r_mag

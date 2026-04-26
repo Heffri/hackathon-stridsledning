@@ -184,7 +184,7 @@ class Threat:
             # per-tick `override_maneuver(dir, g)` still wins over the
             # default when set.
             to_target_h = np.array([target[0] - start[0], target[1] - start[1], 0.0])
-            norm_h = float(np.linalg.norm(to_target_h))
+            norm_h = physics._norm3(to_target_h)
             if norm_h < 1e-6:
                 to_target_h = np.array([0.0, -1.0, 0.0])
                 norm_h = 1.0
@@ -246,7 +246,7 @@ class Threat:
             # preserved — the altitude-hold loop will keep it there).
             first_wp = all_wps[0]
             direction = first_wp - start
-            norm = float(np.linalg.norm(direction))
+            norm = physics._norm3(direction)
             if norm < 1e-6:
                 direction = np.array([0.0, -1.0, 0.0])
             else:
@@ -325,7 +325,7 @@ class Threat:
         the API is uniform, but only the HGV step path reads it).
         """
         dir_arr = np.array(turn_direction, dtype=np.float64).reshape(3)
-        n = float(np.linalg.norm(dir_arr))
+        n = physics._norm3(dir_arr)
         if n < 1e-6:
             self._override_accel = None
             return
@@ -356,7 +356,7 @@ class Threat:
             if not (t_offset <= t_rel < t_offset + duration):
                 continue
             dir_arr = np.asarray(turn_dir, dtype=np.float64).reshape(3)
-            mag = float(np.linalg.norm(dir_arr))
+            mag = physics._norm3(dir_arr)
             if mag < 1e-6:
                 continue
             dir_unit = dir_arr / mag
@@ -396,7 +396,7 @@ class Threat:
         pos = self.state.pos
         vel = self.state.vel
         v_h = np.array([vel[0], vel[1], 0.0])
-        v_h_mag = float(np.linalg.norm(v_h))
+        v_h_mag = physics._norm3(v_h)
         if v_h_mag < 1.0:
             return  # stalled / near-zero horizontal speed
         to_target_h = np.array(
@@ -407,7 +407,7 @@ class Threat:
         if float(np.dot(v_h, to_target_h)) >= 0.0:
             return
         # Terminal-phase gates (do not retarget during committed impact).
-        dh_to_target = float(np.linalg.norm(to_target_h))
+        dh_to_target = physics._norm3(to_target_h)
         if self.spec.kind == ThreatType.HGV:
             if dh_to_target < 3_000.0 or float(pos[2]) < 2_000.0:
                 return
@@ -430,7 +430,7 @@ class Threat:
             # Site is ahead iff v_unit · to_s_h > 0.
             if float(np.dot(v_unit, to_s_h)) <= 0.0:
                 continue
-            d = float(np.linalg.norm(to_s_h))
+            d = physics._norm3(to_s_h)
             if d < best_d:
                 best_d = d
                 best = s
@@ -464,7 +464,7 @@ class Threat:
             wp = self.waypoint  # always the pre-selected target
 
             to_wp_h = np.array([wp[0] - pos[0], wp[1] - pos[1], 0.0])
-            dh = float(np.linalg.norm(to_wp_h))
+            dh = physics._norm3(to_wp_h)
             if dh > 1.0:
                 h_dir = to_wp_h / dh
             else:
@@ -479,12 +479,12 @@ class Threat:
             terminal_dive = dh < 3_000.0 or pos[2] < 2_000.0
             if terminal_dive:
                 to_base_3d = wp - pos
-                n3 = float(np.linalg.norm(to_base_3d)) or 1.0
+                n3 = physics._norm3(to_base_3d) or 1.0
                 desired_vel = (to_base_3d / n3) * self.spec.cruise_speed
                 steer = (desired_vel - vel) / max(dt, 1e-3)
                 steer = physics.cap_accel(steer, self.spec.max_g)
                 base_cmd = steer
-                manoeuvre_cmd_mag = float(np.linalg.norm(steer))
+                manoeuvre_cmd_mag = physics._norm3(steer)
                 accel = (
                     base_cmd
                     + physics.gravity_accel()
@@ -507,7 +507,7 @@ class Threat:
                 tan_pitch = self._base_alt / self._glide_initial_dh
                 glide_ratio = max(0.0, min(1.0, dh / self._glide_initial_dh))
                 target_alt = self._base_alt * glide_ratio
-                cur_h_speed = float(np.linalg.norm(cur_h_vel))
+                cur_h_speed = physics._norm3(cur_h_vel)
                 target_vz = -tan_pitch * cur_h_speed
                 alt_err = target_alt - pos[2]
                 vz_err = target_vz - vel[2]
@@ -516,7 +516,7 @@ class Threat:
                 # Aerodynamic lift cancels gravity during the glide.
                 lift = np.array([0.0, 0.0, config.GRAVITY])
                 base_cmd = horiz_accel + alt_accel + lift
-                manoeuvre_cmd_mag = float(np.linalg.norm(horiz_accel))
+                manoeuvre_cmd_mag = physics._norm3(horiz_accel)
                 accel = (
                     base_cmd
                     + physics.gravity_accel()
@@ -529,7 +529,7 @@ class Threat:
             override_mag = 0.0
             if self._override_accel is not None:
                 override = self._override_accel
-                override_mag = float(np.linalg.norm(override))
+                override_mag = physics._norm3(override)
                 accel = accel + override
                 self._override_accel = None
 
@@ -546,7 +546,7 @@ class Threat:
             total_cmd = min(total_cmd, max_accel * 1.5)
             g_ratio = total_cmd / max(max_accel, 1e-6)
             speed_loss = _HGV_BLEED_RATE * g_ratio * g_ratio * dt
-            nv_mag = float(np.linalg.norm(new_vel))
+            nv_mag = physics._norm3(new_vel)
             if nv_mag > speed_loss:
                 new_vel = new_vel * ((nv_mag - speed_loss) / nv_mag)
 
@@ -556,7 +556,7 @@ class Threat:
             # Stall: below _HGV_STALL_SPEED, aerodynamic lift collapses
             # and the HGV falls. Mark dead; ground-collision sweep
             # elsewhere emits the explosion visual.
-            if float(np.linalg.norm(new_vel)) < _HGV_STALL_SPEED:
+            if physics._norm3(new_vel) < _HGV_STALL_SPEED:
                 self.state.alive = False
             return
 
@@ -566,7 +566,7 @@ class Threat:
                 [self.waypoint[0] - pos[0], self.waypoint[1] - pos[1], 0.0],
                 dtype=np.float64,
             )
-            dh = float(np.linalg.norm(to_base_h))
+            dh = physics._norm3(to_base_h)
             if dh > 1.0:
                 desired_h_dir = to_base_h / dh
                 h_speed = float(np.sqrt(vel[0] * vel[0] + vel[1] * vel[1]))
@@ -644,7 +644,7 @@ class Threat:
         if self.spec.kind == ThreatType.CRUISE_SUB:
             if not self._wp_queue and horiz_to_wp < _CRUISE_TERMINAL_DH:
                 to_target_3d = self.waypoint - pos
-                n3 = float(np.linalg.norm(to_target_3d)) or 1.0
+                n3 = physics._norm3(to_target_3d) or 1.0
                 desired_vel = (to_target_3d / n3) * self.spec.cruise_speed
                 steer = (desired_vel - vel) / max(dt, 1e-3)
                 steer = physics.cap_accel(steer, self.spec.max_g)
@@ -680,7 +680,7 @@ class Threat:
         # Horizontal-plane steering toward waypoint.
         to_wp = self.waypoint - pos
         to_wp[2] = 0.0
-        horiz = float(np.linalg.norm(to_wp))
+        horiz = physics._norm3(to_wp)
         if horiz > 1.0:
             desired_h = to_wp / horiz
             desired_v = np.array(
@@ -813,7 +813,7 @@ class Interceptor:
         # for SAMs, and for CIWS as the actual launch direction).
         d = np.array(initial_dir, dtype=np.float64)
         d_horiz = np.array([d[0], d[1], 0.0], dtype=np.float64)
-        dh_norm = float(np.linalg.norm(d_horiz))
+        dh_norm = physics._norm3(d_horiz)
         if dh_norm > 1e-6:
             d_horiz = d_horiz / dh_norm
         else:
@@ -827,15 +827,15 @@ class Interceptor:
                 [0.2 * d_horiz[0], 0.2 * d_horiz[1], 1.0],
                 dtype=np.float64,
             )
-            launch_vec = launch_vec / float(np.linalg.norm(launch_vec))
+            launch_vec = launch_vec / physics._norm3(launch_vec)
             vel = launch_vec * (self.spec.max_speed * 0.4)
             self._boost_phase_end = t_now + _VLS_BOOST_DURATION
         else:
             # CIWS: ballistic lofted burst along initial_dir, 50% max_speed.
-            n = float(np.linalg.norm(d))
+            n = physics._norm3(d)
             if n < 1e-6:
                 d_unit = np.array([0.0, 1.0, 0.3])
-                d_unit = d_unit / float(np.linalg.norm(d_unit))
+                d_unit = d_unit / physics._norm3(d_unit)
             else:
                 d_unit = d / n
             vel = d_unit * (self.spec.max_speed * 0.5)
@@ -878,7 +878,7 @@ class Interceptor:
                 ],
                 dtype=np.float64,
             )
-            target_vec = target_vec / float(np.linalg.norm(target_vec))
+            target_vec = target_vec / physics._norm3(target_vec)
             target_vel = target_vec * (self.spec.max_speed * 0.7)
             a_boost = (target_vel - vel) / max(dt, 1e-3)
             # Allow much higher accel during boost to make climb snappy.
@@ -905,7 +905,7 @@ class Interceptor:
         else:
             a_guide = np.zeros(3)
 
-        speed = float(np.linalg.norm(vel))
+        speed = physics._norm3(vel)
         a_boost = np.zeros(3)
         if powered and speed < self.spec.max_speed and speed > 1e-3:
             # Sustain thrust along line-of-sight to the target so the
@@ -913,7 +913,7 @@ class Interceptor:
             # rather than fighting PN for many seconds.
             if target_state is not None and target_state.alive:
                 to_target = target_state.pos - pos
-                tt_norm = float(np.linalg.norm(to_target))
+                tt_norm = physics._norm3(to_target)
                 if tt_norm > 1e-6:
                     along = to_target / tt_norm
                 else:
@@ -948,5 +948,5 @@ class Interceptor:
         # ground-impact flash on the next tick if it falls through the
         # floor, otherwise it leaves an explosion marker via the kill
         # branch of the CPA check (not our concern here).
-        if not powered and float(np.linalg.norm(new_vel)) < self._STALL_SPEED:
+        if not powered and physics._norm3(new_vel) < self._STALL_SPEED:
             self.state.alive = False
