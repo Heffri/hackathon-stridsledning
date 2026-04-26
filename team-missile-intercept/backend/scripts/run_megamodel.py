@@ -92,15 +92,25 @@ STAGE_PLANS = [
         stage="S3",
         hard_cap=2_000_000,
         layouts_pool_slots=("C", "D"),
-        # Fallback per prompt: scripted scripted rule (no learned-Red wired).
-        red_mode_pool=("scripted", "scripted", "rule"),
+        # 2026-04-26: dropped "rule" from the pool. The first attempt at
+        # ('scripted','scripted','rule') saturated the box because rule
+        # RedAI spawns all 28 demo waves within the first 145s sim, so
+        # the world ends up holding many simultaneous threats — each
+        # env step becomes heavy. Combined with the parallel Red-trainee
+        # job already running on the box (in ~/hackathon-stridsledning-red/,
+        # also at n_envs=48), contention dropped fps from 400 → 36 and
+        # iter 2 took 45 min. Scripted-only matches the S2 setup so the
+        # warmstart chain stays consistent. Layouts C+D still differ
+        # from S2 by sampling — already 50/50.
+        red_mode_pool=("scripted",),
         warmstart_from="S2",
     ),
     dict(
         stage="S4",
         hard_cap=1_000_000,
         layouts_pool_slots=("C", "C", "D", "D", "E"),
-        red_mode_pool=("scripted", "scripted", "rule"),
+        # Same scripted-only fallback as S3.
+        red_mode_pool=("scripted",),
         warmstart_from="S3",
     ),
 ]

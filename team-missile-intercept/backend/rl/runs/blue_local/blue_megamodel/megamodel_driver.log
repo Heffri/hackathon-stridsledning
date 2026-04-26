@@ -56,3 +56,34 @@ To https://github.com/Heffri/hackathon-stridsledning.git
 [S3] log -> /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S3_training.log
 [S3] hard_cap=2,000,000 steps
 [watchdog/S3] ep_rew_mean count=1 (wall=45.8 min)
+[S3] final → /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S3_final.zip (wall 52.2 min)
+
+[git] commit + push: feat(rl): megamodel S3 hardcap (wall=52 min)
+[train-megamodel-cap72 32f1742] feat(rl): megamodel S3 hardcap (wall=52 min)
+ 3 files changed, 206 insertions(+)
+ create mode 100644 team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S3_final.zip
+ create mode 100644 team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S3_training.log
+To https://github.com/Heffri/hackathon-stridsledning.git
+   70256c5..32f1742  train-megamodel-cap72 -> train-megamodel-cap72
+
+[S4] launching: /home/chen/hackathon-stridsledning/team-missile-intercept/backend/.venv/bin/python -u -m rl.train --total-steps 1000000 --n-envs 48 --n-steps 1024 --batch-size 256 --n-epochs 4 --lr 0.0003 --gamma 0.995 --gae-lambda 0.95 --ent-coef 0.01 --clip-range 0.2 --episode-time-limit 5000.0 --blue-budget 200000000 --red-budget 150000000 --device cpu --save-every 200000 --run-name blue_megamodel_S4 --layouts-pool /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/top3_layouts_CD.json --layouts-pool-slots C C D D E --red-mode-pool scripted scripted rule --warmstart /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S3_final.zip
+[S4] log -> /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S4_training.log
+[S4] hard_cap=1,000,000 steps
+[S1] final exists → skipping (resume mode)
+[S2] final exists → skipping (resume mode)
+
+[S3] launching: /home/chen/hackathon-stridsledning/team-missile-intercept/backend/.venv/bin/python -u -m rl.train --total-steps 2000000 --n-envs 48 --n-steps 1024 --batch-size 256 --n-epochs 4 --lr 0.0003 --gamma 0.995 --gae-lambda 0.95 --ent-coef 0.01 --clip-range 0.2 --episode-time-limit 5000.0 --blue-budget 200000000 --red-budget 150000000 --device cpu --save-every 200000 --run-name blue_megamodel_S3 --layouts-pool /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/top3_layouts_CD.json --layouts-pool-slots C D --red-mode-pool scripted --warmstart /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S2_final.zip
+[S3] log -> /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S3_training.log
+[S3] hard_cap=2,000,000 steps
+[watchdog/S3] ep_rew_mean count=1 (wall=230.4 min)
+[watchdog/S3] ep_rew_mean count=2 (wall=233.4 min)
+[watchdog/S3] ep_rew_mean count=3 (wall=235.4 min)
+[watchdog/S3] ep_rew_mean count=4 (wall=237.4 min)
+[watchdog/S3] ep_rew_mean count=5 (wall=240.4 min)
+[watchdog/S3] ep_rew_mean count=6 (wall=242.4 min)
+[watchdog/S3] ep_rew_mean count=7 (wall=244.4 min)
+[watchdog/S3] ep_rew_mean count=8 (wall=247.4 min)
+[watchdog/S3] CONVERGED at wall=247.4 min, sending SIGINT to train.py (pid=105769)
+[S3] final → /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S3_final.zip (wall 247.5 min)
+
+[git] commit + push: feat(rl): megamodel S3 converged (wall=247 min)
