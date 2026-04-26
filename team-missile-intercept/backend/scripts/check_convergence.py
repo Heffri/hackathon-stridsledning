@@ -27,13 +27,19 @@ def main():
     if not log.exists():
         sys.exit(2)
     values = parse_ep_rew_means(log)
-    if len(values) < 3:
+    # Require at least 6 ep_rew_mean samples before allowing convergence
+    # to fire. The earliest 3-4 readings are dominated by cold-start
+    # noise (agent barely moves the policy off random init), so the
+    # last3 heuristic can plateau-trigger on -X, -X, -X' before any
+    # real learning has happened.
+    MIN_SAMPLES = 6
+    if len(values) < MIN_SAMPLES:
         sys.exit(1)
     last3 = values[-3:]
     span = max(last3) - min(last3)
     is_new_max = last3[-1] >= max(values)
     converged = (span < CONVERGENCE_RANGE) and (not is_new_max)
-    print(f"last3={last3} span={span:.2f} new_max={is_new_max} converged={converged}")
+    print(f"n={len(values)} last3={last3} span={span:.2f} new_max={is_new_max} converged={converged}")
     sys.exit(0 if converged else 1)
 
 
