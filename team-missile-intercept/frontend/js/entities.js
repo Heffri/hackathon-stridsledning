@@ -932,6 +932,14 @@ export class EntityRegistry {
         ex.mesh.position.z += ex.vel[2] * SCALE * dt;
         ex.mesh.material.opacity = Math.max(0, 0.9 * (1 - t));
         ex.mesh.scale.setScalar(Math.max(0.01, 1 - t));
+      } else if (ex.isImpactBubble) {
+        // Pop in over first 0.15 (≈1.2s of 8s lifetime), hold near full,
+        // fade out over last 30%. Gentle pulse keeps it readable.
+        const popIn = Math.min(1, t / 0.15);
+        const fadeOut = t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1;
+        const pulse = 0.92 + 0.08 * Math.sin(age * 3.5);
+        ex.mesh.scale.setScalar(popIn * pulse);
+        ex.mesh.material.opacity = 0.55 * popIn * fadeOut;
       } else {
         const rate = ex.scaleRate ?? 18;
         const scale = 1 + t * rate;
@@ -1017,7 +1025,43 @@ export class EntityRegistry {
     this.scene.add(ring);
     this.explosions.push({ mesh: ring, born: now, lifetime: 0.5, scaleRate: R * 1.5, isRing: true });
 
-    // 4. Debris particles (count scaled by kind)
+    // 4b. Red landing bubble — only for enemy threats reaching the ground.
+    // Marks "this is where a missile of theirs landed" so the operator can
+    // see at a glance which areas of the map took hits during the match.
+    // Kind names match backend ThreatType enum values exactly.
+    const THREAT_BUBBLE = {
+      drone:      1.5,
+      cruise_sub: 2.5,
+      ballistic:  4.0,
+      hgv:        5.0,
+    };
+    const bubbleR = THREAT_BUBBLE[kind];
+    if (bubbleR !== undefined) {
+      const bubbleMat = new THREE.MeshBasicMaterial({
+        color: 0xff2030,
+        transparent: true,
+        opacity: 0.0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const bubble = new THREE.Mesh(
+        new THREE.SphereGeometry(bubbleR, 20, 14),
+        bubbleMat,
+      );
+      // Sit dome on the ground (y=0): the lower half is occluded by the
+      // ocean/terrain plane, leaving a hemispherical mark.
+      bubble.position.set(x, 0, z);
+      this.scene.add(bubble);
+      this.explosions.push({
+        mesh: bubble,
+        born: now,
+        lifetime: 8.0,
+        isImpactBubble: true,
+        targetRadius: bubbleR,
+      });
+    }
+
+    // 5. Debris particles (count scaled by kind)
     for (let i = 0; i < cfg.d; i++) {
       const dMat = new THREE.MeshBasicMaterial({
         color: Math.random() > 0.5 ? 0xffcc44 : 0xff6633,
