@@ -742,13 +742,17 @@ html, body {
   z-index: 20; pointer-events: none;
   transition: opacity 0.3s ease-out; opacity: 1;
 }
-#match-overlay.hidden { opacity: 0; pointer-events: none; }
-/* CSS pointer-events does NOT cascade — descendants with explicit
-   `pointer-events: auto` (like .mo-inner) remain hit-testable even
-   when the parent is `none`. Without this rule the centered .mo-inner
-   box steals every canvas click in the middle of the screen during
-   RUNNING / SETUP / PAUSED, blocking OrbitControls rotation. */
-#match-overlay.hidden .mo-inner { pointer-events: none; }
+/* When hidden, REMOVE THE ELEMENT FROM LAYOUT ENTIRELY. opacity:0 +
+   pointer-events:none on the parent is not enough — descendants like
+   .mo-inner / .mo-action have explicit `pointer-events: auto` which
+   per CSS spec stays hit-testable even when the parent is `none`. So
+   the invisible centered dialog box silently caught every centre-
+   screen click during RUNNING / PAUSED, blocking OrbitControls
+   rotation. `display: none` removes the whole subtree from the box
+   tree — no descendant can override it. The opacity transition is
+   sacrificed (it was barely visible anyway during the brief
+   end-of-match auto-pop). */
+#match-overlay.hidden { display: none; }
 .mo-inner {
   background: rgba(10, 21, 32, 0.92);
   border: 2px solid rgba(63, 193, 255, 0.35);
