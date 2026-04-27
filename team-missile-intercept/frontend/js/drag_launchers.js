@@ -181,9 +181,18 @@ export function initLauncherDrag({
           if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
             mesh.group.position.set(hitPoint.x, 0, hitPoint.z);
           }
-        } else {
+        } else if (getPhase() === 'setup') {
+          // SETUP + empty canvas: past threshold = camera orbit, drop click intent.
           armed = null;
         }
+        // Non-SETUP (RUNNING/PAUSED/FINISHED): KEEP `armed` alive past
+        // threshold (2026-04-27). Previously this was nulled, which
+        // dropped click-to-select intent on any pointer drift > 5 px
+        // between pointer-down and pointer-up — typical for inspection
+        // clicks during a live match (small finger / mouse jitter).
+        // pointerup re-checks the down-vs-up distance and decides
+        // click vs drag at release time, restoring the SETUP-style
+        // resilience to non-SETUP phases.
       }
       return;
     }
@@ -265,19 +274,24 @@ export function initLauncherDrag({
       endDrag(true, ev);
       return;
     }
-    // Armed without being promoted = click. Select (or deselect on empty
-    // space). Issue #26: works in every phase, not just SETUP. The re-
-    // raycast here (rather than trusting armed.id from pointerdown) lets
-    // the final-intent interpretation survive tiny camera drift between
-    // down and up — if the operator sub-threshold shifts the pointer off
-    // the launcher, the final pixel decides.
+    // Armed without being promoted = potentially a click. Re-check
+    // pointer travel between pointerdown and now: tiny movement = click,
+    // large movement = camera orbit (in non-SETUP) so skip selection.
+    // This re-check is what restores click-to-select in RUNNING/PAUSED/
+    // FINISHED — pointermove no longer kills `armed` past threshold in
+    // non-SETUP (2026-04-27 fix).
     if (armed) {
+      const dx = ev.clientX - armed.downX;
+      const dy = ev.clientY - armed.downY;
+      const wasClick =
+        (dx * dx + dy * dy) < CLICK_DRAG_THRESHOLD_PX * CLICK_DRAG_THRESHOLD_PX;
       armed = null;
       const pid = (ev.pointerId != null) ? ev.pointerId : capturedPointerId;
       if (pid != null) {
         try { canvas.releasePointerCapture?.(pid); } catch (_) { /* already released */ }
       }
       capturedPointerId = null;
+      if (!wasClick) return;  // drag/orbit, no selection change
       updatePointerNDC(ev);
       const hitId = findLauncherIdUnderPointer();
       setSelectedLauncherId(hitId || null);

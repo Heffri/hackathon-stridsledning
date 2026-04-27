@@ -987,17 +987,20 @@ export class EntityRegistry {
         ex.mesh.material.opacity = Math.max(0, 0.9 * (1 - t));
         ex.mesh.scale.setScalar(Math.max(0.01, ex.baseScale * (1 - t)));
       } else if (ex.isImpactBubble) {
-        // Persistent battle marker. Pop in over the first ~1.2s wall-
-        // clock then hold steady. No fade — operator's "this area was
-        // hit" record stays for the whole battle (and beyond match
-        // end). Lifetime cleanup below skips this branch so the mesh
-        // never gets reaped. Opacity 0.7 (up from 0.55) so the dome
-        // reads strongly red against the ocean instead of looking like
-        // faint haze that the operator can't spot during the demo.
-        const popIn = Math.min(1, age / 1.2);
+        // Transient hit marker (2026-04-27): user feedback during
+        // pre-Finale review — persistent bubbles cluttered the view in
+        // long matches. Now: pop in over ~0.4s, hold ~1.0s, fade out
+        // ~0.6s, total lifetime 2.0s. Lifetime cleanup below now
+        // reaps these along with the regular explosion meshes.
+        const popInDuration = 0.4;
+        const fadeStartAt = ex.lifetime - 0.6;  // last 0.6s = fade
+        const popIn = Math.min(1, age / popInDuration);
+        const fadeOut = age < fadeStartAt
+          ? 1.0
+          : Math.max(0, 1 - (age - fadeStartAt) / 0.6);
         const pulse = 0.92 + 0.08 * Math.sin(age * 3.5);
         ex.mesh.scale.setScalar(ex.targetRadius * popIn * pulse);
-        ex.mesh.material.opacity = 0.7 * popIn;
+        ex.mesh.material.opacity = 0.7 * popIn * fadeOut;
       } else {
         const rate = ex.scaleRate ?? 18;
         const env = 1 + t * rate;
@@ -1006,10 +1009,8 @@ export class EntityRegistry {
       }
     }
     this.explosions = this.explosions.filter((ex) => {
-      // Impact bubbles persist for the full battle (and beyond match
-      // end) — they're the operator's hit-record. Skip them here so
-      // lifetime expiry doesn't reap them.
-      if (ex.isImpactBubble) return true;
+      // Impact bubbles fade out at age=ex.lifetime like other VFX
+      // (transient hit marker, was: persistent battle marker).
       const age = realNow - ex.born;
       if (age >= ex.lifetime) {
         this.scene.remove(ex.mesh);
@@ -1107,7 +1108,7 @@ export class EntityRegistry {
       this.explosions.push({
         mesh: bubble,
         born: now,
-        lifetime: 8.0,
+        lifetime: 2.0,
         isImpactBubble: true,
         targetRadius: bubbleR,
       });
