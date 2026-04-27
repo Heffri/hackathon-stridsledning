@@ -228,8 +228,12 @@ SITE_LEAK_DAMAGE = {
 # headroom but a wave-5 saturation can visibly tighten the bar.
 import os as _os
 # Budgets honor env-var overrides so training scripts can switch the
-# starting budgets without editing this file. Defaults preserved.
-BLUE_BUDGET_START = int(_os.environ.get("BLUE_BUDGET_START_OVERRIDE", 120_000_000))
+# starting budgets without editing this file.
+# Demo Live ver 1.0 (2026-04-27): defaults bumped 120M -> 200M (Blue)
+# and 100M -> 150M (Red) to match the V4 / Megamodel / S1-retrain
+# training distributions. Older training scripts that relied on the
+# 120/100 defaults can still override via env vars if needed.
+BLUE_BUDGET_START = int(_os.environ.get("BLUE_BUDGET_START_OVERRIDE", 200_000_000))
 
 # M-TIER3-RED-BUDGET (Issue #8, 2026-04-20): Red now has a finite
 # spending pool, symmetric with Blue. Deducted from `world.red_budget`
@@ -246,7 +250,7 @@ BLUE_BUDGET_START = int(_os.environ.get("BLUE_BUDGET_START_OVERRIDE", 120_000_00
 # but live for the AI-driven regime.
 # TODO: tune once Boyu's Red AI lands. Balance target is "Red must
 # play an efficient budget game to win".
-RED_BUDGET_START = int(_os.environ.get("RED_BUDGET_START_OVERRIDE", 100_000_000))
+RED_BUDGET_START = int(_os.environ.get("RED_BUDGET_START_OVERRIDE", 150_000_000))
 
 # Per-launcher base cost (M-TIER2-J Part 2, Issue #6). Deducted from
 # `world.blue_budget` when `add_launcher` places a new launcher during
