@@ -107,3 +107,18 @@ To https://github.com/Heffri/hackathon-stridsledning.git
 [S4] final → /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S4_final.zip (wall 29.1 min)
 
 [git] commit + push: feat(rl): megamodel S4 converged (wall=29 min)
+[train-megamodel-cap72 5685208] feat(rl): megamodel S4 converged (wall=29 min)
+ 3 files changed, 434 insertions(+)
+ create mode 100644 team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S4_final.zip
+ create mode 100644 team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S4_training.log
+To https://github.com/Heffri/hackathon-stridsledning.git
+   ede99c8..5685208  train-megamodel-cap72 -> train-megamodel-cap72
+
+[finalize] S4_final.zip → /home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/model.zip
+
+=== megamodel summary ===
+  {'stage': 'S1', 'accumulated': None, 'converged': 'skip'}
+  {'stage': 'S2', 'accumulated': None, 'converged': 'skip'}
+  {'stage': 'S3', 'wall_min': 247.45861440896988, 'converged': True, 'final': '/home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S3_final.zip'}
+  {'stage': 'S4', 'wall_min': 29.108142240842184, 'converged': True, 'final': '/home/chen/hackathon-stridsledning/team-missile-intercept/backend/rl/runs/blue_local/blue_megamodel/stages/S4_final.zip'}
+total wall: 276.8 min
