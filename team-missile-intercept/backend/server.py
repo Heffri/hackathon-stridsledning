@@ -39,6 +39,7 @@ BLUE_AI_MODELS = [
     ("megamodel_s1", "RL Megamodel S1 (Layout C only)", "rl/runs/blue_local/blue_megamodel/stages/S1_final.zip"),
     ("megamodel_s2", "RL Megamodel S2 (Layout C+D)", "rl/runs/blue_local/blue_megamodel/stages/S2_final.zip"),
     ("megamodel_s3", "RL Megamodel S3 (C+D + Red mix)", "rl/runs/blue_local/blue_megamodel/stages/S3_final.zip"),
+    ("s1_retrain", "RL S1 Retrain (anti-PAC-spam, V4-style reward)", "rl/runs/blue_s1_retrain/model.zip"),
 ]
 
 # Available Red AI models — order matches the frontend dropdown.

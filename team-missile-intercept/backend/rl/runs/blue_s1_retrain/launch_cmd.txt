@@ -1,0 +1,1 @@
+﻿python -m rl.train --total-steps 1500000 --n-envs 30 --n-steps 1024 --batch-size 256 --n-epochs 4 --lr 3e-4 --gamma 0.995 --gae-lambda 0.95 --ent-coef 0.01 --clip-range 0.2 --episode-time-limit 3000.0 --device cpu --save-every 200000 --run-name blue_s1_retrain --layouts-pool-slots C --red-mode-pool scripted --blue-budget 200000000 --red-budget 150000000
