@@ -190,10 +190,8 @@ In `team-missile-intercept/progress/`:
 
 - `BIG_MODELS_POSTMORTEM_en.md` / `_zh.md` — why Boyu V2a / Cap120 / Megamodel all regressed into PAC-spam
 - `V4_DISTRIBUTION_SHIFT_UPDATE_zh.md` — the real root cause (training-vs-deployment distribution mismatch)
-- `TRAIN_MEGAMODEL_REPORT.md` — EPYC curriculum training run
-- `TRAIN_RED_TRAINEE_REPORT.md` — Red Trainee v2 training run + cost-aware reward
-- `HANDOFF_S1_RETRAIN_INFLIGHT_2026-04-27.md` — S1 retrain methodology + reward design
-- `PROMPT_*.md` — worker prompts used to drive the EPYC overnight + S1-retrain runs
+
+The intermediate training reports and worker prompts live on the `archive/blue-training`, `archive/red-training`, and `archive/experiments` branches.
 
 ---
 

@@ -1,12 +1,11 @@
 # Game Design — AI vs AI Missile Intercept
 
-> 📘 **This document is the gameplay-mechanics spec.**
-> As of Milestone I the shipped sim implements every Red AI control level
-> described here (1–5 with the Level-5 HGV override hook wired), all 6
-> interceptors, HP + budget + win conditions, magazines + reloads, and
-> the multi-site target model. The Milestone-B "simplified MVP subset"
-> framing was retired; see `archive/pre-milestone-plans/DEMO_PLAN.md` for
-> that history.
+> This document is the gameplay-mechanics spec for the shipped sim.
+> The shipped sim implements every Red AI control level described here
+> (1–5 with the Level-5 HGV override hook), all 6 interceptors, HP +
+> budget + win conditions, magazines + reloads, and the multi-site
+> target model. All weapon names and stats are encyclopedia-level
+> values used as arcade game-balance numbers.
 
 ## Core Concept
 
@@ -290,17 +289,15 @@ Frontend shows live data for every active missile:
 - Arena: 150 km × 250 km × 40 km high (rectangular since Milestone H4; deep enough for Mach-17 HGV cross-time)
 - Timestep: dt=0.05s
 - WebSocket streaming: 15 fps state snapshots
-- Integration: Euler (adequate at 20 Hz physics for this scale; RK4 upgrade is `progress/ROADMAP.md` Route 3)
+- Integration: Euler (adequate at 20 Hz physics for this scale; RK4 would be the upgrade)
 - Guidance: True Proportional Navigation (N=4) as the default, AI may choose others
 - Kill check: per-tick closest-approach distance calculation (CPA gate on `kill_radius`, damage from linear falloff on `radius_prox`)
 - Terrain check: per-tick heightmap lookup + ground collision
 
 ### File Structure
 
-Live runtime split is `backend/` + `frontend/`; the modular target layout
-(`ai/`, `game-core/`, `maps/`, `models/`, `math-validation/`) is docs-only
-so far — see `common-info/MODULARIZATION_SPEC.md` for the current→future
-file mapping.
+Runtime split is `backend/` + `frontend/`. RL envs and trained model
+artifacts live under `backend/rl/`.
 
 ### Key Tunable Parameters
 

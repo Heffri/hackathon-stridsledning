@@ -2,7 +2,16 @@
 
 ## Purpose
 
-This document defines clear modular ownership boundaries for the active team project so later parallel sessions can work without stepping on each other.
+This document defines the modular ownership boundaries used during
+the hackathon. It is preserved as a historical record of who owned
+what.
+
+> Note: the per-module folders (`ai/`, `game-core/`, `maps/`,
+> `models/`, `math-validation/`) were docs-first ownership packages
+> during development. On this post-Finale branch the runtime sits in
+> `backend/` + `frontend/` only; the docs-first packages have been
+> removed. The references below describe what each owner was
+> responsible for, not directories that exist in this branch.
 
 Ownership here means:
 

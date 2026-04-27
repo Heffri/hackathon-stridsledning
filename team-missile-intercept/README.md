@@ -1,25 +1,16 @@
 # Team Missile Intercept
 
-`team-missile-intercept/` is the active Saab hackathon demo in this
-repository.
+The active Saab hackathon entry on this branch
+(`current/demo-live-v1.0`, post-Finale shipping snapshot).
 
-It is a 3D AI-vs-AI missile interception scenario where Red launches drones,
-cruise missiles, ballistic missiles, and HGVs while Blue selects
-interceptors and computes real-time intercept solutions.
+A 3D AI-vs-AI missile-intercept sandbox: Red AI launches drones,
+cruise missiles, ballistic missiles, and HGVs; Blue AI selects
+interceptors and computes real-time intercept solutions. Both
+sides have rule-based baselines plus RL-trained policies
+(PPO / MaskablePPO via Stable-Baselines3) loadable from the
+SETUP dropdown.
 
-## Start Here
-
-Read in this order:
-
-1. `common-info/REPO_ONBOARDING_NOTES.md`
-2. `common-info/README.md`
-3. `progress/STATUS.md`
-4. `progress/ROADMAP.md`
-
-`common-info/` is the navigation hub for structure, ownership, archive
-policy, and canonical source-data records.
-
-## Run The Demo
+## Run
 
 Preferred Windows launcher from the repo root:
 
@@ -27,40 +18,35 @@ Preferred Windows launcher from the repo root:
 .\run-team-missile-intercept.ps1
 ```
 
-Manual backend run path:
+Manual:
 
 ```powershell
-cd team-missile-intercept\backend
+cd backend
 pip install -r requirements.txt
 python server.py
 ```
 
-Then open `http://127.0.0.1:5174/`.
+Then open `http://127.0.0.1:5174/`. See
+[`backend/SETUP.md`](backend/SETUP.md) for the install
+checklist (especially the `numpy==1.26.4` pin) and common
+gotchas.
 
-## Current Repo Layout
+## Layout
 
-- `backend/` - active backend runtime shell
-- `frontend/` - active frontend runtime shell
-- `common-info/` - active navigation hub and shared docs package
-- `ai/`, `math-validation/`, `maps/`, `models/`, `game-core/` - docs-first
-  ownership packages
-- `archive/xingyi-rts/` - archived legacy tree kept for provenance only
+- `backend/sim/` — game core (physics, scenario, entities, sites,
+  rule-based AIs, win conditions).
+- `backend/rl/` — RL envs, training entries, live inference
+  wrappers, trained model artifacts under `runs/`.
+- `backend/server.py` — FastAPI + WebSocket runtime.
+- `frontend/` — Three.js scene, HUD, drag-to-place launchers.
+- `common-info/` — team-ownership spec + canonical source-data
+  knowledge base.
+- `progress/` — postmortems on what worked and what didn't.
 
-## Source Data
+## Reference docs
 
-Canonical active source data lives under `common-info/source-data/`.
-
-Use these docs for the current path-of-record and archive state:
-
-- `common-info/ACTIVE_SOURCE_DATA_INDEX.md`
-- `common-info/ARCHIVE_POLICY.md`
-- `common-info/DEPENDENCY_CUTOVER_REPORT.md`
-
-## Archive Rule
-
-Do not use `archive/xingyi-rts/` as the default place to look for active
-docs, source data, or implementation work.
-
-If archived material is still needed by the active demo, the canonical active
-copy must live under `common-info/source-data/` and be recorded in
-`common-info/ACTIVE_SOURCE_DATA_INDEX.md`.
+- [`GAME_DESIGN.md`](GAME_DESIGN.md) — gameplay mechanics and
+  design rules.
+- [`WEAPON_SPECS.md`](WEAPON_SPECS.md) — arsenal reference table.
+- [`progress/STATUS.md`](progress/STATUS.md) — current ship
+  state and known limitations.

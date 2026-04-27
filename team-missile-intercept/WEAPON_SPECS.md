@@ -1,27 +1,25 @@
 # Weapon Specifications — Full Reference
 
-> 📘 **This document is the arsenal spec reference.**
-> As of Milestone I, all 6 interceptors and all 6 threat kinds listed below
-> are active in the shipped sim (the Milestone-B MVP subset framing was
-> retired; see `archive/pre-milestone-plans/DEMO_PLAN.md` for that history).
-
-> Data sourced from `team-missile-intercept/common-info/source-data/knowledge/`
-> (canonical active copies of the Saab/reference inputs; manufacturer datasheets,
-> public domain). Bare source names in this document refer to that directory.
-> Values marked [est] are reasonable estimates where exact data is unavailable.
-> Reload times >60s are scaled ÷10 for demo pacing (see GAME_DESIGN.md for the scaling rule).
-
-> 🧮 **Drift note for Emil (`math-validation/` owner):**
-> Where this file's prose diverged from the shipped runtime, the **2026-04-19
-> cleanup pass** rewrote the prose to match the runtime (single source of
-> truth = `backend/sim/types.py` and `backend/sim/world.py`). Specifically:
-> HGV cruise_speed (5,831 m/s / Mach 17), ballistic cruise_speed (4,459 m/s
-> / Mach 13), HGV KE-bleed constant (`_HGV_BLEED_RATE = 120 m/s/s at max G`
-> with quadratic `(G/Gmax)²` scaling), and the **proximity-damage falloff
-> is linear in code** (`(1 - dist / prox_radius)`, not quadratic). If your
-> math-validation work prefers different numbers or a quadratic falloff,
-> please raise it with Chen — the runtime was treated as authoritative for
-> this pass rather than forcing a code change.
+> This document is the arsenal spec reference. All 6 interceptors and
+> all 6 threat kinds listed below are active in the shipped sim. All
+> weapon names and stats are encyclopedia-level values used as arcade
+> game-balance numbers.
+>
+> Data sourced from `common-info/source-data/knowledge/` (manufacturer
+> datasheets, public-domain reference notes). Values marked `[est]` are
+> reasonable estimates where exact data is unavailable. Reload times
+> over 60 s are scaled by 1/10 for demo pacing (see `GAME_DESIGN.md`
+> for the scaling rule).
+>
+> The single source of truth for runtime values is
+> `backend/sim/types.py` and `backend/sim/world.py`. Where this file's
+> prose drifted from the runtime during the 2026-04-19 cleanup pass,
+> the prose was rewritten to match the runtime. Specifically:
+> HGV cruise_speed (5,831 m/s / Mach 17), ballistic cruise_speed
+> (4,459 m/s / Mach 13), HGV KE-bleed constant `_HGV_BLEED_RATE`
+> (120 m/s/s at max G with quadratic `(G/Gmax)²` scaling), and the
+> proximity-damage falloff is linear in code
+> (`(1 - dist / prox_radius)`, not quadratic).
 
 ---
 

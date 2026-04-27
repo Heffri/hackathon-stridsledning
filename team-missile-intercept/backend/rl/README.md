@@ -1,82 +1,104 @@
-# rl — self-play RL envs + training
+# rl — RL envs + training + live inference
 
-Two Gymnasium envs over the `backend/sim/` simulator, plus a
-MaskablePPO training entry per side. Both envs share a symmetric
-observation/action dict and normalization so policies trained on one
-side can be cross-evaluated against the other.
+Two Gymnasium envs over the `backend/sim/` simulator, plus
+training entries and live inference wrappers. Both envs share a
+symmetric observation/action shape with action masking, so
+policies trained on one side can be cross-evaluated against the
+other.
 
-| Side  | Env                         | Opponent (rule-based) | Train entry          | Smoke              |
-| ----- | --------------------------- | --------------------- | -------------------- | ------------------ |
-| Blue  | `env.MissileInterceptEnv`   | `sim.red_ai.RedAI`    | `rl.train`           | `rl.smoke`         |
-| Red   | `red_env.RedEnv`            | `sim.blue_ai.BlueAI`  | `rl.red_train`       | `rl.red_smoke`     |
+| Side  | Env                       | Opponent (rule baseline) | Train entry      | Live inference        |
+| ----- | ------------------------- | ------------------------ | ---------------- | --------------------- |
+| Blue  | `env.MissileInterceptEnv` | `sim.red_ai.RedAI`       | `rl.train`       | `rl.live_ai.LearnedBlueAI` |
+| Red   | `red_env.RedEnv`          | `sim.blue_ai.BlueAI`     | `rl.red_train`   | `rl.live_ai.LearnedRedAI`  |
 
-## Blue side (Boyu)
+## Action / observation cap
+
+Both envs are sized at `MAX_THREATS=120`, `MAX_LAUNCHERS=60`,
+`MAX_INTERCEPTORS=160`, `MAX_SITES=4` (see `env.py`). This
+matches what the live demo uses. `live_ai.py` adapts smaller-cap
+checkpoints (e.g. cap 72 / cap 30) by slicing the obs vector
+and remapping the action.
+
+## Blue side
 
 Blue agent picks a fire command per Blue launcher per decision
-(`MultiDiscrete([MAX_THREATS + 1] * MAX_LAUNCHERS)`). Threat spawns
-are driven by the scripted `build_demo_waves()`.
+(`MultiDiscrete([MAX_THREATS + 1] * MAX_LAUNCHERS)`) with action
+masking gating which `(launcher, threat)` pairs are legal.
+Threat spawns are driven either by the scripted `RedAI` or by
+the `Red Trainee v2` policy when `--red-policy-path` is passed.
 
 ```bash
-# Smoke (3 policies × 1200 steps, ~20s)
+# Smoke
 python -m rl.smoke
 
-# Train (CPU/GPU auto-detected; expect hours on GPU for 1M steps)
-python -m rl.train --total-steps 1000000 --n-envs 8
+# Train (CPU; expect hours per million steps depending on n_envs)
+python -m rl.train --total-steps 1500000 --n-envs 30 \
+  --layouts-pool-slots C \
+  --red-mode-pool scripted \
+  --blue-budget 200000000 --red-budget 150000000 \
+  --run-name my_blue_run
 
-# Output → rl/runs/<timestamp>/{model.zip,ckpt/,tb/}
+# Output → rl/runs/blue_local/<run-name>/{model.zip, ckpt/, tb/}
 ```
 
-## Red side (Chen)
+The shipping Blue is in
+`rl/runs/blue_local/blue_reward_v4_finetune/` (the validated V4 +
+CIWS Active configuration). Path 1 predictive-dispatch rule
+layer in `live_ai.py` runs alongside it.
+
+## Red side
 
 Red agent picks `(kind, target_site)` per decision
-(`MultiDiscrete([5, len(SOUTH_SITES)])`). `kind=0` means hold; 1..4
-are drone / cruise / ballistic / HGV. Launcher position is auto-
-selected per kind (V1 simplification — agent doesn't choose launcher
-or maneuver_schedule). Opponent is rule-based `BlueAI`.
+(`MultiDiscrete([5, len(SOUTH_SITES)])`). `kind=0` is hold;
+1..4 are drone / cruise / ballistic / HGV. Launcher position
+is auto-selected per kind (V1 simplification — agent doesn't
+choose launcher or `maneuver_schedule`).
 
 ```bash
-# Smoke (3 policies × 100 steps, ~5s)
 python -m rl.red_smoke
 
-# Train (runs in parallel with Blue training on a second machine)
-python -m rl.red_train --total-steps 1000000 --n-envs 8
+python -m rl.red_train --total-steps 1500000 --n-envs 30 \
+  --run-name my_red_run
 
-# Output → rl/runs/red_<timestamp>/{model.zip,ckpt/,tb/}
+# Output → rl/runs/red_local/<run-name>/{model.zip, ckpt/, tb/}
 ```
 
-Red reward is sign-flipped vs Blue: `+2*dmg` per `leak`, spawn cost
-subtracted at decision time, `-cost/1e6` per `intercept` (lost threat),
-`-0.2` per `ground_crash`, terminal `±100` on site HP=0 / Red priced
-out + no live threats.
+The shipping Red Trainee v2 is in
+`rl/runs/red_local/red_trainee_parallel/`. Reward shaping
+includes spend cost, leak reward (sign-flipped from Blue),
+HGV-evasion bonus, and a small ground-crash penalty.
 
-See `red_env.py` module docstring for the full reward and action-space
-contract.
+## Models bundled in this branch
 
-## Parallel self-play training
+Loadable from the SETUP dropdown:
 
-Boyu trains Blue on his machine, Chen trains Red on a second machine.
-Both sides see the same sim — the symmetric env shape means policies
-from either side can be loaded into a shared eval harness.
+- Blue: heuristic, RL v3 / v4 / V4 (CIWS Active), Boyu V2 / V2a,
+  Cap120, Megamodel + S1–S4, S1 retrain (final + peak)
+- Red: scripted 3-chain, attrition, RL Trainee v2
 
-## Cross-eval (deferred)
+See `team-missile-intercept/backend/server.py` `BLUE_AI_MODELS`
+and `RED_AI_MODELS` for the registration table.
 
-`rl.eval` currently loads a Blue MaskablePPO policy and runs it
-against rule-based Red. Loading a Red policy + running it against
-rule-based Blue (or against a trained Blue policy for full self-play
-eval) is a future extension — a follow-up worker should generalise
-`eval.py` to switch env class + mask_fn based on a `--side red|blue`
-flag.
+## Postmortems
 
-## Non-goals (V1)
+For why several of the bigger Blue checkpoints regressed into
+PAC-spam (and why V4 + the rule layer is the validated demo
+configuration), see:
 
-* Red agent does NOT pick launcher position (auto round-robin via
-  `RedLauncherFleet.next_pos` for drone/cruise; strategic north-strip
-  sampler for ballistic/HGV).
-* Red agent does NOT set `maneuver_schedule` — HGV uses its default
-  glide-dive; cruise_sub uses default S-shape waypoints.
-* No partial-observation / radar model — both envs are omniscient.
+- `team-missile-intercept/progress/BIG_MODELS_POSTMORTEM_en.md` / `_zh.md`
+- `team-missile-intercept/progress/V4_DISTRIBUTION_SHIFT_UPDATE_zh.md`
 
-If Red training plateaus, the follow-up expansion is to widen the
-action space to include launcher-id and a small maneuver-schedule
-menu (e.g. jink patterns for cruise / ballistic). The reward signal
-and sim coupling don't need to change.
+## Known limitations
+
+- No partial-observation / radar model — both envs are
+  omniscient.
+- Red agent does not pick launcher position or
+  `maneuver_schedule` (auto round-robin via
+  `RedLauncherFleet.next_pos` for drone/cruise; strategic
+  north-strip sampler for ballistic/HGV).
+- `LearnedBlueAI` carries cross-match state in `_assignments` /
+  `_tick_counter`; first match clean, second match degrades.
+  Fix would be ~10 lines.
+- `EvalCallback` with periodic deterministic rollouts wasn't
+  wired during training, so checkpoint selection used
+  `ep_rew_mean` rather than win rate.

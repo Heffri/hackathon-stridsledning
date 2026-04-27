@@ -1,146 +1,106 @@
-# Smart Stridsledning - Saab Hackathon 2026
+# Smart Stridsledning — Saab Hackathon 2026
 
-> Saab + KTH Hackathon | Organized by 2Hero | Hack Day: April 25, 2026
+Top-5 finalist entry for the Saab + KTH 2026 university hackathon.
+A browser-based AI-vs-AI missile-intercept sandbox: Python sim
+backend (FastAPI / WebSocket) + Three.js 3D frontend +
+RL-trained Blue / Red policies (PPO / MaskablePPO via
+Stable-Baselines3).
 
----
+This is a hackathon arcade-style game / decision-support sandbox.
+All weapon names and stats are encyclopedia-level values used as
+unit balance numbers.
 
-## 🚀 Hack Day Final-Demo Quickstart (`final-demo` branch)
+## Run the demo
 
-This branch ships the Hack Day demo package — bundled trained models +
-all balance / safety-net polish + supporting eval data.
-
-### Prerequisites
-
-- Windows + PowerShell
-- Python 3.12 + repo deps installed (see
-  [`team-missile-intercept/backend/requirements.txt`](team-missile-intercept/backend/requirements.txt))
-- Browser (Chrome) for the demo frontend
-
-### Startup A — Live demo (Blue learned policy + Path C vs scripted Red) ⭐
-
-The primary 4-minute demo. Trained Blue (`blue_aoe_aggressive_B_shaped`,
-~3.3 M cumulative PPO steps with B-path reward shaping) plus
-`live_ai.py`'s Path C `_force_strategic_fallback` rule-layer safety net
-guaranteeing PAC-3 / PAC-2 dispatch on ballistic / HGV. Red is the
-scripted 3-chain doctrine.
-
-```powershell
-cd .claude\worktrees\cool-golick-1340ba\team-missile-intercept\backend
-$env:RED_WAVE_MODE = "scripted"
-$env:BLUE_POLICY_PATH = "$pwd\rl\runs\blue_local\blue_aoe_aggressive_B_shaped\model.zip"
-Remove-Item Env:RED_POLICY_PATH -ErrorAction SilentlyContinue
+```bash
+cd team-missile-intercept/backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1     # Windows; or `source .venv/bin/activate` on Linux/macOS
+pip install --upgrade pip
+pip install numpy==1.26.4         # MUST be 1.26.x, not 2.x
+pip install -r requirements.txt
 python server.py
 ```
 
-Browser: `http://127.0.0.1:5174`
+Open `http://127.0.0.1:5174/` in Chrome. Click Start in SETUP phase.
 
-In SETUP phase before clicking Start:
-1. **Budget panel**: set Red `110_000_000`, Blue `200_000_000`
-   (defaults are 100M / 120M — too tight for this demo)
-2. **Layout**: D (full 6-launcher firing including SLM + PAC-3) or
-   C (slightly safer, no SLM but sites hold cleaner)
-3. **Apply Layout** → **Start Match**
-4. Speed slider 10-20× for detail, 50× to fast-forward quiet stretches
+The defaults (Layout C, Red 150M / Blue 200M, V4 Blue model,
+Scripted Red) match the validated demo configuration. See
+[`team-missile-intercept/backend/SETUP.md`](team-missile-intercept/backend/SETUP.md)
+for the full setup checklist and common gotchas.
 
-### Startup B — Legacy AI vs AI (judges who want to see the old self-play pair)
-
-The 2026-04-21 self-play snapshot: trained Red AI vs trained Blue AI on
-the original 250 km arena balance.
-
-```powershell
-cd .claude\worktrees\cool-golick-1340ba\team-missile-intercept\backend
-Remove-Item Env:RED_WAVE_MODE -ErrorAction SilentlyContinue
-$env:BLUE_POLICY_PATH = "$pwd\rl\models\blue_ai_1m_2xpenalty\model.zip"
-$env:RED_POLICY_PATH  = "$pwd\rl\runs\red_20260421_234425\model.zip"
-python server.py
-```
-
-Browser same URL. Layout doesn't matter much — both AIs adapt.
-
-### Switching between A and B
-
-`Ctrl+C` to stop the current `server.py`, change env vars per the
-target startup, run `python server.py` again. The frontend will
-auto-reconnect on browser refresh.
-
-### Bundled models
-
-| Model | Path | Use |
-|---|---|---|
-| Blue (B-path retrained) | `rl/runs/blue_local/blue_aoe_aggressive_B_shaped/model.zip` | Startup A — current demo Blue |
-| Blue (legacy) | `rl/models/blue_ai_1m_2xpenalty/model.zip` | Startup B — legacy AI-vs-AI Blue |
-| Red (legacy) | `rl/runs/red_20260421_234425/model.zip` | Startup B — legacy AI-vs-AI Red |
-
-### Demo storyline (4 min)
-
-1. Open Layout D + Startup A. Speed 50×.
-2. **First 30 s real-time** (~ 1500 s sim): drones cruise south, CIWS
-   and RBS-70 light up; mid-range threats engaged by IRIS-T SLS / SLM.
-3. **30-50 s real-time** (~ 1500-2500 s sim): ScriptedRed transitions
-   to ballistic + HGV; PAC-3 launches (Path C dispatch when policy
-   doesn't fire); ballistic kills look like flak rings.
-4. **50-90 s real-time** (~ 2500-4500 s sim): mop-up phase, Red drains
-   leftover budget on drone harassment; Blue defends; match resolves
-   to "BLUE WINS" once the last threat lands or is intercepted.
-
-### Eval evidence (in this branch)
-
-- `team-missile-intercept/backend/blue_aoe_A_redBudget110_eval.md`
-- `team-missile-intercept/backend/blue_aoe_A_redBudget110_long_eval.md`
-- `team-missile-intercept/backend/blue_aoe_B_full_eval.md`
-- `team-missile-intercept/progress/OVERNIGHT_REPORT_2026-04-25.md`
-  (full Hack-Day-eve autonomous run summary)
-
----
-
-## Mainline Project
-
-[`team-missile-intercept/`](team-missile-intercept/) is the active team
-project and the mainline working area for this repository.
-
-It is a 3D AI-vs-AI missile interception demo where Red AI launches threats
-and Blue AI selects interceptors using real-time physics-based intercept
-math.
-
-## Where Teammates Should Start
-
-- Repo onboarding:
-  [`team-missile-intercept/common-info/REPO_ONBOARDING_NOTES.md`](team-missile-intercept/common-info/REPO_ONBOARDING_NOTES.md)
-- Common navigation hub:
-  [`team-missile-intercept/common-info/`](team-missile-intercept/common-info/)
-- Current status:
-  [`team-missile-intercept/progress/STATUS.md`](team-missile-intercept/progress/STATUS.md)
-- Roadmap:
-  [`team-missile-intercept/progress/ROADMAP.md`](team-missile-intercept/progress/ROADMAP.md)
-
-## Run The Active Demo
-
-Windows launcher from the repo root:
+There is also a Windows launcher:
 
 ```powershell
 .\run-team-missile-intercept.ps1
 ```
 
-Short running note:
+## What's in here
 
-- [`RUNNING_TEAM_MISSILE_INTERCEPT.md`](RUNNING_TEAM_MISSILE_INTERCEPT.md)
+```
+team-missile-intercept/
+  backend/
+    sim/             game core: physics, scenario, entities, sites,
+                     red/blue rule AIs, win conditions, budget/HP
+    rl/              RL envs (Blue + Red), training entries,
+                     live inference wrappers, trained model artifacts
+    server.py        FastAPI + WebSocket runtime
+  frontend/          Three.js scene, HUD, drag-to-place launchers
+  common-info/       team-ownership spec, runtime stability rules,
+                     module spec, source-data knowledge base
+  progress/          postmortems on what worked and what didn't
+```
 
-## Active Source Data
+## Where to look first
 
-Canonical active source data lives under
-[`team-missile-intercept/common-info/source-data/`](team-missile-intercept/common-info/source-data/).
+If you want to understand the interesting parts of the project:
 
-Use these documents to understand the current cutover and archive state:
+- **Sim engine and reward design**:
+  [`team-missile-intercept/backend/rl/env.py`](team-missile-intercept/backend/rl/env.py)
+  (observation / action / mask / reward), and
+  [`team-missile-intercept/backend/sim/`](team-missile-intercept/backend/sim/)
+  for the underlying game-core (scenarios, entities, world,
+  win conditions, budget).
+- **Postmortems** —
+  [`team-missile-intercept/progress/`](team-missile-intercept/progress/)
+  contains the writeups that have most of the actual learning value:
+  - `BIG_MODELS_POSTMORTEM_en.md` / `_zh.md` — why the bigger Blue
+    models (Boyu V2a / Cap120 / Megamodel) regressed into
+    PAC-spam, and what the cheaper V4 + rule layer actually does.
+  - `V4_DISTRIBUTION_SHIFT_UPDATE_zh.md` — the real root cause of
+    the "PAC-spam" regression, found mid-Finale day:
+    train / deploy distribution mismatch on layout + budget.
+- **Module ownership and rules** —
+  [`team-missile-intercept/common-info/`](team-missile-intercept/common-info/)
+  for `TEAM_OWNERSHIP_SPEC.md`, `MODULARIZATION_SPEC.md`,
+  `RUNTIME_STABILITY_RULES.md`.
 
-- [`ACTIVE_SOURCE_DATA_INDEX.md`](team-missile-intercept/common-info/ACTIVE_SOURCE_DATA_INDEX.md)
-- [`ARCHIVE_POLICY.md`](team-missile-intercept/common-info/ARCHIVE_POLICY.md)
-- [`DEPENDENCY_CUTOVER_REPORT.md`](team-missile-intercept/common-info/DEPENDENCY_CUTOVER_REPORT.md)
+## Authorship note
 
-## Archived Legacy Material
+This is a 14-day, 5-person team project. Most of the runnable
+code (~30k LOC) was produced by AI assistants (Claude Code) under
+human direction, orchestrated across multiple async worker
+sessions on local + rented EPYC hardware. The repo is preserved
+as-is from the hackathon — Chinese / English mixed docs in
+`progress/`, dated postmortems, and the trained-model artifacts
+that ran in the live demo.
 
-The archived legacy tree now lives at
-[`team-missile-intercept/archive/xingyi-rts/`](team-missile-intercept/archive/xingyi-rts/).
+The team:
 
-It is kept for provenance and historical traceability only. It is not an
-active working project, not the onboarding path for teammates, and not the
-canonical home for active source data.
+- Sebastijan Babic — team lead, maps + visual assets
+- Boyu — Blue-side RL training
+- Oskar — Blue-side rule logic
+- Emil — math validation
+- Xingyi Chen — game core, runtime integration, RL co-engineering
+  during the Finale stretch
+
+## Event info
+
+- Hack Day: April 25, 2026, KTH Innovation
+- Grand Finale: April 27, 2026
+- This branch (`current/demo-live-v1.0`) is the validated post-Finale
+  demo configuration.
+- Older state lives on the archive branches (`archive/V1-knowledge-base`,
+  `archive/V2-new-teamwork-split`, `archive/V2.5-live-demo`,
+  `archive/V3-final-demo`, `archive/blue-training`,
+  `archive/red-training`, `archive/experiments`).
