@@ -35,7 +35,10 @@ BLUE_AI_MODELS = [
     ("boyu_v2", "RL Boyu V2", "rl/runs/boyu_model_v2/model.zip"),
     ("boyu_v2a", "RL Boyu V2a", "rl/runs/boyu_modedlV2a/model.zip"),
     ("cap120", "RL 120-cap (scratch, 2.5M)", "rl/runs/blue_local/blue_120_v4_path2_scratch/model.zip"),
-    ("megamodel", "RL Megamodel (curriculum, cap-72)", "rl/runs/blue_local/blue_megamodel/model.zip"),
+    ("megamodel", "RL Megamodel S4 final (curriculum)", "rl/runs/blue_local/blue_megamodel/model.zip"),
+    ("megamodel_s1", "RL Megamodel S1 (Layout C only)", "rl/runs/blue_local/blue_megamodel/stages/S1_final.zip"),
+    ("megamodel_s2", "RL Megamodel S2 (Layout C+D)", "rl/runs/blue_local/blue_megamodel/stages/S2_final.zip"),
+    ("megamodel_s3", "RL Megamodel S3 (C+D + Red mix)", "rl/runs/blue_local/blue_megamodel/stages/S3_final.zip"),
 ]
 
 # Available Red AI models — order matches the frontend dropdown.
