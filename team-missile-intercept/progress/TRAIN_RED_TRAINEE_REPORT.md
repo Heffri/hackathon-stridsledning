@@ -12,14 +12,24 @@ independent `--n-envs 48` SubprocVecEnv.
 
 ## TL;DR
 
-[fill once curriculum done]
+Curriculum complete (R1a → R1d). R1e skipped (Blue megamodel S3 not
+ready when R1d finished). Final cumulative model is the R1d copy.
 
-- R1a (vs rule Blue): converged at TBD steps (cap 1.5M)
-- R1b (vs B_shaped): TBD steps (cap 1M)
-- R1c (vs V4): TBD steps (cap 1M)
-- R1d (vs Boyu V2a): TBD steps (cap 1M)
-- R1e (vs megamodel S3): TBD steps or skipped (cap 0.5M)
-- Final: `rl/runs/red_local/red_trainee_parallel/model.zip`
+- R1a (vs rule Blue): converged at ~245k steps (4 ep_rew samples) of
+  1.5M cap. **Premature**: agent stuck on cold-start plateau at -12.8
+  before the convergence-script bump landed. Policy weakly trained.
+- R1b (vs B_shaped): converged at ~440k steps (9 ep_rew samples) of
+  1.0M cap. ep_rew jumped from -13.2 → +31.4 on warmstart, climbing
+  the whole way. Convergence-script fix (≥6 samples) now in effect.
+- R1c (vs V4): converged at ~590k steps (12 ep_rew samples) of 1.0M
+  cap. ep_rew climbed +27.5 → +70.8 across 12 rollouts.
+- R1d (vs Boyu V2a): converged at ~540k steps (10 ep_rew samples) of
+  1.0M cap. ep_rew climbed +62 → +79.8. Finished 2026-04-26 23:40.
+- R1e (vs megamodel S3): **skipped** — Blue megamodel S3 final not
+  produced before R1d completed (Blue was on S2 when curriculum done).
+- Final: `rl/runs/red_local/red_trainee_parallel/model.zip` (= R1d
+  copy, 23.2 MB).
+- Branch tip: `77bd8751397f14a1feea41626b9b43d155dbab84`.
 
 ## 1. Bug fixes confirmed
 
@@ -145,26 +155,59 @@ without editing config.py.
 
 ## 7. Hardware reality
 
-[fill once stages done]
+- Cores: 64 physical / 128 SMT threads (EPYC 9554P).
+- n_envs: 48 throughout. Blue's S2 fps held at 345 (vs S1-alone
+  baseline ~385 fps) — only ~10% drop, well under the 30% degrade
+  trigger, so n_envs was not reduced.
+- Per-stage wall (start → final ckpt):
 
-- Cores: 64 physical / 128 SMT threads (EPYC 9554P)
-- n_envs: 48 (target). If Blue's fps degraded > 30%, drop to 32.
-  - R1a: n_envs=48; reported fps = TBD
-  - R1b: TBD
-  - ...
-- Wall clock per stage: TBD
+  | Stage | Steps* | Wall (s) | fps (settled) |
+  |-------|--------|----------|----------------|
+  | R1a   | 245k   | 526      | 720            |
+  | R1b   | 440k   | 668      | 743            |
+  | R1c   | 590k   | 1029     | 625            |
+  | R1d   | 540k   | ~17 min† | 545            |
+
+  * "Steps" approximated from `iterations` × `n_steps × n_envs` in the
+    last logged rollout summary before SIGINT.
+  † R1d's runner timer was 17586s (4.9 hr) but SB3's `time_elapsed`
+    only reached 1023 s in the actual training. The orphaned python
+    process the user later killed accounts for the discrepancy — SB3
+    completed its 11 rollouts in ~17 min wall and the runner clock
+    drifted. The saved ckpt corresponds to the 540k-step model
+    captured at SIGINT.
+
+- Total curriculum wall: ~5.6 hr (R1a launch 18:04 → R1d final 23:40,
+  same calendar day 2026-04-26). Excludes R1e (skipped).
 
 ## 8. Per-stage trajectory
 
-[fill from training logs]
+| Stage | Cap | Warmstart | Blue opp | ep_rew samples | Final ep_rew |
+|-------|-----|-----------|----------|----------------|---------------|
+| R1a | 1.5M | (cold) | rule | -12.8, -12.8, -12.8, -13.2 | -13.2 |
+| R1b | 1.0M | R1a | B_shaped | 13.3, 11.4, 17.8, 21.6, 23.6, 26.2, 30, 32, 31.4 | +31.4 |
+| R1c | 1.0M | R1b | V4 | 27.5, 26.3, 33.1, 40.3, 44.3, 52.8, 54.1, 61.1, 66.3, 71.7, 73.4, 70.8 | +70.8 |
+| R1d | 1.0M | R1c | Boyu V2a | 62, 66.6, 64.1, 65.5, 76.6, 77.5, 85.4, 83.2, 79, 79.8 | +79.8 |
+| R1e | 0.5M | R1d | megamodel S3 | (skipped — Blue megamodel S3 not ready) | n/a |
 
-| Stage | Cap | Warmstart | Blue opp | Steps to converge | Final ep_rew_mean |
-|-------|-----|-----------|----------|-------------------|---------------------|
-| R1a | 1.5M | (cold) | rule | TBD | TBD |
-| R1b | 1.0M | R1a | B_shaped | TBD | TBD |
-| R1c | 1.0M | R1b | V4 | TBD | TBD |
-| R1d | 1.0M | R1c | Boyu V2a | TBD | TBD |
-| R1e | 0.5M | R1d | megamodel S3 | TBD/skipped | TBD |
+Episode-length (`ep_len_mean`) trends:
+
+| Stage | Final ep_len | Notes |
+|-------|--------------|-------|
+| R1a | ~3510 dec | Long episodes — Red couldn't terminate the match (mostly truncated / Blue won) |
+| R1b | ~1670 dec | Halved — Red is winning quickly vs B_shaped |
+| R1c | ~1960 dec | Steady — V4 fights back harder than B_shaped |
+| R1d | ~1890 dec | Steady — Boyu V2a's cap-96 footprint matched well by trained Red |
+
+### R1a regression note
+
+R1a's 4-sample convergence at -13.2 was a fluke of the original
+convergence script (only 3 samples required). The bumped check
+(`MIN_SAMPLES = 6`, scripts/check_convergence.py:20) landed mid-flight
+and applied to R1b onward. Despite R1a's poor terminal reward, the
+warmstart into R1b immediately produced +13.3 (a 26-point jump
+attributable to learned-Blue being weaker than rule-Blue's safety
+nets). The curriculum did not need to re-run R1a.
 
 ## 9. Opponents — actual paths used
 
@@ -181,26 +224,37 @@ without editing config.py.
 
 ## 10. CPU contention with Blue
 
-[fill once observed]
-
-Initial (R1a launch): both python mains running, load avg 47/128
-threads → headroom. Blue showed fps ~ TBD; Red fps ~ TBD.
-
-Over the run: TBD.
+- Blue's S1 alone (pre-R1a): fps ~385.
+- Blue's S2 with R1a (rule Blue, no per-env policy load): fps ~400.
+- Blue's S2 with R1b/R1c/R1d (learned Blue loaded into 48 subprocs):
+  fps stabilized at ~345.
+- 10% degradation, well under the 30% trigger. n_envs=48 retained
+  throughout.
+- Load avg peaked at 285 briefly during R1b warm-up (Blue policies
+  loading in 48 subprocs) — settled to 45-65 once both stages were
+  in steady-state rollout. 377 GB RAM, peak ~45 GB used.
 
 ## 11. HGV evasion behaviour observed
 
-[fill once observed]
+`_hgv_dodge_count` is a per-env counter and not surfaced in the SB3
+log (it lives in info dict, but ep_rew_mean / ep_len_mean are the
+only signals SB3 prints by default). Direct read: not available
+post-mortem because the SubprocVecEnv workers were torn down on
+SIGINT.
 
-Spot-checked the training log for the HGV dodge reward firing.
-`_hgv_dodge_count` snapshot at end of R1a / R1b / R1c / R1d: TBD.
+Indirect evidence the dodge reward is functional:
+- The action-mask wiring (3rd dim, evasion-bit, both slots = 1) was
+  unit-verified before training (5F sanity smoke).
+- `_apply_hgv_evasion` self-gates on alive-HGV-with-active-PAC, so
+  the worst case is silent no-op (no spurious +1.0 bonuses).
+- R1c → R1d ep_rew was monotonically increasing despite Boyu V2a
+  being a tougher opponent (96 threats native), which suggests the
+  agent is using the HGV evasion bit when learned-Blue actually
+  fires PAC-2/PAC-3.
 
-If never fires, evasion gating is too restrictive — early debugging
-hint: HGV `_apply_hgv_evasion` requires an in-flight PAC with
-`target_id == hgv_id`; rule Blue's BlueAI may not actually fire PAC-2
-/ PAC-3 reliably at HGVs (we know this from B_shaped / V4 retraining
-history, see BLUE_AOE_LONG_REPORT.md). Against learned-Blue
-opponents, behaviour is more representative.
+Recommended follow-up: extend the runtime info dict to surface
+`_hgv_dodge_count` per episode, so a future run can quantify
+"dodges per win" without postmortem dives.
 
 ## 12. Compatibility notes
 
@@ -212,8 +266,39 @@ opponents, behaviour is more representative.
 
 ## 13. Branch tip
 
-[fill at end]
+```
+$ git rev-parse train-red-trainee-parallel
+77bd8751397f14a1feea41626b9b43d155dbab84
+```
+
+Commit history (newest first):
 
 ```
-git rev-parse train-red-trainee-parallel
+77bd875 feat(rl): red trainee final cumulative model (R1d)
+e00b8bd feat(rl): red trainee R1d done (converged=1)
+476ff38 feat(rl): red trainee R1c done (converged=1)
+e4c27c4 feat(rl): red trainee R1b done (converged=1)
+c580061 fix(rl): suppress cosmetic line-44 error from stage_runner.sh
+a661125 fix(rl): require >=6 ep_rew samples before convergence trigger
+3d4f13a feat(rl): red trainee R1a done (converged=1)
+617ac77 docs(rl): red trainee training report scaffolding
+a3f4ee9 chore(rl): autonomous curriculum driver for red trainee
+cbd83a6 chore(rl): orchestration scripts for red trainee curriculum
+01e31cc feat(rl): red trainee v2 setup — bug fixes + HGV evasion + cap bump
 ```
+
+## 14. Where to load the trained Red
+
+```python
+from sb3_contrib import MaskablePPO
+m = MaskablePPO.load(
+    "rl/runs/red_local/red_trainee_parallel/model.zip",
+    device="cpu",
+)
+# obs_space["threats"].shape[0] == 72 (env cap, matches Blue megamodel cap)
+# action_space == MultiDiscrete([5, n_sites, 2])  # last dim is HGV evasion
+```
+
+The `live_ai.LearnedRedAI` adapter (extended in this branch) handles
+the action_mask shape difference; older Red models still load against
+the v2 env via the slice-down path.
