@@ -131,11 +131,14 @@ html, body {
    intercept rate + threat breakdown), Site HP, controls.
    ──────────────────────────────────── */
 #hud[data-phase="running"] .hud-brand,
-#hud[data-phase="paused"]  .hud-brand,
-#hud[data-phase="running"] #ammo-panel,
-#hud[data-phase="paused"]  #ammo-panel {
+#hud[data-phase="paused"]  .hud-brand {
   display: none;
 }
+/* 2026-04-27: ammo-panel was previously hidden in running/paused for
+   noise-reduction. User feedback during pre-Finale — operator wants
+   per-launcher inspection during a live match (click launcher → see
+   its magazine + reload state). Panel re-enabled in all phases;
+   renderMagazinePanel handles click-driven content. */
 /* Left-column Red attack block — red accent (reuses log-col-red styling) */
 .log-col-red-left { border-color: rgba(255, 61, 61, 0.35); border-top-color: rgba(255, 61, 61, 0.55); }
 .log-col-red-left::before { border-top-color: rgba(255, 61, 61, 0.5); border-left-color: rgba(255, 61, 61, 0.5); }
