@@ -35,6 +35,7 @@ BLUE_AI_MODELS = [
     ("boyu_v2", "RL Boyu V2", "rl/runs/boyu_model_v2/model.zip"),
     ("boyu_v2a", "RL Boyu V2a", "rl/runs/boyu_modedlV2a/model.zip"),
     ("cap120", "RL 120-cap (scratch, 2.5M)", "rl/runs/blue_local/blue_120_v4_path2_scratch/model.zip"),
+    ("megamodel", "RL Megamodel (curriculum, cap-72)", "rl/runs/blue_local/blue_megamodel/model.zip"),
 ]
 
 # Available Red AI models — order matches the frontend dropdown.
@@ -44,6 +45,7 @@ RED_AI_MODELS = [
     ("scripted", "Scripted 3-Chain", "scripted"),
     ("red1", "RL Learned v1", "rl/runs/red_20260421_205051/model.zip"),
     ("red2", "RL Learned v2", "rl/runs/red_20260421_234425/model.zip"),
+    ("red_trainee_v2", "RL Red Trainee v2 (cost-aware + HGV evasion)", "rl/runs/red_local/red_trainee_parallel/model.zip"),
 ]
 
 
