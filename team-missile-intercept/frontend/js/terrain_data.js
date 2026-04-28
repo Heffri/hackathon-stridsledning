@@ -1,5 +1,6 @@
 // Boreal Passage terrain polygons & named locations.
-// Baked at check-in from xingyi-rts/saab-provided/Boreal_passage_coordinates.csv.
+// Baked at check-in from
+// team-missile-intercept/common-info/source-data/saab-provided/Boreal_passage_coordinates.csv.
 // Coordinates are in Saab-map km: X east (0..1667), Y SOUTH-positive (0..1300).
 // Transform to scene coords happens in scene.js via saabToScene().
 
@@ -17,14 +18,14 @@ export const BOREAL_TERRAIN = [
 export const BOREAL_LOCATIONS = [
   { name: "Northern Vanguard Base", side: "north", subtype: "air_base", x: 198.3, y: 335.0 },
   { name: "Highridge Command", side: "north", subtype: "air_base", x: 838.3, y: 75.0 },
-  { name: "Boreal Watch Post", side: "north", subtype: "air_base", x: 1158.3, y: 385.0 },
+  { name: "Boreal Watch Post", side: "north", subtype: "air_base", x: 1158.3, y: 385.0, rotation_y: Math.PI / 2, scale: 4.5 },
   { name: "Arktholm (Capital X)", side: "north", subtype: "capital", x: 418.3, y: 95.0 },
   { name: "Valbrek", side: "north", subtype: "major_city", x: 1423.3, y: 213.3 },
   { name: "Nordvik", side: "north", subtype: "major_city", x: 140.0, y: 323.3 },
   { name: "Firewatch Station", side: "south", subtype: "air_base", x: 1398.3, y: 1071.7 },
   { name: "Southern Redoubt", side: "south", subtype: "air_base", x: 321.7, y: 1238.3 },
-  { name: "Spear Point Base", side: "south", subtype: "air_base", x: 918.3, y: 835.0 },
+  { name: "Spear Point Base", side: "south", subtype: "air_base", x: 918.3, y: 835.0, rotation_y: Math.PI / 2, scale: 4.0 },
   { name: "Meridia (Capital Y)", side: "south", subtype: "capital", x: 1225.0, y: 1208.3 },
   { name: "Callhaven", side: "south", subtype: "major_city", x: 96.7, y: 1150.0 },
-  { name: "Solano", side: "south", subtype: "major_city", x: 576.7, y: 1236.7 },
+  { name: "Main Base", side: "south", subtype: "major_city", x: 833.65, y: 1064.0 },
 ];

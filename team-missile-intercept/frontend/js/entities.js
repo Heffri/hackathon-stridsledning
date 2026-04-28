@@ -8,6 +8,72 @@ import { worldToScene, SCALE } from './scene.js';
 
 const TRAIL_LEN = 60;
 
+// Explosion VFX shared resources. Each intercept used to allocate a fresh
+// SphereGeometry + RingGeometry + Material per particle (6-13 GPU
+// uploads per kill). At 50× sim speed with multiple sequential
+// intercepts that produced visible frame stalls. We now share unit-sized
+// geometries across every explosion and clone only the (cheap, no-GPU-
+// upload) Material so per-explosion opacity can still animate
+// independently. Per-mesh size is applied via mesh.scale, so a shared
+// unit sphere serves core / fireball / bubble / debris alike.
+//
+// Cleanup must skip geometry.dispose() — these are session-long.
+const _UNIT_SPHERE_LO = new THREE.SphereGeometry(1.0, 8, 6);   // core/fireball/debris
+const _UNIT_SPHERE_HI = new THREE.SphereGeometry(1.0, 14, 10); // landing bubble
+const _UNIT_RING = new THREE.RingGeometry(0.3, 1.0, 16);       // shockwave
+
+const _BASE_CORE_MAT = new THREE.MeshBasicMaterial({
+  color: 0xffffee, transparent: true, opacity: 1.0,
+  depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const _BASE_FIREBALL_MAT = new THREE.MeshBasicMaterial({
+  color: 0xff6620, transparent: true, opacity: 0.7,
+  depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const _BASE_RING_MAT = new THREE.MeshBasicMaterial({
+  color: 0xffaa44, transparent: true, opacity: 0.4,
+  depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+});
+const _BASE_DEBRIS_MAT = new THREE.MeshBasicMaterial({
+  color: 0xffcc44, transparent: true, opacity: 0.9,
+  depthWrite: false, blending: THREE.AdditiveBlending,
+});
+// NormalBlending (not Additive) so red shows up against the bright blue
+// ocean. Additive of (255,32,48) onto (42,122,184) lands at a washed-out
+// purple ~(255,154,232) that reads as "haze" rather than "red dome".
+// DoubleSide so the dome's interior face is also drawn — when the camera
+// dips low, the back wall still shows. depthTest:false + a high
+// renderOrder forces the dome to draw ON TOP of everything else: at
+// certain camera angles (top-down preset, or rotating into a low pitch)
+// the ocean plane was occluding the dome via the depth buffer because
+// transparent objects with depthWrite:false still respect depthTest by
+// default. Forcing depthTest off makes the dome visible from every
+// angle. Cost: trails / interceptors near the impact site can render
+// through the dome, which is acceptable for a "battle scar" indicator
+// — the dome is meant to be a non-physical UI marker, not part of the
+// 3D scene's depth hierarchy.
+const _BASE_BUBBLE_MAT = new THREE.MeshBasicMaterial({
+  color: 0xff2030, transparent: true, opacity: 0.0,
+  depthWrite: false, depthTest: false,
+  blending: THREE.NormalBlending,
+  side: THREE.DoubleSide,
+});
+
+// Per-kind entity scale: bigger = scarier threat. Interceptors stay
+// compact so the visual hierarchy reads "threats are the big things".
+const KIND_SCALE = {
+  drone: 1.5,
+  cruise_sub: 2.0,
+  ballistic: 2.8,
+  hgv: 3.0,
+  ciws: 0.8,
+  rbs_70: 1.2,
+  iris_t_sls: 1.6,
+  iris_t_slm: 2.0,
+  pac_2: 2.2,
+  pac_3: 2.0,
+};
+
 // Seeker scanning cone: forward-pointing translucent cone attached to
 // every interceptor except CIWS. Half-angle 8°, length 10 scene units
 // (= 10 km at SCALE=0.001). Default cyan, opacity 0.12; shifts to
@@ -590,59 +656,102 @@ class EntityMesh {
     this.team = team;
     this.kind = kind;
 
+    // Interpolation state: world-space pos/vel from last snapshot.
+    // Between snapshots, interpolate() extrapolates using velocity.
+    this._worldPos = null;  // [x, y, z] from last snapshot
+    this._worldVel = null;  // [vx, vy, vz] from last snapshot
+    this._thrustActive = false;
+    this._targetState = null;
+
     this.mesh = buildModel(kind, team, color);
+    // Per-kind scale: threats bigger = scarier, interceptors stay compact.
+    const kindScale = KIND_SCALE[kind] ?? 2.0;
+    this.mesh.scale.setScalar(kindScale);
     // Tag the root Group so Raycaster intersections can resolve back to
     // this entity id by walking up .parent from the child Mesh hit.
     this.mesh.userData.entityId = id;
     this.mesh.userData.entityKind = kind;
     this.mesh.userData.entityTeam = team;
+
+    // Invisible hit sphere so in-flight entities are easy to click.
+    // Radius is inversely proportional to kind scale so the clickable
+    // area in screen-space is consistent across all entity sizes.
+    // Generous radius — entities are viewed from 50-150 scene units away.
+    const hitRadius = 6.0 / kindScale;
+    const hitGeo = new THREE.SphereGeometry(hitRadius, 8, 6);
+    const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+    const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+    this.mesh.add(hitMesh);
+
     scene.add(this.mesh);
 
-    // Trail: Line with dynamic geometry
+    // Trail: Line with dynamic geometry + vertex color falloff.
+    // Recent points are full opacity (bright), older points fade.
     this.trailPoints = [];
     const trailGeom = new THREE.BufferGeometry();
     trailGeom.setAttribute(
       'position',
       new THREE.BufferAttribute(new Float32Array(TRAIL_LEN * 3), 3),
     );
+    trailGeom.setAttribute(
+      'color',
+      new THREE.BufferAttribute(new Float32Array(TRAIL_LEN * 3), 3),
+    );
     trailGeom.setDrawRange(0, 0);
-    const trailColor = new THREE.Color(
+    this._trailBaseColor = new THREE.Color(
       color || (team === 'red' ? '#ff5570' : '#ffcc33'),
     );
     const trailMat = new THREE.LineBasicMaterial({
-      color: trailColor,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.85,
     });
     this.trail = new THREE.Line(trailGeom, trailMat);
     scene.add(this.trail);
   }
 
   update(pos, vel, thrustActive, targetState) {
-    const [x, y, z] = worldToScene(pos[0], pos[1], pos[2]);
+    // Store world-space state for interpolation between snapshots.
+    this._worldPos = [pos[0], pos[1], pos[2]];
+    this._worldVel = [vel[0], vel[1], vel[2]];
+    this._thrustActive = thrustActive;
+    this._targetState = targetState;
+
+    this._applyScenePosition(pos[0], pos[1], pos[2], vel, true);
+  }
+
+  /** Extrapolate position forward by dt seconds of sim-time. */
+  interpolate(simDt) {
+    if (!this._worldPos || !this._worldVel) return;
+    const wp = this._worldPos;
+    const wv = this._worldVel;
+    const px = wp[0] + wv[0] * simDt;
+    const py = wp[1] + wv[1] * simDt;
+    const pz = wp[2] + wv[2] * simDt;
+    this._applyScenePosition(px, py, pz, wv, false);
+  }
+
+  _applyScenePosition(wx, wy, wz, vel, updateTrail = false) {
+    const [x, y, z] = worldToScene(wx, wy, wz);
     this.mesh.position.set(x, y, z);
 
     // Orient cone along velocity vector
     const [vx, vy, vz] = worldToScene(
-      pos[0] + vel[0],
-      pos[1] + vel[1],
-      pos[2] + vel[2],
+      wx + vel[0],
+      wy + vel[1],
+      wz + vel[2],
     );
     const dir = new THREE.Vector3(vx - x, vy - y, vz - z);
     if (dir.lengthSq() > 1e-10) {
       dir.normalize();
-      // All models are built with long axis = +Y in local space so this
-      // single rotation works for every kind.
       const up = new THREE.Vector3(0, 1, 0);
       this.mesh.quaternion.setFromUnitVectors(up, dir);
     }
 
     // Flicker the SAM exhaust plume only while the motor is burning.
-    // thrustActive is sent by the backend and goes false once fuel_s has
-    // elapsed — interceptors coast silently on fins after that.
     const flame = this.mesh.userData?.flame;
     if (flame) {
-      if (thrustActive) {
+      if (this._thrustActive) {
         flame.visible = true;
         const t = performance.now() / 1000;
         flame.material.opacity = 0.55 + 0.25 * Math.sin(t * 22 + this.id);
@@ -653,23 +762,20 @@ class EntityMesh {
       }
     }
 
-    // Spin the drone propeller around the flight axis (its local +Y, which
-    // is the cylinder's "ring" axis after the rotation.x = π/2 we applied).
+    // Spin the drone propeller
     const prop = this.mesh.userData?.propeller;
     if (prop) {
-      prop.rotation.y += 0.6; // ~ visual spin per frame
+      prop.rotation.y += 0.6;
     }
 
-    // Seeker scanning cone: cyan default, shifts to orange when the
-    // interceptor's target is within 2 km (locked). Hidden when no live
-    // target. Range uses world-space positions so it stays truthful at
-    // any scene scale; the mesh itself sits in scene units.
+    // Seeker scanning cone
     const seeker = this.mesh.userData?.seeker;
     if (seeker) {
-      if (targetState) {
-        const dx = targetState.pos[0] - pos[0];
-        const dy = targetState.pos[1] - pos[1];
-        const dz = targetState.pos[2] - pos[2];
+      const ts = this._targetState;
+      if (ts) {
+        const dx = ts.pos[0] - wx;
+        const dy = ts.pos[1] - wy;
+        const dz = ts.pos[2] - wz;
         const distM = Math.sqrt(dx * dx + dy * dy + dz * dz);
         const locked = distM < 2000;
         seeker.material.color.setHex(locked ? 0xff8844 : 0x44ccff);
@@ -680,18 +786,35 @@ class EntityMesh {
       }
     }
 
-    // Trail
-    this.trailPoints.push([x, y, z]);
-    if (this.trailPoints.length > TRAIL_LEN) this.trailPoints.shift();
-    const arr = this.trail.geometry.attributes.position.array;
-    for (let i = 0; i < this.trailPoints.length; i++) {
+    // Trail: only append points on snapshot updates (15Hz), not every
+    // interpolation frame (60Hz), so the 60-point buffer covers ~4s.
+    // On interpolation frames, just update the last trail point position
+    // so the trail tip tracks the smoothly-interpolated entity.
+    if (updateTrail) {
+      this.trailPoints.push([x, y, z]);
+      if (this.trailPoints.length > TRAIL_LEN) this.trailPoints.shift();
+    } else if (this.trailPoints.length > 0) {
+      // Move trail tip to interpolated position for smooth trail head.
+      this.trailPoints[this.trailPoints.length - 1] = [x, y, z];
+    }
+    const posArr = this.trail.geometry.attributes.position.array;
+    const colArr = this.trail.geometry.attributes.color.array;
+    const n = this.trailPoints.length;
+    const bc = this._trailBaseColor;
+    for (let i = 0; i < n; i++) {
       const [tx, ty, tz] = this.trailPoints[i];
-      arr[i * 3] = tx;
-      arr[i * 3 + 1] = ty;
-      arr[i * 3 + 2] = tz;
+      posArr[i * 3] = tx;
+      posArr[i * 3 + 1] = ty;
+      posArr[i * 3 + 2] = tz;
+      // Fade: oldest point → 0.1 brightness, newest → 1.0
+      const fade = n > 1 ? 0.1 + 0.9 * (i / (n - 1)) : 1.0;
+      colArr[i * 3] = bc.r * fade;
+      colArr[i * 3 + 1] = bc.g * fade;
+      colArr[i * 3 + 2] = bc.b * fade;
     }
     this.trail.geometry.attributes.position.needsUpdate = true;
-    this.trail.geometry.setDrawRange(0, this.trailPoints.length);
+    this.trail.geometry.attributes.color.needsUpdate = true;
+    this.trail.geometry.setDrawRange(0, n);
   }
 
   dispose(scene) {
@@ -718,18 +841,44 @@ export class EntityRegistry {
     this.scene = scene;
     this.byId = new Map();
     this.explosions = [];
+    // Interpolation: time of last snapshot arrival (real-time seconds)
+    this._lastSnapRealTime = 0;
+    this._simSpeed = 1;
+    // Engagement lines: blue interceptor → assigned red target
+    this.engagementLines = new Map();
+    this._engLineMat = new THREE.LineBasicMaterial({
+      color: 0x44ff88,
+      transparent: true,
+      opacity: 0.2,
+      depthWrite: false,
+    });
+    // Reused per-snapshot scratch — was being reallocated each call
+    // (15 Hz) which adds GC churn at high speed multipliers.
+    this._aliveById = new Map();
+    this._seenIds = new Set();
+    this._activeEngagements = new Set();
   }
 
   updateFromSnapshot(snap) {
+    // Record snapshot arrival time + sim speed for interpolation.
+    // When paused/finished, zero out speed so interpolation doesn't
+    // extrapolate entities forward (causing rubber-band shaking).
+    this._lastSnapRealTime = performance.now() / 1000;
+    const phase = snap.phase || 'setup';
+    const running = phase === 'running';
+    this._simSpeed = running ? (snap.speed ?? 1) : 0;
+
     // Build an id→state map so interceptors can look up their target
     // (for seeker-cone colour / opacity). Only include alive entities —
     // dead targets should make the seeker snap off.
-    const aliveById = new Map();
+    const aliveById = this._aliveById;
+    aliveById.clear();
     for (const e of snap.entities) {
       if (e.alive) aliveById.set(e.id, e);
     }
     // Reconcile entities
-    const seen = new Set();
+    const seen = this._seenIds;
+    seen.clear();
     for (const e of snap.entities) {
       seen.add(e.id);
       let em = this.byId.get(e.id);
@@ -752,6 +901,40 @@ export class EntityRegistry {
       }
     }
 
+    // Engagement lines: draw from each alive blue interceptor to its target.
+    const activeEngagements = this._activeEngagements;
+    activeEngagements.clear();
+    for (const e of snap.entities) {
+      if (!e.alive || e.team !== 'blue') continue;
+      if (e.target_id == null) continue;
+      const tgt = aliveById.get(e.target_id);
+      if (!tgt) continue;
+      const key = e.id;
+      activeEngagements.add(key);
+      let line = this.engagementLines.get(key);
+      if (!line) {
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+        line = new THREE.Line(geom, this._engLineMat);
+        this.scene.add(line);
+        this.engagementLines.set(key, line);
+      }
+      const [sx, sy, sz] = worldToScene(e.pos[0], e.pos[1], e.pos[2]);
+      const [tx, ty, tz] = worldToScene(tgt.pos[0], tgt.pos[1], tgt.pos[2]);
+      const arr = line.geometry.attributes.position.array;
+      arr[0] = sx; arr[1] = sy; arr[2] = sz;
+      arr[3] = tx; arr[4] = ty; arr[5] = tz;
+      line.geometry.attributes.position.needsUpdate = true;
+    }
+    // Remove stale engagement lines
+    for (const [key, line] of this.engagementLines) {
+      if (!activeEngagements.has(key)) {
+        this.scene.remove(line);
+        line.geometry.dispose();
+        this.engagementLines.delete(key);
+      }
+    }
+
     // Explosions
     for (const ex of snap.explosions) {
       // Only spawn a visual once per explosion — use position+t as key
@@ -759,27 +942,82 @@ export class EntityRegistry {
       if (!this._exKeys) this._exKeys = new Set();
       if (!this._exKeys.has(key)) {
         this._exKeys.add(key);
-        this._spawnExplosion(ex.pos);
+        this._spawnExplosion(ex.pos, ex.kind || '');
         // prune old keys
         if (this._exKeys.size > 500) {
           this._exKeys = new Set(Array.from(this._exKeys).slice(-200));
         }
       }
     }
-    // Step explosion animations
-    const now = performance.now() / 1000;
+  }
+
+  /**
+   * Extrapolate all alive entities forward from their last snapshot
+   * position using stored velocity. Called every RAF frame for smooth
+   * 60Hz motion between 15Hz backend snapshots.
+   */
+  interpolateEntities() {
+    const realNow = performance.now() / 1000;
+    const realDt = realNow - this._lastSnapRealTime;
+    // Convert real-time delta to sim-time delta
+    const simDt = realDt * this._simSpeed;
+    // Clamp extrapolation distance. Cap at TWO snapshot periods of sim
+    // time (~67ms at 30 Hz STREAM_HZ) so a late snapshot doesn't freeze
+    // entities for a 60 Hz RAF frame. The cap is rarely hit in steady
+    // state (snapshots arrive within one period), but bumping it from
+    // 1/30 to 1/15 lets the frontend ride through network/CPU jitter
+    // smoothly — visible as fewer one-frame freezes at high speeds.
+    const clampedDt = Math.min(simDt, 1 / 15);
+    for (const em of this.byId.values()) {
+      em.interpolate(clampedDt);
+    }
+
+    // Step explosion animations (runs every frame for smooth visuals).
+    // All explosion meshes use shared unit-sized geometries — visible
+    // size = ex.baseScale × per-stage envelope. ex.baseScale captures
+    // the kind-specific S multiplier set at spawn.
     for (const ex of this.explosions) {
-      const age = now - ex.born;
+      const age = realNow - ex.born;
       const t = Math.min(1, age / ex.lifetime);
-      const scale = 1 + t * 18;
-      ex.mesh.scale.setScalar(scale * SCALE * 1000); // convert world→scene scale
-      ex.mesh.material.opacity = Math.max(0, 0.9 - t);
+      if (ex.isDebris) {
+        const dt = 1 / 60;
+        ex.mesh.position.x += ex.vel[0] * SCALE * dt;
+        ex.mesh.position.y += ex.vel[1] * SCALE * dt;
+        ex.mesh.position.z += ex.vel[2] * SCALE * dt;
+        ex.mesh.material.opacity = Math.max(0, 0.9 * (1 - t));
+        ex.mesh.scale.setScalar(Math.max(0.01, ex.baseScale * (1 - t)));
+      } else if (ex.isImpactBubble) {
+        // Transient hit marker (2026-04-27): user feedback during
+        // pre-Finale review — persistent bubbles cluttered the view in
+        // long matches. Now: pop in over ~0.4s, hold ~1.0s, fade out
+        // ~0.6s, total lifetime 2.0s. Lifetime cleanup below now
+        // reaps these along with the regular explosion meshes.
+        const popInDuration = 0.4;
+        const fadeStartAt = ex.lifetime - 0.6;  // last 0.6s = fade
+        const popIn = Math.min(1, age / popInDuration);
+        const fadeOut = age < fadeStartAt
+          ? 1.0
+          : Math.max(0, 1 - (age - fadeStartAt) / 0.6);
+        const pulse = 0.92 + 0.08 * Math.sin(age * 3.5);
+        ex.mesh.scale.setScalar(ex.targetRadius * popIn * pulse);
+        ex.mesh.material.opacity = 0.7 * popIn * fadeOut;
+      } else {
+        const rate = ex.scaleRate ?? 18;
+        const env = 1 + t * rate;
+        ex.mesh.scale.setScalar(ex.baseScale * env);
+        ex.mesh.material.opacity = Math.max(0, 0.9 - t);
+      }
     }
     this.explosions = this.explosions.filter((ex) => {
-      const age = now - ex.born;
+      // Impact bubbles fade out at age=ex.lifetime like other VFX
+      // (transient hit marker, was: persistent battle marker).
+      const age = realNow - ex.born;
       if (age >= ex.lifetime) {
         this.scene.remove(ex.mesh);
-        ex.mesh.geometry.dispose();
+        // Geometry is shared across all explosions — do NOT dispose,
+        // or the next intercept would render an empty buffer. Material
+        // is a per-explosion clone of the shared base material; safe
+        // (and necessary) to release.
         ex.mesh.material.dispose();
         return false;
       }
@@ -787,26 +1025,116 @@ export class EntityRegistry {
     });
   }
 
-  _spawnExplosion(pos) {
+  _spawnExplosion(pos, kind) {
     const [x, y, z] = worldToScene(pos[0], pos[1], pos[2]);
-    // Hot-white core; depthWrite false so it reads as an additive flash
-    // rather than a solid sphere. Slightly larger geometry + brighter
-    // initial opacity approximates a bloom halo without needing an
-    // EffectComposer (which the importmap-only setup can't easily load).
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0xffffee,
-      transparent: true,
-      opacity: 1.0,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.8, 14, 12), mat);
-    mesh.position.set(x, y, z);
-    this.scene.add(mesh);
+    const now = performance.now() / 1000;
+
+    // Scale explosion visuals by entity kind so CIWS pops are tiny
+    // and PAC-3/ballistic intercepts are dramatic but not nuke-sized.
+    // s = overall size multiplier, r = expansion rate, d = debris count
+    const EXPLOSION_SCALE = {
+      // Interceptors (blue)
+      ciws:    { s: 0.10, r: 2,  d: 3  },
+      rbs70:   { s: 0.15, r: 3,  d: 4  },
+      sls:     { s: 0.25, r: 4,  d: 5  },
+      slm:     { s: 0.30, r: 4,  d: 6  },
+      pac2:    { s: 0.40, r: 5,  d: 7  },
+      pac3:    { s: 0.45, r: 5,  d: 8  },
+      // Threats (red) — for leaks / ground crashes
+      drone:      { s: 0.10, r: 2,  d: 3  },
+      cruise:     { s: 0.25, r: 4,  d: 5  },
+      ballistic:  { s: 0.50, r: 6,  d: 8  },
+      hgv:        { s: 0.55, r: 6,  d: 10 },
+    };
+    const cfg = EXPLOSION_SCALE[kind] || { s: 0.25, r: 4, d: 5 };
+    const S = cfg.s;
+    const R = cfg.r;
+
+    // 1. Hot-white core flash. Shared geometry; cloned material so
+    // per-explosion opacity animates independently. mesh.scale carries
+    // the kind-specific size so the shared unit sphere works for all.
+    const core = new THREE.Mesh(_UNIT_SPHERE_LO, _BASE_CORE_MAT.clone());
+    core.position.set(x, y, z);
+    core.scale.setScalar(0.8 * S);
+    this.scene.add(core);
     this.explosions.push({
-      mesh,
-      born: performance.now() / 1000,
-      lifetime: 1.0,
+      mesh: core, born: now, lifetime: 0.6, scaleRate: R,
+      baseScale: 0.8 * S,
     });
+
+    // 2. Orange-red fireball
+    const fireball = new THREE.Mesh(_UNIT_SPHERE_LO, _BASE_FIREBALL_MAT.clone());
+    fireball.position.set(x, y, z);
+    fireball.scale.setScalar(1.0 * S);
+    this.scene.add(fireball);
+    this.explosions.push({
+      mesh: fireball, born: now, lifetime: 0.8, scaleRate: R * 0.7,
+      baseScale: 1.0 * S,
+    });
+
+    // 3. Shockwave ring
+    const ring = new THREE.Mesh(_UNIT_RING, _BASE_RING_MAT.clone());
+    ring.position.set(x, y, z);
+    ring.rotation.x = -Math.PI / 2;
+    ring.scale.setScalar(S);
+    this.scene.add(ring);
+    this.explosions.push({
+      mesh: ring, born: now, lifetime: 0.5, scaleRate: R * 1.5, isRing: true,
+      baseScale: S,
+    });
+
+    // 4b. Red landing bubble — only for enemy threats reaching the ground.
+    // Marks "this is where a missile of theirs landed" so the operator can
+    // see at a glance which areas of the map took hits during the match.
+    // Kind names match backend ThreatType enum values exactly.
+    const THREAT_BUBBLE = {
+      drone:      1.5,
+      cruise_sub: 2.5,
+      ballistic:  4.0,
+      hgv:        5.0,
+    };
+    const bubbleR = THREAT_BUBBLE[kind];
+    if (bubbleR !== undefined) {
+      const bubble = new THREE.Mesh(_UNIT_SPHERE_HI, _BASE_BUBBLE_MAT.clone());
+      // Sit dome on the ground (y=0): the lower half is occluded by the
+      // ocean/terrain plane, leaving a hemispherical mark.
+      bubble.position.set(x, 0, z);
+      bubble.scale.setScalar(bubbleR);
+      // High renderOrder so the dome draws AFTER trails / engagement
+      // lines / explosions and stays visible. Pairs with depthTest:false
+      // on the bubble material.
+      bubble.renderOrder = 5;
+      this.scene.add(bubble);
+      this.explosions.push({
+        mesh: bubble,
+        born: now,
+        lifetime: 2.0,
+        isImpactBubble: true,
+        targetRadius: bubbleR,
+      });
+    }
+
+    // 5. Debris particles (count scaled by kind)
+    const debrisBaseScale = 0.1 * S;
+    for (let i = 0; i < cfg.d; i++) {
+      const dMat = _BASE_DEBRIS_MAT.clone();
+      dMat.color.setHex(Math.random() > 0.5 ? 0xffcc44 : 0xff6633);
+      const debris = new THREE.Mesh(_UNIT_SPHERE_LO, dMat);
+      debris.position.set(x, y, z);
+      debris.scale.setScalar(debrisBaseScale);
+      const speed = 15 * S;
+      const vx = (Math.random() - 0.5) * speed * 2;
+      const vy = (Math.random() - 0.3) * speed * 1.5;
+      const vz = (Math.random() - 0.5) * speed * 2;
+      this.scene.add(debris);
+      this.explosions.push({
+        mesh: debris,
+        born: now,
+        lifetime: 0.4 + Math.random() * 0.3,
+        vel: [vx, vy, vz],
+        isDebris: true,
+        baseScale: debrisBaseScale,
+      });
+    }
   }
 }

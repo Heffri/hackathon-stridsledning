@@ -15,6 +15,43 @@ class Team(str, Enum):
     BLUE = "blue"
 
 
+class MatchPhase(str, Enum):
+    """Match lifecycle states (M-TIER2-PHASE).
+
+    setup     — pre-match, world frozen, waiting for a start command
+                (used later by Milestone J deployment UI).
+    running   — live game, sim advances, Red/Blue AI tick.
+    paused    — frozen mid-match, sim does not advance. Existing entities
+                keep their poses on-screen so the operator can inspect.
+    finished  — winner declared, sim does not advance. Only legal exit is
+                a reset back to setup.
+
+    Legal transitions are enforced by `World.transition`; callers that
+    attempt an illegal move get a False return (no raise) so the server
+    layer can convert it into a WebSocket error response without
+    aborting the tick.
+    """
+
+    SETUP = "setup"
+    RUNNING = "running"
+    PAUSED = "paused"
+    FINISHED = "finished"
+
+
+# Legal MatchPhase transitions. Keyed by (from_phase, to_phase).
+# finished → setup is the only path out of finished (via reset).
+LEGAL_PHASE_TRANSITIONS: frozenset = frozenset(
+    {
+        (MatchPhase.SETUP, MatchPhase.RUNNING),
+        (MatchPhase.RUNNING, MatchPhase.PAUSED),
+        (MatchPhase.PAUSED, MatchPhase.RUNNING),
+        (MatchPhase.RUNNING, MatchPhase.FINISHED),
+        (MatchPhase.PAUSED, MatchPhase.FINISHED),
+        (MatchPhase.FINISHED, MatchPhase.SETUP),
+    }
+)
+
+
 class ThreatType(str, Enum):
     DRONE = "drone"
     CRUISE_SUB = "cruise_sub"
@@ -45,6 +82,14 @@ class ThreatSpec:
     color: str               # hex, client render hint
     hp: int = 10             # hull points; 0 = dead
     usd_cost: int = 30_000   # per-unit price, used for cost-exchange logic
+    # If True, the 1500 m horizontal-disc leak check additionally requires
+    # the threat to be near ground level before it damages the site — an
+    # airburst above a site no longer counts as a hit. Every current
+    # threat kind (drone, cruise_sub, ballistic, HGV) sets this True so
+    # flyover at altitude doesn't trigger damage on a non-targeted site
+    # the ground-track happens to cross. Spec default stays False so a
+    # future nuclear warhead kind can omit the override and keep airburst.
+    requires_ground_impact: bool = False
 
 
 @dataclass
@@ -58,12 +103,34 @@ class InterceptorSpec:
     color: str
     # Propulsion:
     fuel_s: float = 10.0     # seconds of powered flight (boost+sustain motor)
-    # Damage model (see WEAPON_SPECS.md):
-    damage_direct: int = 40       # damage if CPA < radius_direct
-    damage_prox: int = 20         # max damage at radius 0, falling quadratically to 0 at radius_prox
-    radius_direct: float = 0.5    # direct-hit radius in metres
-    radius_prox: float = 8.0      # proximity-fuse radius
+    # Damage model — arcade fragmentation AOE (Phase 2 of blue_aoe_long).
+    # On detonation every alive threat within `fragment_radius` of the
+    # detonation point takes a flat `fragment_damage`. No CPA-based
+    # falloff (flat within radius is cleaner for the RL gradient and
+    # legible on-screen). Direct-hit damage is the same `fragment_damage`
+    # since the primary target sits at d≈0 from the detonation.
+    damage_direct: int = 40       # retained for log/event display only
+    fragment_radius: float = 0.0  # AOE radius in metres (0 → pure HTK)
+    fragment_damage: int = 20     # flat damage to every threat inside radius
+    radius_direct: float = 0.5    # detonation-gate — htk mode fires when d_min < this
+    radius_prox: float = 8.0      # detonation-gate — prox mode fires when d_min < this
     usd_cost: int = 175_000       # cost-exchange reference price
+    # Engagement-mode infrastructure (M-TIER2.5). Each spec declares the
+    # legal modes it can be fired in and a default. Modes:
+    #   * 'prox' — current auto direct-then-prox behaviour (damage falls
+    #     off linearly inside radius_prox, direct hit inside radius_direct).
+    #   * 'htk'  — hit-to-kill: direct hit inside radius_direct deals
+    #     `damage_direct * 2`; anything wider is a clean miss (0 damage).
+    # Per-type overrides live on the spec instances below:
+    #   * CIWS  → choices=('prox',), default='prox' (cannon has no HTK concept).
+    #   * SHORT_SAM / IRIS_T_SLS / MED_SAM / LONG_SAM →
+    #       choices=('prox', 'htk'), default='prox' (dual-mode; HTK opt-in).
+    #   * HIT_TO_KILL (PAC-3) → choices=('htk',), default='htk' (physically
+    #       HTK-only; prox is not a legal mode for pac_3).
+    # Defaults below preserve current behaviour (prox everywhere) — no
+    # caller opts into HTK in M-TIER2.5; this is infrastructure only.
+    engagement_mode_choices: Tuple[str, ...] = ("prox",)
+    default_engagement_mode: str = "prox"
 
 
 # --- Threat specs ---
@@ -78,6 +145,7 @@ THREAT_SPECS = {
         color="#ff3040",
         hp=10,
         usd_cost=30_000,
+        requires_ground_impact=True,
     ),
     ThreatType.CRUISE_SUB: ThreatSpec(
         kind=ThreatType.CRUISE_SUB,
@@ -89,6 +157,7 @@ THREAT_SPECS = {
         color="#ff5050",
         hp=30,
         usd_cost=1_500_000,
+        requires_ground_impact=True,
     ),
     # Terminal-phase ballistic missile. 13 Mach (4459 m/s) matches the
     # public terminal velocity of modern MaRV / heavy-RV designs
@@ -98,7 +167,12 @@ THREAT_SPECS = {
     # the last 30 km.
     ThreatType.BALLISTIC: ThreatSpec(
         kind=ThreatType.BALLISTIC,
-        cruise_speed=4459.0,
+        # Demo nerf 2026-04-25 (Hack Day): Mach 13 → Mach 7 (4459 → 2401 m/s).
+        # PAC-2 (Mach 5) couldn't catch Mach-13 ballistic on the 350 km
+        # arena. New Mach-7 closes the geometry gap so PAC-2 actually
+        # contributes. Game-balance arcade number; trained policy still
+        # works (slower threat is strictly easier).
+        cruise_speed=2401.0,
         cruise_alt=0.0,
         max_g=3.0,
         drag_k=2.0e-6,
@@ -106,6 +180,7 @@ THREAT_SPECS = {
         color="#ff8020",
         hp=80,
         usd_cost=3_000_000,
+        requires_ground_impact=True,
     ),
     # Hypersonic glide vehicle (Kinzhal/DF-ZF class). 17 Mach glide
     # velocity — at this speed the R = v²/a formula gives a ~347 km
@@ -115,35 +190,55 @@ THREAT_SPECS = {
     # below _HGV_STALL_SPEED lift collapses and the HGV crashes.
     ThreatType.HGV: ThreatSpec(
         kind=ThreatType.HGV,
-        cruise_speed=5831.0,
+        # Demo nerf 2026-04-25 (Hack Day): Mach 17 → Mach 13 (5831 → 4459 m/s).
+        # Inherits old ballistic speed slot. PAC-3 (Mach 7.5 buff) can
+        # now physically catch HGV on closing geometry. Old Mach 17 was
+        # essentially uninterceptable except by lucky lead shots.
+        cruise_speed=4459.0,
         cruise_alt=35_000.0,
-        max_g=10.0,
+        # max_g 10 → 6 as part of the 2026-04-22 balance pass. Pure
+        # ~100 % leak rate vs PAC-3 PN made HGV the only rational Red
+        # spawn (damage/$ 4× over ballistic); softening the evasion
+        # envelope gives the interceptor a chance to land while keeping
+        # HGV faster than ballistic so it stays an elite threat.
+        # Tradeoff: on the fixed-wave rule-vs-rule test_balance sweep
+        # this pushes Blue winrate to ~85 % (vs the spec's 30-55 %
+        # target) because rule_Red's scripted waves can't exploit the
+        # new env. The 30-55 % target was calibrated when HGV was a
+        # guaranteed leak; it isn't reachable with any max_g ≤ 8 on
+        # the current wave plan without also retuning the waves.
+        # Diversifying *learned* Red (the core goal) needs the deeper
+        # nerf, so max_g=6 wins the tradeoff.
+        max_g=6.0,
         drag_k=1.5e-6,
         kill_radius=70.0,
         color="#ff4080",
         hp=60,
-        usd_cost=10_000_000,
+        # usd_cost 10M → 25M as part of the 2026-04-22 balance pass.
+        # At $100M Red budget this drops the HGV cap from 10 to 4 per
+        # match, forcing Red to mix in ballistic / cruise to fill the
+        # remaining budget instead of pure HGV spam.
+        usd_cost=25_000_000,
+        requires_ground_impact=True,
     ),
 }
 
 # --- Interceptor specs ---
-# kill_radius is the CPA gate used to decide "this tick produced a hit";
-# damage is resolved from the CPA distance using (damage_direct, damage_prox,
-# radius_direct, radius_prox) per WEAPON_SPECS.md.
+# Arcade AOE model (blue_aoe_long Phase 2): kill_radius is the CPA gate
+# that decides "this tick produced a detonation"; on detonation every
+# alive threat inside `fragment_radius` of the detonation point takes a
+# flat `fragment_damage`. No per-CPA falloff anymore.
 INTERCEPTOR_SPECS = {
-    # Note on radius_prox vs WEAPON_SPECS.md: real-world warhead fuse radii
-    # (5–20 m) are much smaller than typical miss distances from our
-    # grid-limited PN implementation (~20–60 m CPA). We scale each
-    # radius_prox up so the damage model interacts meaningfully with the
-    # guidance error; damage magnitudes are kept at spec, so the visible
-    # "needs multiple shots for hardened targets" tension survives.
-    # Design: kill_radius is the CPA-gate (roughly sized to typical PN
-    # miss distance). radius_prox is the damage-falloff scale — set larger
-    # than kill_radius so that even near-edge hits (CPA ≈ kill_radius)
-    # still deal a meaningful fraction of damage_prox via the
-    # (1 - d/radius_prox)² falloff. Bigger, harder targets need a wider
-    # warhead to be reliably lethal; this is where the LONG-SAM/PAC-2's
-    # blast-frag pattern advantage shows up.
+    # Calibration targets (§3.6 of the worker prompt):
+    #   CIWS        r=30  dmg=12  — flak-like, kills tight drone pairs
+    #   RBS-70      r=50  dmg=18  — MANPADS-scale HE
+    #   IRIS-T SLS  r=100 dmg=35  — clears 3-4 drone cluster
+    #   IRIS-T SLM  r=120 dmg=50  — clears 4-6 drone cluster
+    #   PAC-2       r=150 dmg=80  — kills a cruise pair, chips ballistic
+    #   PAC-3       r=0   dmg=120 — pure HTK, primary-only via d<=r gate
+    # radius_prox / radius_direct below are retained as detonation-gate
+    # inputs for future mode routing (not the damage falloff). Every
+    # detonation currently fires via kill_radius; see World.step block 3.
     InterceptorType.CIWS: InterceptorSpec(
         kind=InterceptorType.CIWS,
         max_speed=1000.0,
@@ -154,7 +249,8 @@ INTERCEPTOR_SPECS = {
         color="#ffd24a",
         fuel_s=4.0,
         damage_direct=15,
-        damage_prox=8,
+        fragment_radius=30.0,
+        fragment_damage=12,
         radius_direct=1.0,
         radius_prox=80.0,
         usd_cost=2_000,
@@ -169,10 +265,12 @@ INTERCEPTOR_SPECS = {
         color="#4a8a3a",  # matches rbs_70 mesh (olive green)
         fuel_s=13.0,
         damage_direct=40,
-        damage_prox=20,
+        fragment_radius=50.0,
+        fragment_damage=18,
         radius_direct=1.0,
         radius_prox=120.0,
         usd_cost=175_000,
+        engagement_mode_choices=("prox", "htk"),
     ),
     # Short-range SAM+ (IRIS-T SLS / RBS 98). Mach 2 average, 60G TVC —
     # the most agile interceptor, designed for terminal "knife fight" vs
@@ -188,10 +286,12 @@ INTERCEPTOR_SPECS = {
         color="#ff9944",
         fuel_s=30.0,
         damage_direct=50,
-        damage_prox=25,
+        fragment_radius=100.0,
+        fragment_damage=35,
         radius_direct=1.0,
         radius_prox=100.0,
         usd_cost=500_000,
+        engagement_mode_choices=("prox", "htk"),
     ),
     InterceptorType.MED_SAM: InterceptorSpec(
         kind=InterceptorType.MED_SAM,
@@ -203,10 +303,12 @@ INTERCEPTOR_SPECS = {
         color="#ff8c1a",  # matches iris_t_slm mesh (orange)
         fuel_s=39.0,
         damage_direct=50,
-        damage_prox=25,
+        fragment_radius=120.0,
+        fragment_damage=50,
         radius_direct=2.0,
         radius_prox=150.0,
         usd_cost=1_000_000,
+        engagement_mode_choices=("prox", "htk"),
     ),
     # Long-range SAM (Patriot PAC-2 class). Mach 5, 70 km, large blast-frag.
     InterceptorType.LONG_SAM: InterceptorSpec(
@@ -219,10 +321,12 @@ INTERCEPTOR_SPECS = {
         color="#ff69b4",  # matches pac_2 mesh (pink)
         fuel_s=41.0,
         damage_direct=80,
-        damage_prox=40,
+        fragment_radius=150.0,
+        fragment_damage=80,
         radius_direct=3.0,
         radius_prox=180.0,
         usd_cost=3_000_000,
+        engagement_mode_choices=("prox", "htk"),
     ),
     # Hit-to-kill (PAC-3 MSE). Pure kinetic kill mechanism — 200 dmg on
     # a direct hit, one-shots ballistic / HGV. Our grid-stepped PN only
@@ -234,23 +338,41 @@ INTERCEPTOR_SPECS = {
     # survives, the demo just stops being a coin flip against HGVs.
     InterceptorType.HIT_TO_KILL: InterceptorSpec(
         kind=InterceptorType.HIT_TO_KILL,
-        max_speed=1700.0,
+        # Demo buff (2026-04-25 Hack Day): max_speed 1700 → 2500 m/s
+        # (Mach 5 → Mach 7.5). On the new 350 km arena, Mach-13 ballistic
+        # had only ~1-3 s of effective intercept window for Mach-5 PAC-3
+        # — physically uninterceptable. Bumping to Mach 7.5 closes the
+        # geometry gap so PAC-3 can actually catch up.
+        max_speed=2500.0,
         max_g=50.0,
-        max_range=60_000.0,
+        # Demo buff: max_range 60 → 80 km. PAC-3 launchers near south
+        # sites can now engage threats farther downrange so they don't
+        # have to wait until the ballistic is on top of them.
+        max_range=80_000.0,
         drag_k=4.0e-6,
-        kill_radius=60.0,
+        # Demo buff: kill_radius 60 → 100 m. PN drift on a Mach-13
+        # closing geometry sits at 30-80 m typical; the old 60 m gate
+        # produced too many "almost hit" misses.
+        kill_radius=100.0,
         color="#a855f7",  # matches pac_3 mesh (purple)
-        fuel_s=35.0,
+        # Demo buff: fuel_s 35 → 50 s. With max_speed bumped, fuel
+        # extension keeps total reach ≥ max_range × 1.5 so PAC-3 can
+        # chase a descending ballistic past the nominal max_range gate.
+        fuel_s=50.0,
         damage_direct=200,
-        damage_prox=25,
-        # Bumped from 40 m → 60 m: at Mach 13 ballistic closing (6159
-        # m/s relative to PAC-3), per-tick relative displacement is
-        # ~308 m, and typical PN CPA drifts 30-80 m. 40 m was borderline
-        # for direct hits at this speed; 60 m keeps PAC-3's hit-to-kill
-        # intent against the realistic fast-ballistic threat.
-        radius_direct=60.0,
-        radius_prox=80.0,
+        # Demo buff: PAC-3 picks up a small 30 m fragment_radius.
+        # Originally pure HTK (radius=0); too unforgiving against PN
+        # drift at Mach-13. 30 m frag turns near-misses into kills
+        # while keeping the HTK character (still tiny vs SLM's 120 m).
+        fragment_radius=30.0,
+        fragment_damage=120,
+        # radius_direct + radius_prox bumped to match the new
+        # kill_radius — single source of truth for "PAC-3 hits".
+        radius_direct=100.0,
+        radius_prox=120.0,
         usd_cost=4_000_000,
+        engagement_mode_choices=("htk",),
+        default_engagement_mode="htk",
     ),
 }
 
@@ -296,12 +418,14 @@ class Explosion:
     pos: np.ndarray
     t: float
     lifetime: float = 1.0
+    kind: str = ""
 
     def to_dict(self) -> dict:
         return {
             "pos": [float(self.pos[0]), float(self.pos[1]), float(self.pos[2])],
             "t": self.t,
             "lifetime": self.lifetime,
+            "kind": self.kind,
         }
 
 

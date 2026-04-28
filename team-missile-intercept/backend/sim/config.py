@@ -1,25 +1,47 @@
 """Central tunable parameters for the Milestone B demo.
 
 All physics, arena, guidance, and rendering parameters live here.
+
+Arcade-AOE note (blue_aoe_long Phase 2): every detonation applies a flat
+`fragment_damage` to threats within `fragment_radius`. Final calibrated
+values live on each InterceptorSpec in `sim/types.py` (§3.6 of the worker
+prompt). AOE_ENABLED below is a circuit-breaker for regression testing
+the legacy CPA-falloff damage path — production runs leave it True.
 """
+
+# --- Arcade fragmentation AOE ---
+AOE_ENABLED = True
+
 
 # --- Arena ---
 ARENA_X = 150_000.0  # east-west extent (m)
-ARENA_Y = 250_000.0  # north-south extent (m) — deep enough for HGV's
-                      # 180 km spawn border and ballistic's 120 km, so
-                      # Blue can see the interceptors run out of fuel
-                      # during the long head-on engagement.
+# Live-demo polish (2026-04-24, Bug 9): bumped 250_000 → 350_000 so the
+# ballistic / HGV spawn band (STRATEGIC_Y_BAND = ARENA_Y - 15k .. ARENA_Y
+# - 5k) lands at y=335-345 km instead of 235-245 km. The old 235-245 km
+# strip was only ~160 km north of the northernmost military site (Spear
+# Point Base, y=76.5 km), giving PAC-3 ~12-16 s of intercept window
+# against Mach-13/17 re-entry weapons — shorter than PAC-3's 10-15 s
+# fly-out. Pushing 100 km further north makes it 260 km, restoring a
+# comfortable 2-3× safety margin. Saab landmass polygons stay in
+# y=0-250 km; y=250-350 km is intentional empty "deep strategic rear"
+# where ICBM / HGV launchers live off-map.
+ARENA_Y = 350_000.0  # north-south extent (m)
 ARENA_Z = 40_000.0   # ceiling (m)
 GROUND_Z = 0.0
 
 # --- Time ---
 DT = 0.05            # physics step (s)
 PHYSICS_HZ = 1.0 / DT
-STREAM_HZ = 15.0     # WebSocket state broadcast
+STREAM_HZ = 30.0     # WebSocket state broadcast
 # Milestone I replaced the 600 s hard cap with real win conditions
 # (site HP depletion, Blue budget exhaustion, Red-out-of-threats). The
 # 3600 s value is a safety net only — a typical match ends in 150-400 s.
-MAX_SIM_TIME = 3600.0
+MAX_SIM_TIME = 4500.0  # Hack Day 2026-04-25 demo bump (was 3600). After
+                       # the threat speed nerf (ballistic Mach 13→7 etc.)
+                       # the chain extends to ~3500 s and mop-up drones
+                       # can be in-flight until ~4000-4400 s. 4500 s
+                       # gives the match time to resolve cleanly to
+                       # Blue-win instead of timing out at draw.
 
 # --- Environment ---
 GRAVITY = 9.81       # m/s^2, applied -Z
@@ -46,7 +68,24 @@ BLUE_BASE_POS = (ARENA_X * 0.5, 5_000.0, 0.0)  # x, y, z
 # 3D sphere cleanly and ground-impacts 300-800 m from centre were
 # silently classified as "ground_crash"). 1500 m models an airfield-
 # class defended area and matches user intuition of "hit the base".
-BASE_HIT_RADIUS = 1500.0  # metres
+#
+# 2026-04-23: bumped 1500 → 3500 as an Issue #14 workaround. Ballistic
+# CEP in the current sim averages ~3300 m, so a 1500 m disc was putting
+# most ballistic impacts *outside* the site footprint — they scored as
+# "ground_crash" and the site HP bar never dropped from ballistic.
+# 3500 m captures the bulk of ballistic impacts while still being a
+# plausible "defended area" per the original Milestone-D comment
+# above. Side effect: cruise / HGV / drone also count as hits more
+# often, but their CEP is much smaller (HGV ~100 m, cruise ~50 m, drone
+# ~20 m) so the relative change is minor for those kinds.
+#
+# 2026-04-23 (W2): bumped 3500 → 5000. The 3500 m disc still cut off
+# the long tail of ballistic CEP — occasional impacts at 3.8-5 km
+# scored as "ground_crash" instead of damaging the site. 5000 m
+# catches that tail. Issue #14's permanent fix is a Route-3 PN
+# precision pass that's out of hackathon scope; this remains a
+# workaround.
+BASE_HIT_RADIUS = 5000.0  # metres (Issue #14 workaround, bumped W2)
 
 # --- Red spawn band (north edge) ---
 RED_SPAWN_Y = ARENA_Y - 5_000.0
@@ -79,14 +118,35 @@ TRAIL_LENGTH = 60        # samples client may keep; server does not cap
 # give area coverage against cruise + drone paths that previously flew
 # past all forward envelopes. Resulting 20-match balance:
 # Blue 6/20, draw 9/20, Red 5/20 (see REPORT Milestone H section).
+#
+# 2026-04-23 (W2): swapped to the "Slot E" demo layout — 12 launchers
+# spread across the southern mainland + forward islands, with PAC-2 /
+# PAC-3 / SLM pushed forward onto the south_central_peninsula so they
+# can engage ballistic / cruise on the way in rather than waiting at
+# the base for terminal handoff. W2 then adds 2 forward drone-lane
+# layers (1 CIWS + 1 RBS-70) on top of Slot E, bringing the roster to
+# 14 launchers — the Red drone swarm was reaching Spear Point /
+# Firewatch before any forward CIWS or RBS-70 could engage in Slot E.
+# Both new positions validated as south-side land below.
 BLUE_LAUNCHER_POSITIONS = {
     # kind: [ (x, y), ... ]  — one tuple per launcher instance
-    "ciws":       [(75_000,  5_000)],                          # point defence at base
-    "rbs_70":     [(80_000, 73_000), ( 38_100, 50_000)],       # forward-center (Spear Point drones) + south_small_island forward-west
-    "iris_t_sls": [(80_000, 70_000), (126_750, 102_093)],      # south_central_peninsula + south_forward_island
-    "iris_t_slm": [(82_000, 72_000), ( 85_000,  6_000)],       # forward-center (Spear Point area) + eastern base-side
-    "pac_2":      [(74_700,  8_000)],                          # near base (300 m west of centre); 70 km reach covers all 3 sites
-    "pac_3":      [(75_300,  8_000)],                          # near base (300 m east of centre); primary HGV / ballistic HIT-TO-KILL
+    # CIWS: Slot E base trio + 1 forward-center drone catcher (W2).
+    "ciws":       [(76_000,   7_000), ( 88_000, 14_000), (117_000,   7_000), ( 82_500, 95_000)],
+    # RBS-70: Slot E west_small_island + east-base + 1 forward-east on
+    # south_forward_island (W2). 8 km reach, point-defense for drone
+    # / cruise on the east approach lane.
+    "rbs_70":     [(40_000,  55_000), (132_000,  9_000), (122_500, 92_500)],
+    # IRIS-T SLS: Slot E south_central_peninsula + south_forward_island.
+    "iris_t_sls": [(83_000,  79_000), (125_000, 102_000)],
+    # IRIS-T SLM: Slot E forward-center (peninsula north tip) + east.
+    "iris_t_slm": [(79_000,  93_000), (125_000,  92_000)],
+    # PAC-2: Slot E forward at (79, 90); 70 km reach covers all 3 sites
+    # from forward, so ballistic / cruise enter range earlier than the
+    # near-base placement of Milestone H.
+    "pac_2":      [(79_000,  90_000)],
+    # PAC-3: Slot E forward + back-up at east-base; primary HGV /
+    # ballistic hit-to-kill platform.
+    "pac_3":      [(83_000,  85_000), (100_000, 10_000)],
 }
 
 # Validate every launcher sits on visible south-side land per the Saab
@@ -166,7 +226,54 @@ SITE_LEAK_DAMAGE = {
 # per-interceptor `usd_cost` values; maximum full-magazine value across
 # the current 9-launcher loadout is ≈ $49 M so $120 M gives real
 # headroom but a wave-5 saturation can visibly tighten the bar.
-BLUE_BUDGET_START = 120_000_000
+import os as _os
+# Budgets honor env-var overrides so training scripts can switch the
+# starting budgets without editing this file.
+# Demo Live ver 1.0 (2026-04-27): defaults bumped 120M -> 200M (Blue)
+# and 100M -> 150M (Red) to match the V4 / Megamodel / S1-retrain
+# training distributions. Older training scripts that relied on the
+# 120/100 defaults can still override via env vars if needed.
+BLUE_BUDGET_START = int(_os.environ.get("BLUE_BUDGET_START_OVERRIDE", 200_000_000))
+
+# M-TIER3-RED-BUDGET (Issue #8, 2026-04-20): Red now has a finite
+# spending pool, symmetric with Blue. Deducted from `world.red_budget`
+# per-threat at spawn time in `red_ai.step`. Default waves
+# (`build_demo_waves`) total spawn cost is ≈ $54.3 M (11 drones +
+# 8 cruise + 4 ballistic + 3 hgv, see THREAT_SPECS.usd_cost), so
+# $100 M gives the current wave spawner real headroom — default demo
+# never hits the budget ceiling and spawn behavior is bit-for-bit
+# identical to pre-Tier-3 runs. Sized loose deliberately: the future
+# Red AI (Boyu) will make tactical spawn decisions against this pool,
+# so the runtime just needs to expose + deduct + gate. Future-ready
+# Blue-win path fires when `red_budget <= 0 AND no threats alive` — a
+# no-op under the current wave spawner (red.done already fires first),
+# but live for the AI-driven regime.
+# TODO: tune once Boyu's Red AI lands. Balance target is "Red must
+# play an efficient budget game to win".
+RED_BUDGET_START = int(_os.environ.get("RED_BUDGET_START_OVERRIDE", 150_000_000))
+
+# Per-launcher base cost (M-TIER2-J Part 2, Issue #6). Deducted from
+# `world.blue_budget` when `add_launcher` places a new launcher during
+# SETUP, refunded (clamped at BLUE_BUDGET_START) when `remove_launcher`
+# takes one off the map. The default roster built from
+# `BLUE_LAUNCHER_POSITIONS` is pre-paid: scenario construction does NOT
+# charge base_cost, so the operator starts with the full $120 M for
+# interceptors + optional roster tweaks. Default roster total base cost
+# = $41.5 M (1 ciws + 2 rbs_70 + 2 iris_t_sls + 2 iris_t_slm + 1 pac_2 +
+# 1 pac_3 — 9 launchers total) — net refund equals cost on removing-then-
+# re-adding, so a "sell the default pac_3, buy two slm" roster edit stays
+# inside budget. These are arcade game-balance numbers ("unit stats") —
+# see CLAUDE.md framing note. Keys are the wire-format InterceptorType
+# values. Invariant locked by `test_launcher_base_cost.py`.
+# TODO: tune against balance sweep post-Hack-Day
+LAUNCHER_BASE_COSTS: dict = {
+    "ciws":         500_000,
+    "rbs_70":     1_000_000,
+    "iris_t_sls": 2_000_000,
+    "iris_t_slm": 5_000_000,
+    "pac_2":     10_000_000,
+    "pac_3":     15_000_000,
+}
 
 # --- Strait / threat-origin geometry (Milestone G) ---
 # Threats spawn *north of the strait centerline*, not relative to the
@@ -177,3 +284,15 @@ BLUE_BUDGET_START = 120_000_000
 # -245 + 0.519 * 250 = -115) and then world Y = 5000 - scene_z * 1000:
 # world_y ≈ 120_000 m.
 STRAIT_CENTER_Y = 120_000.0  # metres, world coord. Threat spawn Y anchor.
+
+# W14 (Issue #30, 2026-04-20): minimum Y (metres north of origin) at
+# which future Red AI is allowed to spawn a ballistic or HGV threat.
+# Sized so even a Mach-17 HGV has ~31 s of flight time before reaching
+# a typical southern site, giving Blue AI a realistic engagement
+# window. The existing `STRATEGIC_Y_BAND = [235_000, 245_000]` used
+# by today's random wave spawner (in `red_ai.py`) is a narrower
+# sampling range (very far back). The FLOOR is the future-AI rule;
+# the BAND is the current spawner's habit — the wave spawner's sample
+# always satisfies the floor by construction.
+# Inclusive: y == STRATEGIC_Y_FLOOR is valid.
+STRATEGIC_Y_FLOOR = 180_000.0

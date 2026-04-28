@@ -5,7 +5,7 @@
 """
 import numpy as np
 
-from sim import config
+from sim import config, sites
 from sim.red_ai import RedAI, build_demo_waves
 from sim.world import World
 
@@ -16,6 +16,10 @@ def run(n_trials: int = 20):
     z_traces_all = []  # (spawn_z, [z_samples]) per drone across all trials
 
     for trial in range(n_trials):
+        # Issue #17: SOUTH_SITES is a module-level singleton — its leak
+        # counter + HP accumulate across trials otherwise. Reset to match
+        # the canonical per-trial pattern in test_balance_baseline.
+        sites.reset_leaks()
         world = World()
         red = RedAI(build_demo_waves())
         spawn_z = {}

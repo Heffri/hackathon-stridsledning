@@ -1,7 +1,11 @@
 # Game Design — AI vs AI Missile Intercept
 
-> ⚠️ **This is the full final product design.**
-> The first playable MVP we're building is a simplified subset — see **[DEMO_PLAN.md](DEMO_PLAN.md)**.
+> This document is the gameplay-mechanics spec for the shipped sim.
+> The shipped sim implements every Red AI control level described here
+> (1–5 with the Level-5 HGV override hook), all 6 interceptors, HP +
+> budget + win conditions, magazines + reloads, and the multi-site
+> target model. All weapon names and stats are encyclopedia-level
+> values used as arcade game-balance numbers.
 
 ## Core Concept
 
@@ -23,9 +27,9 @@ Each weapon type gives its controlling AI a different degree of control, creatin
 #### Level 2 — Pre-Programmed + Fast (Ballistic Missile)
 - **Before launch**: Red AI sets ballistic trajectory + fixed number of terminal maneuvers
 - **After launch**: No changes. Follows pre-set arc with pre-set terminal maneuvers.
-- **Design intent**: Upgraded Shahed — still pre-programmed but Mach 6 with short intercept window
+- **Design intent**: Upgraded Shahed — still pre-programmed but Mach 13 with a very short intercept window
 - **Maneuverability**: 1G correction (terminal only)
-- **Speed**: 2,000 m/s terminal
+- **Speed**: 4,459 m/s terminal (Mach 13 — matches public MaRV / heavy-RV terminal velocity)
 
 #### Level 3 — Waypoint-Adjustable (Subsonic Cruise Missile)
 - **Before launch**: Red AI sets initial flight plan
@@ -41,10 +45,11 @@ Each weapon type gives its controlling AI a different degree of control, creatin
 - **Speed**: 260 m/s, **Max G**: 3 (terminal)
 
 #### Level 5 — Full Real-Time Control (Hypersonic Glide Vehicle)
-- **Full AI control from launch**: Red AI commands the HGV every tick. Skip-glide, lateral jinks, altitude changes, dive-pull-up — anything within physics limits.
-- **Speed-maneuver tradeoff**: Every maneuver bleeds speed via drag. Hard 8G turn at Mach 5 noticeably slows the missile.
-- **Strategic tension**: Over-maneuver → slow → easier to intercept next time. Under-maneuver → caught by current interceptor.
-- **Speed**: 1,700 m/s initial (degrades), **Max G**: 8
+- **Full AI control from launch**: Red AI commands the HGV every tick through the `Threat.override_maneuver(turn_dir, g_load)` hook (Milestone I). Skip-glide, lateral jinks, altitude changes, dive-pull-up — anything within physics limits.
+- **Default behaviour (no override)**: straight-line flight toward the pre-selected target. The per-tick override is the AI's real-time control surface.
+- **Speed-maneuver tradeoff**: Every maneuver bleeds speed via drag. Runtime formula `speed_loss_per_s = 120 * (G_applied / 8)²` — a sustained 8G turn burns ~120 m/s of speed every second.
+- **Strategic tension**: Over-maneuver → slow → easier to intercept next time. Under-maneuver → caught by current interceptor. Below the 500 m/s stall floor the HGV loses lift and falls.
+- **Speed**: 5,831 m/s initial (Mach 17; degrades with maneuvering), **Max G**: 8
 
 ### Blue Force — Dual Role (Commander + Guidance Computer)
 
@@ -281,17 +286,18 @@ Frontend shows live data for every active missile:
 ### Physics Implementation Summary
 
 - Coordinate system: X=east, Y=north, Z=up, meters
-- Arena: 150 km × 150 km × 40 km high
+- Arena: 150 km × 250 km × 40 km high (rectangular since Milestone H4; deep enough for Mach-17 HGV cross-time)
 - Timestep: dt=0.05s
 - WebSocket streaming: 15 fps state snapshots
-- Integration: Euler (adequate at 20 Hz physics for this scale)
+- Integration: Euler (adequate at 20 Hz physics for this scale; RK4 would be the upgrade)
 - Guidance: True Proportional Navigation (N=4) as the default, AI may choose others
-- Kill check: per-tick closest-approach distance calculation
+- Kill check: per-tick closest-approach distance calculation (CPA gate on `kill_radius`, damage from linear falloff on `radius_prox`)
 - Terrain check: per-tick heightmap lookup + ground collision
 
-### File Structure (unchanged from initial plan)
+### File Structure
 
-See PLAN.md for full directory layout.
+Runtime split is `backend/` + `frontend/`. RL envs and trained model
+artifacts live under `backend/rl/`.
 
 ### Key Tunable Parameters
 

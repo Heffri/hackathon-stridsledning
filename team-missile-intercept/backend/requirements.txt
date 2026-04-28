@@ -1,3 +1,30 @@
+# Demo Live ver 1.0 — full dependency list
+# Last verified: 2026-04-27 on Windows + Ubuntu 24.04
+
+# ─── Server / API ─────────────────────────────────────────────────
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
+
+# ─── Numerical core ───────────────────────────────────────────────
+# DO NOT upgrade to numpy 2.x — breaks Boyu's pickled models which
+# were saved under numpy 2.x. The compat shim in rl/red_env.py only
+# handles 2→1.26 unpickle, not 1.26→2 forward compat.
 numpy==1.26.4
+
+# ─── RL training + inference ──────────────────────────────────────
+# All four required to load any of the dropdown's RL Blue/Red models.
+# torch 2.5.x is the tested version; 2.6+ may break (Pascal/Blackwell
+# GPU compat) — pin upper bound conservatively.
+torch>=2.4,<2.6
+stable-baselines3==2.8.0
+sb3-contrib==2.8.0
+gymnasium>=1.0,<2.0
+
+# ─── SB3 logging + progress (often missed!) ───────────────────────
+# tensorboard: SB3's default logger writes TB events; without it,
+#   `python -m rl.train` crashes immediately at import.
+# tqdm + rich: SB3's ProgressBarCallback uses both; without them,
+#   training crashes on first iteration.
+tensorboard==2.20.0
+tqdm>=4.65
+rich>=13.0

@@ -1,0 +1,396 @@
+{
+  "records": [
+    {
+      "seed": 1000,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 30,
+        "ballistic": 8,
+        "hgv": 1
+      },
+      "total_threats": 129,
+      "interceptor_launches": 380,
+      "leaked": 6,
+      "intercepts": 98,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 60
+      },
+      "total_site_damage": 160,
+      "sites_dead": 1,
+      "red_drain_frac": 0.967,
+      "blue_drain_frac": 0.656,
+      "wall_s": 120.0
+    },
+    {
+      "seed": 1001,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 23,
+        "ballistic": 4,
+        "hgv": 2
+      },
+      "total_threats": 119,
+      "interceptor_launches": 388,
+      "leaked": 6,
+      "intercepts": 90,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 0
+      },
+      "total_site_damage": 100,
+      "sites_dead": 1,
+      "red_drain_frac": 0.992,
+      "blue_drain_frac": 0.492,
+      "wall_s": 103.7
+    },
+    {
+      "seed": 1002,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 30,
+        "ballistic": 8,
+        "hgv": 1
+      },
+      "total_threats": 129,
+      "interceptor_launches": 490,
+      "leaked": 9,
+      "intercepts": 95,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 75
+      },
+      "total_site_damage": 175,
+      "sites_dead": 1,
+      "red_drain_frac": 0.967,
+      "blue_drain_frac": 0.625,
+      "wall_s": 112.9
+    },
+    {
+      "seed": 1003,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 35,
+        "ballistic": 6,
+        "hgv": 1
+      },
+      "total_threats": 132,
+      "interceptor_launches": 286,
+      "leaked": 12,
+      "intercepts": 86,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 100
+      },
+      "total_site_damage": 200,
+      "sites_dead": 2,
+      "red_drain_frac": 0.982,
+      "blue_drain_frac": 0.533,
+      "wall_s": 96.6
+    },
+    {
+      "seed": 1004,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 35,
+        "ballistic": 6,
+        "hgv": 1
+      },
+      "total_threats": 132,
+      "interceptor_launches": 433,
+      "leaked": 10,
+      "intercepts": 94,
+      "site_damage": {
+        "Firewatch Station": 60,
+        "Spear Point Base": 100,
+        "Main Base": 0
+      },
+      "total_site_damage": 160,
+      "sites_dead": 1,
+      "red_drain_frac": 0.982,
+      "blue_drain_frac": 0.623,
+      "wall_s": 116.8
+    },
+    {
+      "seed": 1005,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 30,
+        "ballistic": 9,
+        "hgv": 1
+      },
+      "total_threats": 130,
+      "interceptor_launches": 431,
+      "leaked": 10,
+      "intercepts": 101,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 65
+      },
+      "total_site_damage": 165,
+      "sites_dead": 1,
+      "red_drain_frac": 0.997,
+      "blue_drain_frac": 0.7,
+      "wall_s": 94.1
+    },
+    {
+      "seed": 1006,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 23,
+        "ballistic": 4,
+        "hgv": 2
+      },
+      "total_threats": 119,
+      "interceptor_launches": 468,
+      "leaked": 6,
+      "intercepts": 97,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 0
+      },
+      "total_site_damage": 100,
+      "sites_dead": 1,
+      "red_drain_frac": 0.992,
+      "blue_drain_frac": 0.574,
+      "wall_s": 89.5
+    },
+    {
+      "seed": 1007,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 23,
+        "ballistic": 4,
+        "hgv": 2
+      },
+      "total_threats": 119,
+      "interceptor_launches": 355,
+      "leaked": 10,
+      "intercepts": 100,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 15
+      },
+      "total_site_damage": 115,
+      "sites_dead": 1,
+      "red_drain_frac": 0.992,
+      "blue_drain_frac": 0.584,
+      "wall_s": 94.5
+    },
+    {
+      "seed": 1008,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 23,
+        "ballistic": 4,
+        "hgv": 2
+      },
+      "total_threats": 119,
+      "interceptor_launches": 489,
+      "leaked": 7,
+      "intercepts": 97,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 15
+      },
+      "total_site_damage": 115,
+      "sites_dead": 1,
+      "red_drain_frac": 0.992,
+      "blue_drain_frac": 0.559,
+      "wall_s": 91.3
+    },
+    {
+      "seed": 1009,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 23,
+        "ballistic": 4,
+        "hgv": 2
+      },
+      "total_threats": 119,
+      "interceptor_launches": 383,
+      "leaked": 6,
+      "intercepts": 98,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 0
+      },
+      "total_site_damage": 100,
+      "sites_dead": 1,
+      "red_drain_frac": 0.992,
+      "blue_drain_frac": 0.535,
+      "wall_s": 89.1
+    },
+    {
+      "seed": 1010,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 23,
+        "ballistic": 4,
+        "hgv": 2
+      },
+      "total_threats": 119,
+      "interceptor_launches": 425,
+      "leaked": 8,
+      "intercepts": 98,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 20
+      },
+      "total_site_damage": 120,
+      "sites_dead": 1,
+      "red_drain_frac": 0.992,
+      "blue_drain_frac": 0.486,
+      "wall_s": 81.8
+    },
+    {
+      "seed": 1011,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 23,
+        "ballistic": 4,
+        "hgv": 2
+      },
+      "total_threats": 119,
+      "interceptor_launches": 415,
+      "leaked": 12,
+      "intercepts": 100,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 15
+      },
+      "total_site_damage": 115,
+      "sites_dead": 1,
+      "red_drain_frac": 0.992,
+      "blue_drain_frac": 0.569,
+      "wall_s": 90.2
+    },
+    {
+      "seed": 1012,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 23,
+        "ballistic": 4,
+        "hgv": 2
+      },
+      "total_threats": 119,
+      "interceptor_launches": 420,
+      "leaked": 6,
+      "intercepts": 89,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 0
+      },
+      "total_site_damage": 100,
+      "sites_dead": 1,
+      "red_drain_frac": 0.992,
+      "blue_drain_frac": 0.499,
+      "wall_s": 78.4
+    },
+    {
+      "seed": 1013,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 30,
+        "ballistic": 8,
+        "hgv": 1
+      },
+      "total_threats": 129,
+      "interceptor_launches": 387,
+      "leaked": 9,
+      "intercepts": 98,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 45
+      },
+      "total_site_damage": 145,
+      "sites_dead": 1,
+      "red_drain_frac": 0.967,
+      "blue_drain_frac": 0.718,
+      "wall_s": 79.3
+    },
+    {
+      "seed": 1014,
+      "winner": null,
+      "ep_len_sim_s": 2500.0,
+      "threats_by_kind": {
+        "drone": 90,
+        "cruise_sub": 23,
+        "ballistic": 4,
+        "hgv": 2
+      },
+      "total_threats": 119,
+      "interceptor_launches": 513,
+      "leaked": 6,
+      "intercepts": 112,
+      "site_damage": {
+        "Firewatch Station": 0,
+        "Spear Point Base": 100,
+        "Main Base": 0
+      },
+      "total_site_damage": 100,
+      "sites_dead": 1,
+      "red_drain_frac": 0.992,
+      "blue_drain_frac": 0.534,
+      "wall_s": 73.0
+    }
+  ],
+  "ranked_seeds": [
+    1001,
+    1006,
+    1009,
+    1012,
+    1014,
+    1007,
+    1008,
+    1011,
+    1010,
+    1013,
+    1000,
+    1004,
+    1005,
+    1002,
+    1003
+  ]
+}

@@ -1,14 +1,21 @@
 # Progress Folder
 
-This folder tracks project state so work can be resumed on any machine.
+This folder is the post-Finale archival snapshot for the project.
 
 ## Contents
 
-- **[STATUS.md](STATUS.md)** — Current snapshot: what's done, what's working, how to clone + run elsewhere
-- **[ROADMAP.md](ROADMAP.md)** — Next-step options with effort estimates and a recommended path to April 25
+- **[STATUS.md](STATUS.md)** — current ship state (post-Finale,
+  `current/demo-live-v1.0` branch).
+- **[BIG_MODELS_POSTMORTEM_en.md](BIG_MODELS_POSTMORTEM_en.md)** /
+  **[_zh.md](BIG_MODELS_POSTMORTEM_zh.md)** — why the bigger RL
+  Blue models (Boyu V2a / Cap120 / Megamodel) regressed into
+  PAC-spam during demo testing, and how V4 + the rule layer
+  ended up being the validated configuration.
+- **[V4_DISTRIBUTION_SHIFT_UPDATE_zh.md](V4_DISTRIBUTION_SHIFT_UPDATE_zh.md)**
+  — the real root cause of the PAC-spam regression, found
+  mid-Finale day: training-vs-deployment distribution mismatch
+  on layout + budget. The fix was simply matching the demo
+  setup to the training distribution.
 
-## When to update
-
-- After every delegate session: bump the "latest commit" line in STATUS.md and add any new known issues
-- Before switching machines: push everything, confirm STATUS reflects reality
-- After major scope decisions: update ROADMAP's recommended path
+Older training reports, worker prompts, and evaluation logs
+live on the `archive/*` branches.

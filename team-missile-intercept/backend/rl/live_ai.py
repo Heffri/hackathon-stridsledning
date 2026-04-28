@@ -1,0 +1,788 @@
+"""Live-demo wrappers — learned policies driving Scenario.red / Scenario.blue.
+
+Two Scenario-compatible wrapper classes (``LearnedRedAI`` / ``LearnedBlueAI``)
+that pose as the rule-based ``RedAI`` / ``BlueAI`` from ``sim/`` but drive a
+MaskablePPO policy under the hood. Dropped into ``scenario.red`` /
+``scenario.blue`` by ``server.py`` when ``RED_POLICY_PATH`` /
+``BLUE_POLICY_PATH`` env vars are set.
+
+Design: compose an internal ``_LiveEnv`` (bypasses ``RedEnv.__init__`` so it
+doesn't new its own World) and reuse the inherited obs encoders + action
+appliers from ``rl/red_env.py``. ``world`` and ``blue_fleet`` are exposed as
+properties that resolve to the live Scenario state each call — no per-tick
+rebind bookkeeping.
+
+Decision cadence matches training (``DECISION_EVERY`` sim ticks between
+``policy.predict`` calls). Intermediate ticks advance launcher timers on
+the Blue side; no-op on Red (``RedLauncherFleet`` is ammo-less).
+
+Numpy compat: imports ``_patch_numpy_core_for_legacy_pickle`` from
+``rl/red_env.py`` and runs it at module-load so Boyu's numpy-2-pickled Blue
+models load cleanly under the local numpy 1.26.
+
+Smoke: ``python -m rl.live_ai`` loads Red2 + Blue1 against a fresh Scenario
+and advances 10 ticks. Skips gracefully if models are absent.
+"""
+from __future__ import annotations
+
+from typing import Dict, List, Optional
+
+import numpy as np
+import gymnasium as gym
+
+# Apply the numpy-core compat shim BEFORE any sb3_contrib import. Boyu's
+# Blue models were pickled under numpy >= 2 where internal modules moved
+# from numpy.core.* to numpy._core.*; the shim aliases them for the local
+# numpy-1.26 env so MaskablePPO.load unpickles cleanly. Importing red_env
+# defines the helper; we call it here (idempotent) so live_ai.py is safe
+# whether or not red_env has been imported elsewhere first.
+from rl.red_env import N_RED_KINDS, RedEnv, _patch_numpy_core_for_legacy_pickle
+_patch_numpy_core_for_legacy_pickle()
+
+from rl.env import (
+    DECISION_EVERY,
+    MAX_INTERCEPTORS,
+    MAX_LAUNCHERS,
+    MAX_THREATS,
+)
+from sim import sites as sites_module
+from sim.config import LAUNCH_RANGE_MARGIN
+from sim.launcher import LauncherFleet, RedLauncherFleet
+from sim.types import INTERCEPTOR_SPECS, InterceptorType, THREAT_SPECS, ThreatType
+
+
+# Per-threat saturation cap (W2, 2026-04-23). Cheap threats get a
+# tighter cap so the policy can't dump 3 IRIS-T SLM ($3 M) on a single
+# $30 K drone — the rule version is one cap-3 across all kinds, which
+# is fine when expected-damage gates also stop SLM piling on a low-HP
+# target, but the wrapper has no such gate so a per-kind cap is the
+# cheapest way to bound over-engagement on cheap targets. CIWS rounds
+# stay exempt (cannon class — see Gate 2 below). The 2/3 split mirrors
+# the operator brief: hard targets (BALLISTIC / HGV) earn saturation,
+# cheap targets (DRONE / CRUISE) don't.
+SATURATION_CAP_BY_KIND: Dict[ThreatType, int] = {
+    ThreatType.DRONE:      2,
+    ThreatType.CRUISE_SUB: 2,
+    ThreatType.BALLISTIC:  3,
+    ThreatType.HGV:        3,
+}
+DEFAULT_SATURATION_CAP = 3
+
+
+def _load_policy(path: str):
+    """Load a MaskablePPO policy from disk for CPU inference. Same pattern as
+    ``rl/cross_eval.py`` — the numpy shim has already run at module load."""
+    from sb3_contrib import MaskablePPO
+    return MaskablePPO.load(path, device="cpu")
+
+
+class _LiveEnv(RedEnv):
+    """RedEnv variant bound to a live Scenario.
+
+    Bypasses the normal ``RedEnv.__init__`` (which would new a World + load a
+    Blue policy + wire gym spaces) so the wrappers can reuse the inherited
+    obs encoders + action appliers without duplicating that logic. ``world``
+    and ``blue_fleet`` are exposed as properties that resolve to the live
+    Scenario state each call — no per-tick rebind, no stale references.
+
+    A wrapper of the owning side's fleet is passed via ``own_blue_fleet`` for
+    ``LearnedBlueAI`` (so its obs encoder reads the fleet it's also firing
+    from). ``LearnedRedAI`` passes ``None`` and reads the Scenario's current
+    Blue fleet (rule or learned, whichever is installed on ``scenario.blue``).
+    """
+
+    def __init__(self, scenario, own_blue_fleet: Optional[LauncherFleet] = None):
+        # Skip RedEnv.__init__ entirely — we don't want a fresh World or a
+        # second policy load. Only call gym.Env.__init__ so the base class is
+        # consistent. We manually set every attribute the inherited obs +
+        # action methods touch.
+        gym.Env.__init__(self)
+        self._scenario = scenario
+        self._own_blue_fleet = own_blue_fleet
+        self._seed = None
+        self._episode_time_limit = float("inf")  # unused — no step() call
+        self._n_sites = max(1, len(sites_module.SOUTH_SITES))
+        self._total_site_hp = max(
+            1, sum(s.hp_max for s in sites_module.SOUTH_SITES)
+        )
+        self.rng = np.random.default_rng()
+        self.red_launchers = RedLauncherFleet()
+        # Not used — kept for attribute parity with RedEnv since some
+        # inherited methods may reference it in future changes.
+        self.blue_policy = None
+        self.blue = None
+        self._cum_reward = 0.0
+
+    @property
+    def world(self):
+        return self._scenario.world
+
+    @world.setter
+    def world(self, _v):
+        # No-op — the Scenario owns the World. RedEnv.reset() would try to
+        # reassign here; we never call reset() on this instance, but a
+        # settable property is required for the parent's attribute contract.
+        pass
+
+    @property
+    def blue_fleet(self):
+        # LearnedBlueAI: always use the wrapper's own fleet (the one it fires
+        # from) so obs encoding sees the same launcher state the policy is
+        # driving. LearnedRedAI: read ``scenario.blue.launchers`` — resolves
+        # to whatever is installed (rule BlueAI or LearnedBlueAI), preserving
+        # cross-side visibility when both sides are learned.
+        if self._own_blue_fleet is not None:
+            return self._own_blue_fleet
+        return self._scenario.blue.launchers
+
+    @blue_fleet.setter
+    def blue_fleet(self, _v):
+        pass  # see world.setter
+
+
+class LearnedRedAI:
+    """Scenario-compatible learned-policy Red wrapper.
+
+    Interface mirrors rule ``RedAI`` (attributes consumed by
+    ``sim/scenarios.py`` and ``Scenario.snapshot``):
+
+      * ``step(t_now, world)`` — called every sim tick by ``Scenario.step``.
+      * ``done`` — ``Scenario.winner`` gates Blue-victory on this. Learned
+        Red has no wave schedule, so we declare Red "done" via two rules:
+        (1) ``world.red_budget < cheapest_threat_cost`` — Red can't afford
+        any further spawn (same economic definition as ``cross_eval.py``).
+        (2) no successful spawn for ``IDLE_TIMEOUT_S`` consecutive sim
+        seconds — guards against a policy that hoards budget and never
+        acts. Once True the flag latches (mirrors rule ``RedAI.done``
+        which is also write-once).
+      * ``log`` — tail shown in ``red_log`` snapshot key. Sparse one-liner
+        per spawn decision.
+      * ``launchers`` — a ``RedLauncherFleet`` so ``snap["red_launchers"]`` works.
+      * ``waves``, ``_next_wave`` — stub-valued (empty / 0). Learned Red has
+        no concept of waves; the frontend reads these for the ``wave`` /
+        ``total_waves`` snapshot keys but they just show "wave 0/0" which
+        is harmless in the learned-policy demo context.
+
+    Decision cadence: policy predicts every ``DECISION_EVERY`` ticks to match
+    training. Intermediate ticks are a no-op on Red's side.
+    """
+
+    # Idle-timeout window. A learned Red that hoards budget and never
+    # spawns would otherwise run matches to the 3600 s safety cap; after
+    # this many seconds of no spawn, Scenario.winner treats Red as done.
+    IDLE_TIMEOUT_S = 120.0
+
+    def __init__(self, policy_path: str, scenario):
+        self._policy = _load_policy(policy_path)
+        self._env = _LiveEnv(scenario)
+        self._tick_counter = 0
+        # Backward-compat adapter (cap-120-experiment, 2026-04-25).
+        # Capture the model's native obs shapes at construction so the
+        # adapter can slice the env's larger obs tensors down to what
+        # the policy network expects. Red action_mask shape is
+        # `(N_RED_KINDS + n_sites,)` and Red action space is
+        # `MultiDiscrete([N_RED_KINDS, n_sites])` — neither depends on
+        # MAX_THREATS / MAX_LAUNCHERS / MAX_INTERCEPTORS, so the only
+        # adapter work on the Red side is obs-tensor slicing.
+        obs_space = self._policy.observation_space
+        self._model_max_threats = int(obs_space["threats"].shape[0])
+        self._model_max_launchers = int(obs_space["launchers"].shape[0])
+        self._model_max_interceptors = int(obs_space["interceptors"].shape[0])
+        # Red v2 (2026-04-26) extends the action_mask by 2 slots for the
+        # HGV-evasion bit. Older Red models trained without that extension
+        # have a shorter action_mask Box; capture the model's expected
+        # length so `_adapt_obs_for_model` can slice it down. _LiveEnv
+        # bypasses RedEnv.__init__ so it has no `observation_space`
+        # attribute — compute the env's mask length from `_n_sites`
+        # using the same formula as `RedEnv._build_action_mask` (v2:
+        # N_RED_KINDS + n_sites + 2).
+        self._model_action_mask_len = int(obs_space["action_mask"].shape[0])
+        self._env_action_mask_len = N_RED_KINDS + self._env._n_sites + 2
+        self._needs_adapter = (
+            self._model_max_threats != MAX_THREATS
+            or self._model_max_launchers != MAX_LAUNCHERS
+            or self._model_max_interceptors != MAX_INTERCEPTORS
+            or self._model_action_mask_len != self._env_action_mask_len
+        )
+        if self._needs_adapter:
+            print(
+                f"[LearnedRedAI] adapter active: model expects "
+                f"threats={self._model_max_threats}, "
+                f"launchers={self._model_max_launchers}, "
+                f"interceptors={self._model_max_interceptors} "
+                f"(env at {MAX_THREATS}/{MAX_LAUNCHERS}/{MAX_INTERCEPTORS})",
+                flush=True,
+            )
+        # Termination state -----------------------------------------------
+        # `done` is latched once True — matches rule RedAI.done semantics
+        # (all waves exhausted) and avoids flip-flopping if any future
+        # bookkeeping change re-credits red_budget mid-match. Tracked
+        # alongside the last successful spawn time so the idle-timeout
+        # branch can fire against a hoarding policy.
+        self._done_latched = False
+        # Sentinel-init so the idle-timeout branch can't self-latch before
+        # the first spawn (audit 2026-04-22 F3): prior `_last_spawn_t=0.0`
+        # with the guard `t_now > 120 and t_now - _last_spawn_t > 120`
+        # trips at t=120.05 if Red never spawned, flipping done=True and
+        # ending the match via the red_done + no_threats Blue-win path.
+        # None = "never spawned"; idle-check skips until the first spawn
+        # records a real timestamp.
+        self._last_spawn_t: Optional[float] = None
+        # Scenario attrs ---------------------------------------------------
+        self.log: List[str] = []
+        self.waves: List = []   # stub — see class docstring
+        self._next_wave = 0     # stub
+        # Share the RedLauncherFleet with the internal _LiveEnv so
+        # ``snap["red_launchers"] = self.red.launchers.fleet_status()``
+        # observes the same round-robin index the policy action applier
+        # advances via ``_pick_spawn``.
+        self.launchers = self._env.red_launchers
+
+    @property
+    def done(self) -> bool:
+        if self._done_latched:
+            return True
+        cheapest = min(spec.usd_cost for spec in THREAT_SPECS.values())
+        if self._env.world.red_budget < cheapest:
+            self._done_latched = True
+            return True
+        # Idle timeout — only meaningful once Red has actually spawned
+        # at least once. With sentinel-init `_last_spawn_t=None`, the
+        # idle-check is skipped until the first spawn records a real
+        # timestamp; after that, >IDLE_TIMEOUT_S of silence latches done.
+        t_now = self._env.world.t
+        if (
+            self._last_spawn_t is not None
+            and (t_now - self._last_spawn_t) > self.IDLE_TIMEOUT_S
+        ):
+            self._done_latched = True
+            return True
+        return False
+
+    def _adapt_obs_for_model(self, env_obs: dict) -> dict:
+        """Slice env obs tensors to model's native size. No-op when
+        `_needs_adapter` is False. Red action_mask depends on
+        `N_RED_KINDS + n_sites + (2 if v2 evasion bit else 0)` — pre-v2
+        models lack the evasion-bit extension, so the env mask is sliced
+        to the model's expected length."""
+        if not self._needs_adapter:
+            return env_obs
+        n_t = self._model_max_threats
+        n_l = self._model_max_launchers
+        n_i = self._model_max_interceptors
+        m_len = self._model_action_mask_len
+        return {
+            "threats":           env_obs["threats"][:n_t],
+            "threats_mask":      env_obs["threats_mask"][:n_t],
+            "launchers":         env_obs["launchers"][:n_l],
+            "launchers_mask":    env_obs["launchers_mask"][:n_l],
+            "interceptors":      env_obs["interceptors"][:n_i],
+            "interceptors_mask": env_obs["interceptors_mask"][:n_i],
+            "sites":             env_obs["sites"],
+            "sites_mask":        env_obs["sites_mask"],
+            "global":            env_obs["global"],
+            "action_mask":       env_obs["action_mask"][:m_len],
+        }
+
+    def step(self, t_now: float, world) -> None:
+        # Gate policy prediction to every DECISION_EVERY ticks to match
+        # training cadence. RedLauncherFleet has no ammo/CD timers so
+        # intermediate ticks don't need any bookkeeping.
+        if self._tick_counter % DECISION_EVERY == 0:
+            env_obs = self._env._encode_obs()
+            model_obs = self._adapt_obs_for_model(env_obs)
+            mask = model_obs["action_mask"]
+            action, _ = self._policy.predict(
+                model_obs, deterministic=True, action_masks=mask
+            )
+            action_arr = np.asarray(action).reshape(-1)
+            spawned, cost_usd = self._env._apply_action(action_arr)
+            if spawned:
+                self._last_spawn_t = t_now
+                kind_idx = int(action_arr[0])
+                self.log.append(
+                    f"[{t_now:6.1f}s] learned_red spawn k{kind_idx} "
+                    f"cost=${cost_usd/1e6:.1f}M"
+                )
+        self._tick_counter += 1
+
+
+class LearnedBlueAI:
+    """Scenario-compatible learned-policy Blue wrapper.
+
+    Interface mirrors rule ``BlueAI``:
+
+      * ``step(t_now, world)`` — called every sim tick.
+      * ``log`` — tail shown in ``blue_log`` snapshot key.
+      * ``launchers`` — a ``LauncherFleet`` (the one the wrapper fires from).
+        ``snap["ammo"]`` and ``snap["launchers"]`` read off this via
+        ``fleet_status(t_now)``.
+
+    Decision cadence: policy predicts every ``DECISION_EVERY`` ticks. Fleet
+    timers ``.tick(t_now)`` advance every call (matches rule BlueAI's line 1
+    in ``BlueAI.step``) so reload/CD are consistent with training.
+
+    Safety filters on top of the policy: the wrapper now trusts the
+    trained policy's cost-exchange and target-selection judgment (the
+    blue_aoe_mixed model — 2.3 M cumulative steps — is strong enough
+    that the earlier ALLOWED_INTERCEPTORS allowlist and the
+    force-ballistic fallback distorted its behaviour more than they
+    helped). Two gates remain, both economic:
+
+      * Budget gate — hard refusal if ``world.blue_budget <
+        spec.usd_cost`` (no clamp). Prevents the training env's
+        ``max(0, ...)`` clamp from letting the policy fire for free
+        after the budget empties.
+      * Saturation cap — per-kind via ``SATURATION_CAP_BY_KIND``
+        (DRONE / CRUISE: 2; BALLISTIC / HGV: 3). CIWS is a cannon,
+        exempt from the cap (same carve-out as ``BlueAI.step``).
+
+    Retarget-on-death of orphaned interceptors is handled in
+    ``World.step`` (the arcade AOE reacquire hook). The previous
+    wrapper-level orphan cleanup that marked any interceptor with a
+    dead ``state.target_id`` as dead was removed (2026-04-24, Bug 8):
+    it killed retargeted interceptors because retargeting only updates
+    ``inter.target_id``, not the mirrored ``state.target_id`` — so
+    freshly retargeted interceptors visibly swung onto a new threat,
+    then disappeared within a few frames. The live-fix pass also
+    restored ``state.target_id`` write-through in World.step so any
+    downstream consumer (HUD, telemetry) stays accurate.
+    """
+
+    # Mirror ``sim/blue_ai.py::MAX_SIMULTANEOUS_PER_THREAT``. Excludes
+    # CIWS (point-defense cannon — has its own per-threat shot budget
+    # in the rule AI; simpler here to just exempt it from this cap).
+    # W2 (2026-04-23): per-kind cap via ``SATURATION_CAP_BY_KIND``;
+    # this constant kept as the legacy default for callers that haven't
+    # been migrated.
+    MAX_SIMULTANEOUS_PER_THREAT = 3
+
+    def __init__(self, policy_path: str, scenario):
+        self._policy = _load_policy(policy_path)
+        # Own fleet — policy fires from this, snapshot reads from this.
+        self.launchers = LauncherFleet()
+        self._env = _LiveEnv(scenario, own_blue_fleet=self.launchers)
+        self._tick_counter = 0
+        self.log: List[str] = []
+        # Saturation-cap bookkeeping: threat_id → list of live
+        # interceptor_ids assigned. Mirrors ``BlueAI.assignments`` in
+        # ``sim/blue_ai.py``. Pruned each tick before the policy
+        # decides.
+        self._assignments: Dict[int, List[int]] = {}
+        # Backward-compat adapter (cap-120-experiment, 2026-04-25).
+        # Capture the model's native obs / action shapes so the adapter
+        # can slice the env's larger obs tensors and remap the model's
+        # smaller action vector before/after policy.predict. Blue action
+        # space is `MultiDiscrete([model_max_threats+1] *
+        # model_max_launchers)` — both dims grow with the env bump, so
+        # the action adapter has to (1) translate the hold sentinel
+        # (model's hold = model_max_threats; env's hold = MAX_THREATS),
+        # and (2) pad launcher slots beyond the model's count with hold.
+        obs_space = self._policy.observation_space
+        self._model_max_threats = int(obs_space["threats"].shape[0])
+        self._model_max_launchers = int(obs_space["launchers"].shape[0])
+        self._model_max_interceptors = int(obs_space["interceptors"].shape[0])
+        self._needs_adapter = (
+            self._model_max_threats != MAX_THREATS
+            or self._model_max_launchers != MAX_LAUNCHERS
+            or self._model_max_interceptors != MAX_INTERCEPTORS
+        )
+        if self._needs_adapter:
+            print(
+                f"[LearnedBlueAI] adapter active: model expects "
+                f"threats={self._model_max_threats}, "
+                f"launchers={self._model_max_launchers}, "
+                f"interceptors={self._model_max_interceptors} "
+                f"(env at {MAX_THREATS}/{MAX_LAUNCHERS}/{MAX_INTERCEPTORS})",
+                flush=True,
+            )
+
+    def step(self, t_now: float, world) -> None:
+        # Reload/CD timers MUST advance every tick — matches rule BlueAI
+        # line 1 (launchers.tick). Policy only predicts at decision ticks.
+        self.launchers.tick(t_now)
+
+        # Prune assignments: drop dead threats entirely, and inside each
+        # live threat's list drop dead/missing interceptors. Keeps the
+        # saturation-cap count accurate.
+        for tid in list(self._assignments.keys()):
+            threat = world.threats.get(tid)
+            if threat is None or not threat.state.alive:
+                self._assignments.pop(tid, None)
+                continue
+            live = [
+                iid for iid in self._assignments[tid]
+                if iid in world.interceptors
+                and world.interceptors[iid].state.alive
+            ]
+            if live:
+                self._assignments[tid] = live
+            else:
+                self._assignments.pop(tid, None)
+
+        # Retargeting of orphaned interceptors (target died) is handled in
+        # ``World.step``'s arcade AOE reacquire hook — it picks the nearest
+        # alive threat still in launcher range and swaps ``inter.target_id``
+        # (with ``state.target_id`` mirrored since Bug 8). Interceptors
+        # that don't find a replacement coast to the
+        # ``config.INTERCEPT_TIMEOUT`` (80 s) or stall-out branch in
+        # ``entities.Interceptor``. The wrapper does not override this.
+
+        if self._tick_counter % DECISION_EVERY == 0:
+            env_obs = self._env._encode_obs_blue()
+            model_obs = self._adapt_obs_for_model(env_obs)
+            # Flat int8 mask for MaskablePPO consumption (parent uses
+            # ``.reshape(-1).astype(np.int8)`` in cross_eval.py). The
+            # 2D action_mask in `model_obs` is already sliced down to
+            # `(model_max_launchers, model_max_threats+1)` by the
+            # adapter, so the flatten yields the model's expected
+            # action_masks length.
+            mask_flat = model_obs["action_mask"].reshape(-1).astype(np.int8)
+            model_action, _ = self._policy.predict(
+                model_obs, deterministic=True, action_masks=mask_flat,
+            )
+            env_action = self._adapt_action_for_env(
+                np.asarray(model_action).reshape(-1)
+            )
+            n_fires = self._apply_action_gated(env_action, t_now)
+            if n_fires:
+                self.log.append(
+                    f"[{t_now:6.1f}s] learned_blue fires={n_fires}"
+                )
+        # Path C (2026-04-25): emergency strategic-fallback. Even after
+        # reward-shaped retrain (B path, 500 k steps with HGV leak
+        # penalty × 8 / ballistic × 6), the policy doesn't reliably fire
+        # PAC-3 / PAC-2 at Mach-13 ballistic / Mach-17 HGV. This rule-
+        # layer safety net force-dispatches the canonical interceptor
+        # for any strategic threat the policy ignored. Mirrors the
+        # last-resort tier in ``sim/blue_ai.py``. Demo-safe; restored
+        # after Bug 7 removal because the trained policy never picked
+        # up the behaviour the spec required.
+        n_forced = self._force_strategic_fallback(t_now)
+        if n_forced:
+            self.log.append(
+                f"[{t_now:6.1f}s] strategic_fallback={n_forced}"
+            )
+        self._tick_counter += 1
+
+    def _adapt_obs_for_model(self, env_obs: dict) -> dict:
+        """Slice env obs tensors down to the model's native size so
+        `policy.predict` sees the shape its network expects. No-op when
+        `_needs_adapter` is False. Sites + global pass through unchanged
+        (MAX_SITES, GLOBAL_FEATURES were not bumped in cap-120). The 2D
+        action_mask is sliced in BOTH dims because Blue's mask shape is
+        `(MAX_LAUNCHERS, MAX_THREATS+1)` and both grew."""
+        if not self._needs_adapter:
+            return env_obs
+        n_t = self._model_max_threats
+        n_l = self._model_max_launchers
+        n_i = self._model_max_interceptors
+        return {
+            "threats":           env_obs["threats"][:n_t],
+            "threats_mask":      env_obs["threats_mask"][:n_t],
+            "launchers":         env_obs["launchers"][:n_l],
+            "launchers_mask":    env_obs["launchers_mask"][:n_l],
+            "interceptors":      env_obs["interceptors"][:n_i],
+            "interceptors_mask": env_obs["interceptors_mask"][:n_i],
+            "sites":             env_obs["sites"],
+            "sites_mask":        env_obs["sites_mask"],
+            "global":            env_obs["global"],
+            "action_mask":       env_obs["action_mask"][:n_l, :n_t + 1],
+        }
+
+    def _adapt_action_for_env(self, model_action: np.ndarray) -> np.ndarray:
+        """Translate the model's smaller action vector into the env's
+        larger action space. Two transforms:
+
+          1. Hold-value remap: model's hold sentinel is
+             `model_max_threats`; env's hold is `MAX_THREATS`. A model
+             action `a == model_max_threats` becomes `MAX_THREATS` in
+             env coords.
+          2. Launcher padding: the model only commands launcher slots
+             `[0, model_max_launchers)`. Pad the remaining
+             `[model_max_launchers, MAX_LAUNCHERS)` slots with hold so
+             `_apply_action_gated` skips them.
+
+        Slot k in the model maps to slot k in the env because both
+        envs build the threats list from
+        `world.threats.values()` in dict-insertion order — so the int
+        target index has the same meaning across both spaces (provided
+        the alive-threat count stays under `model_max_threats`, which
+        is the only regime the adapter is correct in)."""
+        if not self._needs_adapter:
+            return model_action
+        env_action = np.full(MAX_LAUNCHERS, MAX_THREATS, dtype=np.int64)
+        model_hold = self._model_max_threats
+        for i, a in enumerate(model_action):
+            if i >= MAX_LAUNCHERS:
+                break
+            a_int = int(a)
+            if a_int == model_hold:
+                env_action[i] = MAX_THREATS
+            else:
+                env_action[i] = a_int
+        return env_action
+
+    def _apply_action_gated(self, action: np.ndarray, t_now: float) -> int:
+        """Execute the policy's action with rule-layer safety gates.
+
+        Replaces the direct ``_LiveEnv._apply_blue_action`` call. Same
+        action contract (``MAX_LAUNCHERS`` ints in ``[0, MAX_THREATS]``,
+        ``MAX_THREATS`` = hold, else target-slot index) but adds two
+        economic gates the training env doesn't enforce:
+
+          * Budget: refuse if ``world.blue_budget < spec.usd_cost`` —
+            hard refusal, not a ``max(0, ...)`` clamp (which was the
+            "free fires after $0" bug).
+          * Saturation: skip non-CIWS launches once this threat already
+            has the per-kind cap of non-CIWS interceptors in flight.
+            Cap table in ``SATURATION_CAP_BY_KIND`` (DRONE / CRUISE 2,
+            BALLISTIC / HGV 3). CIWS is exempt.
+          * Launcher readiness + range: defensive re-check (mask
+            already filters these in principle).
+
+        The earlier cost-exchange allowlist (``ALLOWED_INTERCEPTORS``)
+        and the post-policy ``_force_ballistic_fallback`` dispatcher
+        were removed 2026-04-24 (Bug 7) — the blue_aoe_mixed policy
+        (2.3 M cumulative steps) has internalised cost-exchange well
+        enough that the allowlist was distorting more than helping,
+        and the fallback was originating fires the policy had
+        deliberately deferred.
+
+        On a successful spawn the new interceptor's id is recorded in
+        ``self._assignments`` so the cap is honoured across ticks in
+        the same match. Returns the count of shots fired.
+        """
+        world = self._env.world
+        launchers = self.launchers.launchers
+        threats = self._env._alive_threats()
+        n_fires = 0
+        for l_idx, a in enumerate(action):
+            if l_idx >= len(launchers):
+                break
+            a_int = int(a)
+            if a_int >= MAX_THREATS:
+                continue  # hold
+            if a_int >= len(threats):
+                continue  # pad slot
+            lch = launchers[l_idx]
+            if lch.reloading or not lch.can_fire(t_now):
+                continue
+            threat = threats[a_int]
+            if not threat.state.alive:
+                continue
+            threat_kind = ThreatType(threat.state.kind)
+            spec = INTERCEPTOR_SPECS[lch.kind]
+            # Gate 1: budget — hard refusal, no clamp.
+            if world.blue_budget < spec.usd_cost:
+                continue
+            # Gate 2: saturation cap (non-CIWS only). Per-kind via
+            # ``SATURATION_CAP_BY_KIND`` (W2): cheap threats (DRONE /
+            # CRUISE) cap at 2 to stop the policy spending $3 M of SLM
+            # on a $30 K target, hard threats (BALLISTIC / HGV) keep
+            # cap-3 so layered defense can stack.
+            tid_target = threat.state.id
+            if lch.kind != InterceptorType.CIWS:
+                cap = SATURATION_CAP_BY_KIND.get(
+                    threat_kind, DEFAULT_SATURATION_CAP,
+                )
+                if len(self._assignments.get(tid_target, [])) >= cap:
+                    continue
+            # Defensive range re-check (mirrors _apply_blue_action).
+            t_pos = threat.state.pos
+            dx = float(t_pos[0] - lch.pos[0])
+            dy = float(t_pos[1] - lch.pos[1])
+            dz = float(t_pos[2])
+            if (dx * dx + dy * dy + dz * dz) > \
+                    (spec.max_range * LAUNCH_RANGE_MARGIN) ** 2:
+                continue
+            mode = lch.fire(t_now)
+            iid = world.spawn_interceptor(
+                lch.kind,
+                (lch.pos[0], lch.pos[1], 0.0),
+                (dx, dy, dz),
+                tid_target,
+                mode,
+            )
+            # Unclamped — gate above guarantees budget >= cost.
+            world.blue_budget -= spec.usd_cost
+            self._assignments.setdefault(tid_target, []).append(iid)
+            n_fires += 1
+        return n_fires
+
+    def _force_strategic_fallback(self, t_now: float) -> int:
+        """Force-dispatch PAC-3 / PAC-2 at any ballistic OR HGV the
+        policy left unengaged.
+
+        Path C emergency net (2026-04-25): the trained Blue policy
+        repeatedly fails to learn PAC-3 firing — even after the
+        reward-shaped retrain that increased ballistic/HGV leak
+        penalties (HGV ×8, ballistic ×6, cruise ×3 in
+        ``env._reward_from_events``). Without intervention,
+        Mach-13 ballistic / Mach-17 HGV walk through Blue's defense
+        and crater sites in 1-2 hits each.
+
+        This rule-layer safety net mirrors ``sim/blue_ai.py``'s
+        last-resort tier — if the policy didn't engage a strategic
+        threat, force a PAC-3 (HTK match for both kinds) or PAC-2
+        (acceptable backup for ballistic only — Mach 5 too slow for
+        Mach-17 HGV, would be a guaranteed miss + wasted budget).
+
+        Activation: only fires at ballistic / HGV with zero in-flight
+        interceptors (policy hasn't engaged). One launcher per threat
+        per tick; the next tick retries if cooldowns clear.
+
+        Returns the count of forced launches for the log line.
+        """
+        world = self._env.world
+        forced = 0
+        STRATEGIC_KINDS = (InterceptorType.HIT_TO_KILL, InterceptorType.LONG_SAM)
+        for tid, threat in world.threats.items():
+            if not threat.state.alive:
+                continue
+            threat_kind = ThreatType(threat.state.kind)
+            if threat_kind not in (ThreatType.BALLISTIC, ThreatType.HGV):
+                continue
+            # Only skip if a STRATEGIC interceptor (PAC-2/PAC-3) is already
+            # in flight at this threat. A CIWS / RBS-70 / SLS at a Mach-13
+            # ballistic is a wasted shot (range / speed mismatch); Path C
+            # should still launch PAC-3 in that case so the threat is
+            # actually addressed.
+            existing = self._assignments.get(tid, [])
+            strategic_engaged = False
+            for iid in existing:
+                inter = world.interceptors.get(iid)
+                if inter is None or not inter.state.alive:
+                    continue
+                if inter.spec.kind in STRATEGIC_KINDS:
+                    strategic_engaged = True
+                    break
+            if strategic_engaged:
+                continue
+            # PAC-3 first for both. PAC-2 backup only for ballistic.
+            kinds_to_try = [InterceptorType.HIT_TO_KILL]
+            if threat_kind == ThreatType.BALLISTIC:
+                kinds_to_try.append(InterceptorType.LONG_SAM)
+            for kind in kinds_to_try:
+                spec = INTERCEPTOR_SPECS[kind]
+                if world.blue_budget < spec.usd_cost:
+                    continue
+                fired = False
+                for lch in self.launchers.launchers:
+                    if lch.kind != kind:
+                        continue
+                    if lch.reloading or not lch.can_fire(t_now):
+                        continue
+                    t_pos = threat.state.pos
+                    t_vel = threat.state.vel
+                    dx = float(t_pos[0] - lch.pos[0])
+                    dy = float(t_pos[1] - lch.pos[1])
+                    dz = float(t_pos[2])
+                    R = spec.max_range * LAUNCH_RANGE_MARGIN
+                    dist_now_sq = dx * dx + dy * dy + dz * dz
+                    in_range_now = dist_now_sq <= R * R
+                    if not in_range_now:
+                        # Path 1 (predictive dispatch, 2026-04-25 evening):
+                        # if the threat's current trajectory will enter the
+                        # launcher's range within the interceptor's fuel
+                        # window, fire NOW so PAC-3 / PAC-2 has time to
+                        # climb + close. Solves the "Mach-13/17 RV is
+                        # already too close by the time it enters strict
+                        # range gate" problem. Threat assumed straight-line
+                        # ballistic / glide trajectory (which is how
+                        # ScriptedRed launches them — HGV.override_maneuver
+                        # is rarely set in scripted mode). Predictive math:
+                        # solve  |t_pos + t·t_vel - lch_pos| = R  for t > 0.
+                        a0 = float(t_pos[0] - lch.pos[0])
+                        a1 = float(t_pos[1] - lch.pos[1])
+                        a2 = float(t_pos[2])  # launcher z = 0
+                        b0 = float(t_vel[0])
+                        b1 = float(t_vel[1])
+                        b2 = float(t_vel[2])
+                        A = b0 * b0 + b1 * b1 + b2 * b2
+                        if A < 1.0:
+                            # Threat almost stationary — can't predict
+                            # closing geometry, fall back to range gate.
+                            continue
+                        B = 2.0 * (a0 * b0 + a1 * b1 + a2 * b2)
+                        C = (a0 * a0 + a1 * a1 + a2 * a2) - R * R
+                        disc = B * B - 4.0 * A * C
+                        if disc < 0:
+                            # Threat trajectory misses our range entirely.
+                            continue
+                        sqrt_disc = float(np.sqrt(disc))
+                        # Earliest entry time (smaller root). If both roots
+                        # negative, threat already past — skip.
+                        t_enter = (-B - sqrt_disc) / (2.0 * A)
+                        if t_enter <= 0.0:
+                            continue
+                        # Interceptor needs to reach rendezvous before fuel
+                        # runs out + ~3 s for boost / climb / turn margin.
+                        if t_enter > spec.fuel_s - 3.0:
+                            continue
+                        # OK — predictive launch authorised. PN guidance
+                        # will lead-pursuit from here.
+                    mode = lch.fire(t_now)
+                    iid = world.spawn_interceptor(
+                        lch.kind,
+                        (lch.pos[0], lch.pos[1], 0.0),
+                        (dx, dy, dz),
+                        tid,
+                        mode,
+                    )
+                    world.blue_budget -= spec.usd_cost
+                    self._assignments.setdefault(tid, []).append(iid)
+                    forced += 1
+                    fired = True
+                    break  # one launcher per threat per tick
+                if fired:
+                    break  # don't also fire backup if primary fired
+        return forced
+
+
+# ----------------------------------------------------------------------
+# Smoke test entry point — ``python -m rl.live_ai``
+# ----------------------------------------------------------------------
+def _smoke_main() -> int:
+    """Load Red2 + Blue1 (if available) against a fresh Scenario, advance 10
+    sim ticks. Prints progress; skips gracefully if models are absent."""
+    import pathlib
+
+    here = pathlib.Path(__file__).resolve().parent
+    backend = here.parent
+    red2 = backend / "rl" / "runs" / "red_20260421_234425" / "model.zip"
+    blue1 = backend / "rl" / "models" / "blue_ai_1m_2xpenalty" / "model.zip"
+
+    print("=== live_ai smoke ===")
+    if not red2.exists():
+        print(f"[SKIP] Red2 model missing at {red2}")
+        return 0
+
+    from sim.config import DT
+    from sim.scenarios import build_default_scenario
+
+    scn = build_default_scenario(auto_start=True)
+    scn.red = LearnedRedAI(str(red2), scn)
+    print(f"[OK] Loaded learned Red: {red2.name}")
+
+    if blue1.exists():
+        scn.blue = LearnedBlueAI(str(blue1), scn)
+        print(f"[OK] Loaded learned Blue: {blue1.name}")
+    else:
+        print(f"[INFO] Blue1 missing — using rule BlueAI")
+
+    for i in range(10):
+        scn.step(DT)
+    print(
+        f"[OK] 10 ticks advanced: t={scn.world.t:.3f}s, "
+        f"phase={scn.world.phase.value}, "
+        f"threats={len(scn.world.threats)}, "
+        f"interceptors={len(scn.world.interceptors)}"
+    )
+    print("Smoke OK.")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(_smoke_main())

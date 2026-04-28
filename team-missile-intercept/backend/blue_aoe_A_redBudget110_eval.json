@@ -1,0 +1,119 @@
+{
+  "meta": {
+    "blue_model": "rl/runs/blue_local/blue_aoe_aggressive/model.zip",
+    "matches_per_cell": 3,
+    "layouts": [
+      "C"
+    ],
+    "reds": [
+      "scripted"
+    ],
+    "blue_budget": 200000000,
+    "red_budget": 110000000,
+    "episode_time_limit": 1500.0,
+    "wall_seconds": 446.0
+  },
+  "cells": {
+    "C_vs_scripted": {
+      "red": "scripted",
+      "layout": "C",
+      "summary": {
+        "n": 3,
+        "blue_wins": 0,
+        "red_wins": 0,
+        "truncated": 3,
+        "blue_winrate": 0.0,
+        "mean_site_hp_frac": 0.8888888888888888,
+        "mean_sites_alive": 2.6666666666666665,
+        "mean_leaked": 1,
+        "mean_intercepts": 51,
+        "mean_blue_budget_remaining": 177370666.66666666,
+        "mean_sim_t": 1500.0499999991835,
+        "per_kind_fires_total": {
+          "ciws": 19,
+          "iris_t_slm": 0,
+          "iris_t_sls": 100,
+          "pac_2": 0,
+          "pac_3": 0,
+          "rbs_70": 102
+        },
+        "per_kind_fires_mean": {
+          "ciws": 6.333333333333333,
+          "iris_t_slm": 0.0,
+          "iris_t_sls": 33.333333333333336,
+          "pac_2": 0.0,
+          "pac_3": 0.0,
+          "rbs_70": 34.0
+        }
+      },
+      "per_match": [
+        {
+          "winner": "truncated",
+          "sim_t": 1500.0499999991835,
+          "site_hp_frac": 1.0,
+          "sites_alive": 3,
+          "sites_total": 3,
+          "leaked": 0,
+          "intercepts": 38,
+          "blue_budget_remaining": 183625000,
+          "red_budget_remaining": 92600000,
+          "steps": 3001,
+          "total_reward": 0.32125000000000004,
+          "per_kind_fires": {
+            "ciws": 0,
+            "rbs_70": 25,
+            "iris_t_sls": 24,
+            "iris_t_slm": 0,
+            "pac_2": 0,
+            "pac_3": 0
+          },
+          "seed": 1000
+        },
+        {
+          "winner": "truncated",
+          "sim_t": 1500.0499999991835,
+          "site_hp_frac": 0.6666666666666666,
+          "sites_alive": 2,
+          "sites_total": 3,
+          "leaked": 3,
+          "intercepts": 62,
+          "blue_budget_remaining": 169662000,
+          "red_budget_remaining": 54100000,
+          "steps": 3001,
+          "total_reward": -672.3069,
+          "per_kind_fires": {
+            "ciws": 19,
+            "rbs_70": 36,
+            "iris_t_sls": 48,
+            "iris_t_slm": 0,
+            "pac_2": 0,
+            "pac_3": 0
+          },
+          "seed": 1001
+        },
+        {
+          "winner": "truncated",
+          "sim_t": 1500.0499999991835,
+          "site_hp_frac": 1.0,
+          "sites_alive": 3,
+          "sites_total": 3,
+          "leaked": 0,
+          "intercepts": 53,
+          "blue_budget_remaining": 178825000,
+          "red_budget_remaining": 74600000,
+          "steps": 3001,
+          "total_reward": 4.94125,
+          "per_kind_fires": {
+            "ciws": 0,
+            "rbs_70": 41,
+            "iris_t_sls": 28,
+            "iris_t_slm": 0,
+            "pac_2": 0,
+            "pac_3": 0
+          },
+          "seed": 1002
+        }
+      ]
+    }
+  }
+}

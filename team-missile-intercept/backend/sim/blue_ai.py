@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from . import config
+from . import config, physics, sites
 from .launcher import Launcher, LauncherFleet
 from .types import (
     INTERCEPTOR_SPECS,
@@ -122,7 +122,7 @@ def _time_to_impact(threat_pos: np.ndarray, threat_vel: np.ndarray, base: np.nda
     central so urgency estimates via it are close enough for
     wait-vs-escalate decisions."""
     to_base = base - threat_pos
-    dist = float(np.linalg.norm(to_base))
+    dist = physics._norm3(to_base)
     if dist < 1.0:
         return 0.0
     closing = float(np.dot(threat_vel, to_base / dist))
@@ -142,7 +142,7 @@ def _time_to_enter_range(
     closing)."""
     gate = max_range * config.LAUNCH_RANGE_MARGIN
     to_lch = launcher_pos - threat_pos
-    dist = float(np.linalg.norm(to_lch))
+    dist = physics._norm3(to_lch)
     if dist <= gate:
         return 0.0
     closing = float(np.dot(threat_vel, to_lch / max(dist, 1e-6)))
@@ -193,27 +193,30 @@ def _primary_available_in_time(
     threat_vel: np.ndarray,
     t_impact: float,
     t_now: float,
+    blue_budget: float,
     margin: float = 3.0,
 ) -> bool:
     """True iff at least one `(kind, launcher)` pair of the primary
     `kinds` will be both in range and have that specific launcher ready
-    at some point before impact minus `margin`. Milestone H: per-
-    launcher range math replaces the Milestone F base-centred gate so
-    forward-deployed SLS / SLM aren't wrongly reported as "will reach
-    the threat" when their individual positions can't."""
+    at some point before impact minus `margin`.
+
+    Affordability gate: unaffordable kinds are skipped. Budget only
+    monotonically decreases within a match, so if we can't buy a kind
+    now we won't be able to later either — reporting "primary available"
+    for an unaffordable kind would just stall fallback forever.
+    """
     if t_impact == float("inf"):
         return True  # not closing, no pressure — keep waiting for primary
     deadline = t_impact - margin
     for kind in kinds:
         spec = INTERCEPTOR_SPECS[kind]
+        if spec.usd_cost > blue_budget:
+            continue
         for lch in launchers.launchers:
             if lch.kind != kind:
                 continue
-            lch_pos_3d = np.array(
-                [lch.pos[0], lch.pos[1], 0.0], dtype=np.float64
-            )
             t_enter = _time_to_enter_range(
-                threat_pos, threat_vel, lch_pos_3d, spec.max_range
+                threat_pos, threat_vel, lch.pos_3d, spec.max_range
             )
             t_ready = _launcher_ready_wait(lch, t_now)
             t_need = max(t_enter, t_ready)
@@ -225,9 +228,9 @@ def _primary_available_in_time(
 def _expected_damage(
     assigned_iids: List[int], world
 ) -> int:
-    """Sum of damage_prox over living assigned interceptors. Used as a
-    shots-in-flight gate so we stop firing once enough damage is inbound
-    to kill the threat."""
+    """Sum of fragment_damage over living assigned interceptors. Used as
+    a shots-in-flight gate so we stop firing once enough damage is
+    inbound to kill the threat (arcade AOE mechanic)."""
     total = 0
     for iid in assigned_iids:
         inter = world.interceptors.get(iid)
@@ -236,7 +239,7 @@ def _expected_damage(
         spec = INTERCEPTOR_SPECS.get(InterceptorType(inter.state.kind))
         if spec is None:
             continue
-        total += spec.damage_prox
+        total += spec.fragment_damage
     return total
 
 
@@ -245,6 +248,7 @@ def _try_fire(
     kinds: List[InterceptorType],
     launchers: LauncherFleet,
     t_now: float,
+    blue_budget: float,
 ) -> Tuple[Optional[InterceptorType], Optional[Launcher]]:
     """Iterate `kinds` in preference order. For each kind, iterate every
     launcher of that kind and return the first `(kind, launcher)` pair
@@ -252,14 +256,14 @@ def _try_fire(
     `max_range × LAUNCH_RANGE_MARGIN` AND whose state is ready to fire.
     None if nothing qualifies.
 
-    Milestone H: replaces the Milestone F base-distance gate. Forward-
-    deployed SLS / SLM no longer get cleared to fire on threats that
-    their actual position can't reach, and they now DO get cleared to
-    fire on flank threats that the base-distance check would have
-    rejected.
+    Affordability gate: kinds whose `usd_cost` exceeds `blue_budget` are
+    skipped entirely, so the selection falls through to cheaper kinds
+    rather than picking an unaffordable one and silently failing.
     """
     for kind in kinds:
         spec = INTERCEPTOR_SPECS[kind]
+        if spec.usd_cost > blue_budget:
+            continue
         gate_sq = (spec.max_range * config.LAUNCH_RANGE_MARGIN) ** 2
         for lch in launchers.launchers:
             if lch.kind != kind:
@@ -277,6 +281,11 @@ class BlueAI:
     def __init__(self):
         # threat_id -> list of interceptor_ids currently in flight at it
         self.assignments: Dict[int, List[int]] = {}
+        # Issue #24: cumulative CIWS rounds fired at each threat (alive +
+        # dead). Separate from `assignments` which only counts LIVING
+        # interceptors — the lifetime cap needs to remember rounds that
+        # already died of fuel-exhaustion so we don't re-fire forever.
+        self.ciws_fired_count: Dict[int, int] = {}
         self.log: List[str] = []
         self.launchers = LauncherFleet()
 
@@ -297,18 +306,36 @@ class BlueAI:
             else:
                 self.assignments.pop(tid, None)
 
+        # Issue #24: drop lifetime CIWS counters for threats that are no
+        # longer in the world (killed, leaked off-arena, or scenario
+        # reset). Matches the assignments-purge timing so the counter
+        # entry disappears in the same tick the threat does.
+        for tid in list(self.ciws_fired_count.keys()):
+            if tid not in world.threats:
+                self.ciws_fired_count.pop(tid, None)
+
         base = np.array(config.BLUE_BASE_POS, dtype=np.float64)
 
         for tid, threat in world.threats.items():
             if not threat.state.alive:
                 continue
 
+            # Site-aware triage: don't waste interceptors on threats
+            # heading toward a site that's already destroyed (HP 0).
+            # Let them pass — save ammo/budget for threats targeting
+            # surviving sites. CIWS still fires (too cheap to skip).
+            tsid = getattr(threat, '_target_site_id', None)
+            if tsid is not None:
+                target_site = sites.find_site_by_id(tsid)
+                if target_site is not None and target_site.hp <= 0:
+                    continue
+
             threat_pos = threat.state.pos
             threat_vel = threat.state.vel
             threat_kind = ThreatType(threat.state.kind)
             # `dist_to_base` is kept only for the HUD log line — engagement
             # decisions use per-launcher distances now (Milestone H).
-            dist_to_base = float(np.linalg.norm(threat_pos - base))
+            dist_to_base = physics._norm3(threat_pos - base)
 
             # CIWS is counted separately from the main saturation cap —
             # it's the cheap point-defense layer that fires whenever
@@ -322,30 +349,69 @@ class BlueAI:
             ]
 
             # --- Point-defense: CIWS fires on ANY threat inside its
-            # 4 km envelope, regardless of saturation gate or threat
-            # kind. Real Lvkv 90 doctrine is "anything that reaches the
-            # inner ring gets sprayed" — cheap rounds, cheap kill
-            # attempt even on hypersonic RVs that probably outrun it.
-            # Milestone H: each CIWS launcher checks its own envelope
-            # independently, so a forward CIWS (if one is ever added)
-            # doesn't wait for a threat to approach the base.
+            # 4 km envelope. Real Lvkv 90 doctrine is "anything that
+            # reaches the inner ring gets sprayed" — cheap rounds,
+            # cheap kill attempt even on hypersonic RVs that probably
+            # outrun it. Milestone H: each CIWS launcher checks its
+            # own envelope independently.
+            #
+            # Issue #20 (M-TIER2.8, 2026-04-20): CIWS is still exempt
+            # from `MAX_SIMULTANEOUS_PER_THREAT` (rapid-fire is the
+            # point — it's a cannon, not a SAM) but DOES respect the
+            # expected-damage saturation gate now. Stops firing once
+            # enough in-flight damage is inbound to kill the threat,
+            # counting every assigned interceptor (CIWS + non-CIWS).
+            # Before the fix, CIWS would dump ~20-30 rounds at a 10-HP
+            # drone — $40-$60k of ammunition on a $30k target. With
+            # the gate, ~1-2 rounds land the kill (drone hp 10 /
+            # ciws fragment_damage 12 = 1 round ceiling), extras stop
+            # at the gate.
             ciws_spec = INTERCEPTOR_SPECS[InterceptorType.CIWS]
             ciws_gate_sq = (
                 ciws_spec.max_range * config.LAUNCH_RANGE_MARGIN
             ) ** 2
-            for lch in self.launchers.launchers:
-                if lch.kind != InterceptorType.CIWS:
-                    continue
-                if not lch.can_fire(t_now):
-                    continue
-                dx = float(threat_pos[0] - lch.pos[0])
-                dy = float(threat_pos[1] - lch.pos[1])
-                if dx * dx + dy * dy <= ciws_gate_sq:
-                    self._fire(
-                        world, t_now, tid, threat, InterceptorType.CIWS,
-                        lch, base, dist_to_base, tag=" [CIWS]",
-                    )
-                    break  # one CIWS launcher per tick per threat
+            ciws_expected_dmg = _expected_damage(assigned_iids, world)
+            # Issue #24 (W11, refinement of #20): per-threat lifetime cap
+            # on CIWS rounds fired. The expected-damage gate above stops
+            # CIWS once enough live damage is inbound, but because each
+            # CIWS round self-destructs at fuel_s=4 the gate reopens and
+            # the launcher sprays again. Against a threat that takes
+            # longer to cross the envelope than a CIWS fuel cycle, this
+            # can still dump many rounds over time. The lifetime cap
+            # bounds total expenditure per threat regardless of how many
+            # previous rounds missed.
+            #
+            # Formula: ceil(threat_spec.hp / ciws.fragment_damage) + 2.
+            # The first term is the nominal kill count assuming every
+            # round lands an AOE hit; the +2 is slack for CPA-miss tail
+            # cases. With fragment_damage=12 per-kind values are:
+            # DRONE=3, CRUISE=5, BALLISTIC=9, HGV=7.
+            threat_spec = THREAT_SPECS[threat_kind]
+            ciws_shot_cap = (
+                math.ceil(threat_spec.hp / ciws_spec.fragment_damage) + 2
+            )
+            ciws_already_fired = self.ciws_fired_count.get(tid, 0)
+            ciws_cap_reached = ciws_already_fired >= ciws_shot_cap
+            if ciws_expected_dmg < threat.state.hp and not ciws_cap_reached:
+                for lch in self.launchers.launchers:
+                    if lch.kind != InterceptorType.CIWS:
+                        continue
+                    if not lch.can_fire(t_now):
+                        continue
+                    dx = float(threat_pos[0] - lch.pos[0])
+                    dy = float(threat_pos[1] - lch.pos[1])
+                    if dx * dx + dy * dy <= ciws_gate_sq:
+                        # `_fire` returns True iff the interceptor was
+                        # actually launched (False when Blue can't afford
+                        # the kind). Only increment the CIWS lifetime
+                        # counter when a round truly went out the tube.
+                        fired = self._fire(
+                            world, t_now, tid, threat, InterceptorType.CIWS,
+                            lch, base, dist_to_base, tag=" [CIWS]",
+                        )
+                        if fired:
+                            self.ciws_fired_count[tid] = ciws_already_fired + 1
+                        break  # one CIWS launcher per tick per threat
 
             # --- Main saturation gate (excludes CIWS rounds) ---
             if len(non_ciws) >= MAX_SIMULTANEOUS_PER_THREAT:
@@ -358,7 +424,8 @@ class BlueAI:
             # in preference order — now computed per-launcher.
             primary_kinds = PRIMARY_RULES.get(threat_kind, [])
             kind, lch = _try_fire(
-                threat_pos, primary_kinds, self.launchers, t_now
+                threat_pos, primary_kinds, self.launchers, t_now,
+                world.blue_budget,
             )
             tag = ""
 
@@ -372,11 +439,13 @@ class BlueAI:
                 if _primary_available_in_time(
                     primary_kinds, self.launchers,
                     threat_pos, threat_vel, t_impact, t_now,
+                    world.blue_budget,
                 ):
                     continue  # wait for primary
                 fb_kinds = FALLBACK_RULES.get(threat_kind, [])
                 kind, lch = _try_fire(
-                    threat_pos, fb_kinds, self.launchers, t_now
+                    threat_pos, fb_kinds, self.launchers, t_now,
+                    world.blue_budget,
                 )
                 if kind is not None:
                     tag = " [FALLBACK]"
@@ -392,7 +461,8 @@ class BlueAI:
                     )
                     desperation = [k for k in _ALL_INTERCEPTORS if k not in tried]
                     kind, lch = _try_fire(
-                        threat_pos, desperation, self.launchers, t_now
+                        threat_pos, desperation, self.launchers, t_now,
+                        world.blue_budget,
                     )
                     if kind is not None:
                         tag = " [LAST RESORT]"
@@ -416,7 +486,23 @@ class BlueAI:
         base: np.ndarray,
         dist: float,
         tag: str,
-    ) -> None:
+    ) -> bool:
+        """Launch one interceptor at the threat and deduct its cost from
+        Blue's budget. Returns True iff the shot actually went out the
+        tube; False when `world.blue_budget < spec.usd_cost` and the
+        launch is aborted (affordability gate — defence-in-depth for
+        callers that bypass `_try_fire`'s cost filter, e.g. the CIWS
+        saturation loop in `step`).
+        """
+        # Affordability gate. Historic bug: the old `max(0, budget -
+        # cost)` clamp silently no-op'd the deduction once budget hit 0,
+        # so Blue fired unlimited free shots with a zero HUD balance.
+        # The gate below refuses to launch when we can't pay, and the
+        # unclamped `-=` below the launch keeps the ledger truthful.
+        cost = INTERCEPTOR_SPECS[kind].usd_cost
+        if world.blue_budget < cost:
+            return False
+
         # Milestone F: interceptors launch from the firing launcher's own
         # position, not the base. `base` / `dist` stay in the signature
         # because the HUD log line still reports threat-to-base range
@@ -429,21 +515,26 @@ class BlueAI:
         launch_np = np.array(launch_pos, dtype=np.float64)
         initial_dir = threat.state.pos - launch_np
         initial_dir[2] = max(initial_dir[2], 1000.0)
+        # M-TIER2.5: caller does not override engagement_mode — spec
+        # default applies (prox for every interceptor except pac_3,
+        # which is htk by construction). Launcher.fire returns the
+        # resolved mode so the Interceptor carries a matching field.
+        mode = lch.fire(t_now)
         iid = world.spawn_interceptor(
-            kind, launch_pos, tuple(initial_dir), tid
+            kind, launch_pos, tuple(initial_dir), tid, engagement_mode=mode,
         )
-        lch.fire(t_now)
-        # Milestone I: Blue pays spec.usd_cost per launch. Budget floor
-        # at 0; Scenario.winner treats budget <= 0 as a Red win. We
-        # deduct regardless of whether the launch was rational (the
-        # engagement-decision layer already gates via PRIMARY / FALLBACK
-        # / LAST_RESORT; this just wires the cost).
-        world.blue_budget = max(
-            0, world.blue_budget - INTERCEPTOR_SPECS[kind].usd_cost
-        )
+        # Milestone I: Blue pays spec.usd_cost per launch. Issue #21
+        # (M-TIER2.8, 2026-04-20): budget depletion is no longer an
+        # instant Red win — Scenario.winner only ends the match on
+        # military-site HP=0 / all-waves-done-no-threats / max_sim_time,
+        # so running out of money just means "no more shots this match";
+        # in-flight interceptors and magazine reserve can still resolve
+        # the fight. Unclamped subtraction — the affordability gate
+        # above guarantees `blue_budget >= cost` here.
+        world.blue_budget -= cost
         self.assignments.setdefault(tid, []).append(iid)
         threat_spec = THREAT_SPECS[ThreatType(threat.state.kind)]
-        dmg = INTERCEPTOR_SPECS[kind].damage_prox
+        dmg = INTERCEPTOR_SPECS[kind].fragment_damage
         n_flight = len(self.assignments[tid])
         self.log.append(
             f"[{t_now:6.1f}s] {kind.value}{tag} → {threat.state.kind} "
@@ -451,3 +542,4 @@ class BlueAI:
             f"{n_flight} in flight, inbound +{dmg} dmg, "
             f"rng {dist/1000:.1f} km)"
         )
+        return True

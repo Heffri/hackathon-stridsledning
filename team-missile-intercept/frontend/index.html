@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Smart Stridsledning — Missile Intercept Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
   <script type="importmap">
   {
@@ -17,32 +20,164 @@
 <body>
   <canvas id="view"></canvas>
 
-  <div id="launch-banner" class="hidden"></div>
+  <!-- Kill-feed overlay — shows recent intercepts -->
+  <div id="kill-feed"></div>
+
+  <!-- Sim clock progress bar -->
+  <div id="sim-clock-bar"><div id="sim-clock-fill"></div></div>
+
+  <!-- SETUP panel: centered floating card visible only in SETUP phase. -->
+  <div id="setup-ribbon" class="setup-ribbon hidden">
+    <div class="setup-panel-title">Match Setup</div>
+
+    <!-- Row 1: Budget -->
+    <div class="setup-row">
+      <span class="setup-row-label">Budget</span>
+      <label class="setup-ribbon-budget" title="Red starting budget ($M). Only editable in SETUP.">
+        Red $M
+        <input id="red-budget-input" class="setup-ribbon-budget-input" type="number" value="150" min="10" max="1000" step="10" />
+      </label>
+      <label class="setup-ribbon-budget" title="Blue starting budget ($M). Only editable in SETUP.">
+        Blue $M
+        <input id="blue-budget-input" class="setup-ribbon-budget-input" type="number" value="200" min="10" max="1000" step="10" />
+      </label>
+      <button id="btn-apply-budget" class="setup-ribbon-btn" title="Apply budget overrides to the current match (SETUP only).">Apply</button>
+    </div>
+
+    <!-- Row 2: Layout preset -->
+    <div class="setup-row">
+      <span class="setup-row-label">Layout</span>
+      <label class="setup-ribbon-roster">
+        <select id="layout-slot" class="setup-ribbon-select" title="Defensive layout preset">
+          <option value="current">Layout: Current</option>
+          <option value="A">Layout A — Forward HGV Hunter (9)</option>
+          <option value="B">Layout B — East Reinforced (10)</option>
+          <option value="C" selected>Layout C — Heavy Saturation (23)</option>
+          <option value="D">Layout D — Island HGV Hunter (19)</option>
+          <option value="E">Layout E — Balanced Shield (12)</option>
+          <option value="F">Layout F — PAC-3 Fence (4)</option>
+        </select>
+      </label>
+      <button id="btn-apply-layout" class="setup-ribbon-btn">Apply</button>
+      <span id="layout-status" class="setup-ribbon-hint"></span>
+    </div>
+
+    <!-- Row 3: AI selectors -->
+    <div class="setup-row">
+      <span class="setup-row-label">AI</span>
+      <label class="setup-ribbon-roster">
+        <select id="blue-ai-select" class="setup-ribbon-select" title="Blue AI model">
+          <option value="rule">Blue: Heuristic</option>
+          <option value="blue1">Blue: RL Cautious (2x leak penalty)</option>
+          <option value="blue2">Blue: RL Balanced (1x leak penalty)</option>
+          <option value="aoe">Blue: RL Aggressive (AOE shaped)</option>
+          <option value="v3">Blue: RL Site-Priority (weighted)</option>
+          <option value="v4">Blue: RL CIWS Active (v4)</option>
+          <option value="boyu_v2">Blue: RL Boyu V2</option>
+          <option value="boyu_v2a">Blue: RL Boyu V2a</option>
+          <option value="cap120">Blue: RL 120-cap (scratch, 2.5M)</option>
+          <option value="megamodel">Blue: RL Megamodel S4 final (curriculum)</option>
+          <option value="megamodel_s1">Blue: RL Megamodel S1 (Layout C only)</option>
+          <option value="megamodel_s2">Blue: RL Megamodel S2 (Layout C+D)</option>
+          <option value="megamodel_s3">Blue: RL Megamodel S3 (C+D + Red mix)</option>
+          <option value="s1_retrain">Blue: RL S1 Retrain (anti-PAC-spam)</option>
+          <option value="s1_retrain_peak">Blue: RL S1 Retrain peak (1.4M)</option>
+        </select>
+      </label>
+      <label class="setup-ribbon-roster">
+        <select id="red-ai-select" class="setup-ribbon-select" title="Red AI model">
+          <option value="rule">Red: 5-Wave Heuristic</option>
+          <option value="scripted">Red: Scripted 3-Chain</option>
+          <option value="red1">Red: RL Learned v1</option>
+          <option value="red2">Red: RL Learned v2</option>
+          <option value="red_trainee_v2">Red: RL Trainee v2 (cost-aware + HGV evasion)</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- Row 4: Roster fine-tuning -->
+    <div class="setup-row">
+      <span class="setup-row-label">Roster</span>
+      <label class="setup-ribbon-roster">
+        <select id="roster-kind" class="setup-ribbon-select">
+          <option value="ciws">CIWS ($0.5M)</option>
+          <option value="rbs_70">RBS-70 NG ($1M)</option>
+          <option value="iris_t_sls">IRIS-T SLS ($2M)</option>
+          <option value="iris_t_slm">IRIS-T SLM ($5M)</option>
+          <option value="pac_2">PAC-2 GEM+ ($10M)</option>
+          <option value="pac_3" selected>PAC-3 MSE ($15M)</option>
+        </select>
+      </label>
+      <button id="btn-add-launcher" class="setup-ribbon-btn">+ Add</button>
+      <button id="btn-remove-launcher" class="setup-ribbon-btn" disabled>− Remove</button>
+    </div>
+
+    <!-- Row 5: Start -->
+    <button id="btn-start-match" class="setup-ribbon-btn setup-start-btn">Start Match</button>
+    <span class="setup-ribbon-hint">Click launcher to inspect · Drag to reposition · R to reset camera</span>
+  </div>
 
   <div id="match-overlay" class="hidden">
     <div class="mo-inner">
       <div id="mo-title" class="mo-title">BLUE WINS</div>
       <div id="mo-sub" class="mo-sub"></div>
+      <button id="btn-resume" class="mo-action hidden">Resume</button>
+      <button id="btn-restart" class="mo-action hidden">Restart</button>
     </div>
   </div>
 
+  <!-- Click-to-inspect status panel: floats in center area, right side -->
   <div id="status-panel" class="hidden"></div>
 
   <div id="hud">
-    <div id="hud-top">
-      <div class="hud-block">
+
+    <!-- ═══ LEFT COLUMN: title + Blue AI log ═══ -->
+    <div id="hud-left">
+      <div class="hud-block hud-brand">
+        <div class="hud-sys-id">STRIDSLEDNING</div>
         <div class="hud-title">Smart Stridsledning</div>
-        <div class="hud-sub">AI vs AI Missile Intercept — Milestone B</div>
+        <hr class="hud-rule" />
+        <div class="hud-sub">AI vs AI Missile Intercept <span class="hud-build">v2.6.0</span></div>
       </div>
-      <div class="hud-block stats">
-        <div>T <span id="stat-t">0.0</span>s</div>
-        <div>Wave <span id="stat-wave">0</span>/<span id="stat-waves">0</span></div>
+      <div class="log-col log-col-blue">
+        <div class="log-title">Blue — Defense</div>
+        <div id="blue-dashboard" class="dash-body"></div>
       </div>
-      <div class="hud-block stats">
-        <div>Threats: <span id="stat-active-t">0</span> active</div>
-        <div>Intercepts: <span id="stat-intercepts">0</span></div>
-        <div>Leaked: <span id="stat-leaked">0</span></div>
+      <div class="log-col log-col-red-left">
+        <div class="log-title">Red — Attack</div>
+        <div id="red-dashboard-left" class="dash-body"></div>
       </div>
+    </div>
+
+    <!-- ═══ CENTER COLUMN: top stats + bottom controls ═══ -->
+    <div id="hud-center">
+      <div id="hud-top">
+        <div class="hud-block phase-chip" id="phase-chip" data-phase="setup">
+          <div class="phase-chip-dot"></div>
+          <div class="phase-chip-label" id="phase-chip-label">SETUP</div>
+        </div>
+        <div class="hud-block stats">
+          <div>T <span id="stat-t">0.0</span>s &nbsp;·&nbsp; Wave <span id="stat-wave">0</span>/<span id="stat-waves">0</span></div>
+          <div>Active <span id="stat-active-t">0</span> &nbsp;·&nbsp; Intercepts <span id="stat-intercepts">0</span> &nbsp;·&nbsp; Leaked <span id="stat-leaked">0</span></div>
+        </div>
+        <button id="btn-toggle-setup" class="hidden">Setup Menu (M)</button>
+      </div>
+
+      <div id="hud-bottom">
+        <button id="btn-pause" class="hidden">Pause</button>
+        <button id="btn-reset">Reset</button>
+        <button id="btn-reset-camera" title="Recenter the 3D camera (keyboard: R)">Reset Camera</button>
+        <label class="speed">
+          Speed
+          <input id="speed" type="range" min="0.5" max="50" step="0.5" value="1" />
+          <span id="speed-val">1.0x</span>
+        </label>
+        <span id="ws-status" class="disconnected">disconnected</span>
+      </div>
+    </div>
+
+    <!-- ═══ RIGHT COLUMN: status panels + Red AI log ═══ -->
+    <div id="hud-right">
       <div class="hud-block site-damage" id="site-damage-panel">
         <div class="ammo-title">Site HP</div>
         <div id="site-damage-list" class="site-damage-list">
@@ -60,59 +195,27 @@
           <div id="budget-bar-inner" class="budget-bar-inner"></div>
         </div>
       </div>
+      <div class="hud-block budget red-budget" id="red-budget-panel">
+        <div class="ammo-title">Red budget</div>
+        <div class="budget-amount">
+          <span id="red-budget-current">—</span>
+          <span class="budget-sep">/</span>
+          <span id="red-budget-max" class="budget-max">—</span>
+        </div>
+        <div class="budget-bar-outer">
+          <div id="red-budget-bar-inner" class="budget-bar-inner red-bar"></div>
+        </div>
+      </div>
+      <!-- Issue #25 (W11): per-launcher detail view. hud.js renders
+           body dynamically from snap.launchers filtered by selection. -->
       <div class="hud-block ammo" id="ammo-panel">
-        <div class="ammo-title">Magazine</div>
-        <div class="ammo-row" data-kind="ciws">
-          <span class="ammo-name">Lvkv 90</span>
-          <span class="ammo-count" id="ammo-ciws">∞</span>
-        </div>
-        <div class="ammo-row" data-kind="rbs_70">
-          <span class="ammo-name">RBS 70 NG</span>
-          <span class="ammo-count" id="ammo-rbs_70">∞</span>
-        </div>
-        <div class="ammo-row" data-kind="iris_t_sls">
-          <span class="ammo-name">IRIS-T SLS (RBS 98)</span>
-          <span class="ammo-count" id="ammo-iris_t_sls">∞</span>
-        </div>
-        <div class="ammo-row" data-kind="iris_t_slm">
-          <span class="ammo-name">IRIS-T SLM</span>
-          <span class="ammo-count" id="ammo-iris_t_slm">∞</span>
-        </div>
-        <div class="ammo-row" data-kind="pac_2">
-          <span class="ammo-name">Patriot PAC-2</span>
-          <span class="ammo-count" id="ammo-pac_2">∞</span>
-        </div>
-        <div class="ammo-row" data-kind="pac_3">
-          <span class="ammo-name">Patriot PAC-3 MSE</span>
-          <span class="ammo-count" id="ammo-pac_3">∞</span>
-        </div>
+        <div class="ammo-title" id="ammo-panel-title">Magazine</div>
+        <div id="ammo-panel-body"></div>
       </div>
     </div>
 
-    <div id="hud-bottom">
-      <button id="btn-start">Start</button>
-      <button id="btn-pause">Pause</button>
-      <button id="btn-reset">Reset</button>
-      <label class="speed">
-        Speed
-        <input id="speed" type="range" min="0.5" max="5" step="0.5" value="1" />
-        <span id="speed-val">1.0x</span>
-      </label>
-      <span id="ws-status" class="disconnected">disconnected</span>
-    </div>
+  </div><!-- #hud -->
 
-    <div id="log">
-      <div class="log-col log-col-blue">
-        <div class="log-title">Blue AI — fire decisions</div>
-        <div id="log-blue" class="log-scroll"></div>
-      </div>
-      <div class="log-col log-col-red">
-        <div class="log-title">Red AI — wave launches</div>
-        <div id="log-red" class="log-scroll"></div>
-      </div>
-    </div>
-  </div>
-
-  <script type="module" src="/static/js/main.js"></script>
+  <script type="module" src="/static/js/main.js?v=2"></script>
 </body>
 </html>

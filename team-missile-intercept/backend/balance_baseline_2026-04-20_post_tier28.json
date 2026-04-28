@@ -1,0 +1,146 @@
+{
+  "baseline_name": "M-TIER2.8 post CIWS saturation gate + budget-as-loss removed",
+  "git_head": "b639767",
+  "generated_at": "2026-04-20T17:27:59",
+  "config": {
+    "dt": 0.05,
+    "sim_cap_s": 1800.0,
+    "cep_n_trials": 30,
+    "cep_sim_cap_s_by_kind": {
+      "drone": 2000.0,
+      "cruise_sub": 2000.0,
+      "ballistic": 300.0,
+      "hgv": 200.0
+    }
+  },
+  "wall_clock_s": {
+    "full_match": 20.1,
+    "no_blue": 12.1,
+    "cep": 136.7,
+    "total": 168.9
+  },
+  "scenarios": {
+    "full_match": {
+      "winner": null,
+      "sim_t_end": 1800.4999999989102,
+      "total_spawned": 26,
+      "total_intercepts": 18,
+      "total_leaked": 4,
+      "blue_budget_remaining": 68950000,
+      "blue_budget_max": 120000000,
+      "site_hp": {
+        "Firewatch Station": 55,
+        "Spear Point Base": 85,
+        "Main Base": 60
+      },
+      "per_kind": {
+        "drone": {
+          "spawned": 11,
+          "intercepted": 9,
+          "leaked": 1,
+          "ground_impacted": 0,
+          "still_alive_at_end": 1
+        },
+        "cruise_sub": {
+          "spawned": 8,
+          "intercepted": 7,
+          "leaked": 1,
+          "ground_impacted": 0,
+          "still_alive_at_end": 0
+        },
+        "ballistic": {
+          "spawned": 4,
+          "intercepted": 1,
+          "leaked": 0,
+          "ground_impacted": 3,
+          "still_alive_at_end": 0
+        },
+        "hgv": {
+          "spawned": 3,
+          "intercepted": 1,
+          "leaked": 2,
+          "ground_impacted": 0,
+          "still_alive_at_end": 0
+        }
+      }
+    },
+    "no_blue": {
+      "sim_t_end": 1800.4999999989102,
+      "total_spawned": 26,
+      "total_leaked": 20,
+      "site_hp": {
+        "Firewatch Station": 30,
+        "Spear Point Base": 0,
+        "Main Base": 30
+      },
+      "per_kind": {
+        "drone": {
+          "spawned": 11,
+          "intercepted": 0,
+          "leaked": 9,
+          "ground_impacted": 0,
+          "still_alive_at_end": 2
+        },
+        "cruise_sub": {
+          "spawned": 8,
+          "intercepted": 0,
+          "leaked": 8,
+          "ground_impacted": 0,
+          "still_alive_at_end": 0
+        },
+        "ballistic": {
+          "spawned": 4,
+          "intercepted": 0,
+          "leaked": 0,
+          "ground_impacted": 4,
+          "still_alive_at_end": 0
+        },
+        "hgv": {
+          "spawned": 3,
+          "intercepted": 0,
+          "leaked": 3,
+          "ground_impacted": 0,
+          "still_alive_at_end": 0
+        }
+      }
+    },
+    "per_kind_cep": {
+      "drone": {
+        "n_trials": 30,
+        "n_impacted": 30,
+        "n_alive_at_cap": 0,
+        "miss_mean_m": 137.09364034310144,
+        "miss_median_m": 106.03225961338781,
+        "miss_p95_m": 248.14673086831232,
+        "miss_max_m": 252.01914845985905
+      },
+      "cruise_sub": {
+        "n_trials": 30,
+        "n_impacted": 30,
+        "n_alive_at_cap": 0,
+        "miss_mean_m": 74.48180414157852,
+        "miss_median_m": 59.51001130406621,
+        "miss_p95_m": 179.68940100913565,
+        "miss_max_m": 186.2077681726686
+      },
+      "ballistic": {
+        "n_trials": 30,
+        "n_impacted": 30,
+        "n_alive_at_cap": 0,
+        "miss_mean_m": 3569.677603758986,
+        "miss_median_m": 3703.8500144880486,
+        "miss_p95_m": 4046.8418621052583,
+        "miss_max_m": 4096.713176204985
+      },
+      "hgv": {
+        "n_trials": 30,
+        "n_impacted": 30,
+        "n_alive_at_cap": 0,
+        "miss_mean_m": 198.5757835177905,
+        "miss_median_m": 161.9282737766893,
+        "miss_p95_m": 467.02941854843624,
+        "miss_max_m": 489.2317063368518
+      }
+    }
+  }
+}

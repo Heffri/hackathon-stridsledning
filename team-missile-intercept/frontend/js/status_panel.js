@@ -54,7 +54,10 @@ const MACH_1 = 343; // m/s at sea level
 
 let selectedId = null;
 // Last seen velocity vector per id, used for client-side G-load estimation.
-// Stored as [vx, vy, vz, t] where t is snap.t at sample time.
+// Stored as [vx, vy, vz, t, gLoad] where t is snap.t at sample time and
+// gLoad is the last computed value (reused on render frames where snap.t
+// has not advanced — otherwise the stable `latestSnap` being re-read at
+// 60 fps would overwrite prev with identical values and pin G-load to 0).
 const prevVel = new Map();
 // When the selected entity dies, show DESTROYED briefly before auto-closing.
 let destroyedAt = null;
@@ -130,17 +133,25 @@ export function updateStatusPanel(snap) {
     return;
   }
 
-  // Maintain per-id previous velocity for G-load estimate.
+  // Maintain per-id previous velocity for G-load estimate. Only resample
+  // when snap.t actually advanced: the render loop calls this at 60 fps
+  // while the WebSocket stream is 15 Hz, so most invocations see an
+  // unchanged snapshot. Resampling on every call would overwrite prev
+  // with identical velocities and pin the computed G-load to 0.
   const vx = ent.vel[0], vy = ent.vel[1], vz = ent.vel[2];
   const t = snap.t ?? 0;
   const prev = prevVel.get(ent.id);
-  prevVel.set(ent.id, [vx, vy, vz, t]);
   let gLoad = 0;
-  if (prev) {
-    const dt = Math.max(0.001, t - prev[3]);
+  if (!prev) {
+    prevVel.set(ent.id, [vx, vy, vz, t, 0]);
+  } else if (t > prev[3] + 1e-4) {
+    const dt = t - prev[3];
     const dvx = vx - prev[0], dvy = vy - prev[1], dvz = vz - prev[2];
     const dvMag = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
     gLoad = dvMag / dt / 9.81;
+    prevVel.set(ent.id, [vx, vy, vz, t, gLoad]);
+  } else {
+    gLoad = prev[4] ?? 0;
   }
 
   const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
