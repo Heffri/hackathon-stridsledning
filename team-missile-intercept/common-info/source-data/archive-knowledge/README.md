@@ -6,7 +6,7 @@ decision-support concept with a full IADS simulation, a 3-layer response
 model (EW → evade → hard-kill), multi-wave scenarios, and a complete
 Swedish air-defense knowledge base.
 
-That side project was killed before the hackathon focused on the
+That side project was killed 2 day into the hackathon and later focused on the
 team's missile-intercept sandbox. The bulk of its knowledge base
 was either superseded or rolled into the active reference notes
 under [`../knowledge/`](../knowledge/) (canonical, used by the
