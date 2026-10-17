@@ -54,6 +54,19 @@ RED_AI_MODELS = [
 ]
 
 
+# Hosted/trimmed deployments ship only a subset of the trained models.
+# Hide dropdown entries whose model file is not present so nobody can
+# select a policy that would fail to load.
+_BACKEND_DIR = Path(__file__).resolve().parent
+BLUE_AI_MODELS = [
+    m for m in BLUE_AI_MODELS if m[2] is None or (_BACKEND_DIR / m[2]).exists()
+]
+RED_AI_MODELS = [
+    m for m in RED_AI_MODELS
+    if m[2] in (None, "scripted") or (_BACKEND_DIR / m[2]).exists()
+]
+
+
 # Live-demo hook: learned-policy paths read from env vars at import time.
 # Unset → scenario uses the rule-based RedAI / BlueAI as before (zero
 # regression). Both vars are independent; either can be set alone.

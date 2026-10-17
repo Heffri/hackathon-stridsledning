@@ -1,2 +1,0 @@
-C:\Users\xingy\Documents\github\hackathon-stridsledning\.claude\worktrees\s1-retrain\team-missile-intercept\backend\.venv\Lib\site-packages\stable_baselines3\common\vec_env\vec_monitor.py:43: UserWarning: The environment is already wrapped with a `Monitor` wrapperbut you are wrapping it with a `VecMonitor` wrapper, the `Monitor` statistics will beoverwritten by the `VecMonitor` ones.
-  warnings.warn(

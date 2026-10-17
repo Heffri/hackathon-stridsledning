@@ -10,6 +10,14 @@ This is a hackathon arcade-style game / decision-support sandbox.
 All weapon names and stats are encyclopedia-level values used as
 unit balance numbers.
 
+## Live demo
+
+Hosted on Render (free tier, may take about a minute to wake up):
+https://hackathon-stridsledning.onrender.com/
+
+Configured by [`render.yaml`](render.yaml): Blue AI = V4 (CIWS Active), Red = Scripted 3-Chain, CPU-only torch.
+The repo ships only the demo models (about 100 MB). Full training history lives in the `archive/*` branches.
+
 ## Run the demo
 
 ```bash
